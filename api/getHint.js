@@ -22,23 +22,57 @@ export default async function handler(req, res) {
   
       console.log('Getting hint for FEN:', fen);
   
-      // SIMPLIFIED VERSION - Skip Lichess for now, go straight to GPT
+      // Try Chess-API.com for real Stockfish analysis
       let bestMove = null;
       let evaluation = null;
+      let engineError = null;
   
-      // Basic chess analysis with GPT only (more reliable)
-      const gptPrompt = `Analyze this chess position and give the best move:
+      try {
+        console.log('Trying Chess-API.com for engine analysis...');
+        
+        const chessApiResponse = await fetch('https://chess-api.com/v1', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fen: fen,
+            depth: 15
+          })
+        });
+  
+        if (chessApiResponse.ok) {
+          const chessApiData = await chessApiResponse.json();
+          console.log('Chess-API response:', chessApiData);
+          
+          if (chessApiData.bestMove) {
+            bestMove = chessApiData.bestMove;
+            evaluation = chessApiData.evaluation ? `${chessApiData.evaluation / 100}` : 'Unknown';
+            console.log('Got engine move:', bestMove);
+          }
+        } else {
+          engineError = `Chess-API returned ${chessApiResponse.status}`;
+        }
+      } catch (apiError) {
+        engineError = `Chess-API failed: ${apiError.message}`;
+        console.log('Chess-API failed:', apiError);
+      }
+  
+      // Improved prompt with engine data if available
+      const gptPrompt = `You are analyzing a chess position${bestMove ? ' with engine assistance' : ''}.
   
   FEN: ${fen}
+  ${bestMove ? `Engine suggests: ${bestMove}` : ''}
+  ${evaluation ? `Position evaluation: ${evaluation}` : ''}
   ${userMove ? `User is considering: ${userMove}` : ''}
   Question: ${question || 'What is the best move?'}
   
-  Provide:
-  1. The best move in algebraic notation
-  2. Brief explanation why it's good
-  3. Any key tactics
+  ${bestMove ? 
+    `The chess engine suggests ${bestMove}. Please explain why this move is strong and what ideas it contains.` :
+    `Please analyze this position carefully. Only suggest moves that exist in this FEN position. If uncertain, focus on general principles.`
+  }
   
-  Keep it concise and educational.`;
+  Provide clear, educational analysis.`;
   
       // Check if OpenAI key exists
       if (!process.env.OPENAI_API_KEY) {
@@ -84,8 +118,11 @@ export default async function handler(req, res) {
       const response = {
         success: true,
         hint: explanation,
-        bestMove: 'See analysis',
+        bestMove: bestMove || 'See analysis',
+        evaluation: evaluation,
         explanation: explanation,
+        engineUsed: bestMove ? 'Chess-API.com (Stockfish 17)' : 'GPT Analysis Only',
+        engineError: engineError,
         timestamp: new Date().toISOString()
       };
       
