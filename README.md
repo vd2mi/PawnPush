@@ -1,4 +1,4 @@
-```markdown
+markdown
 # PawnPush
 
 PawnPush is an interactive chess puzzle platform designed to help players improve their skills through a vast collection of puzzles. Accessible online at [https://pawn-push.vercel.app](https://pawn-push.vercel.app), it offers categorized puzzles, AI-powered hints, and a coaching chat for personalized guidance.
@@ -24,7 +24,7 @@ PawnPush is an interactive chess puzzle platform designed to help players improv
 
 ## File Structure
 
-```
+
 
 PAWN PUSH/
 │
@@ -43,7 +43,7 @@ PAWN PUSH/
 ├── package.json               # NPM dependencies
 ├── package-lock.json          # Lockfile
 
-````
+
 
 ## Setup Instructions
 
@@ -105,6 +105,3 @@ Contributions are welcome! Fork the repository and submit pull requests with imp
 ## Live Website
 
 [https://pawn-push.vercel.app](https://pawn-push.vercel.app)
-
-```
-```
