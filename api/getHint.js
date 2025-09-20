@@ -14,139 +14,51 @@ export default async function handler(req, res) {
     }
   
     try {
-      const { fen, userMove, stockfishMove, question } = req.query;
+      const { fen, userMove, question, solutionMove, puzzleType, moveNumber } = req.query;
   
       if (!fen) {
         return res.status(400).json({ error: 'FEN is required' });
       }
   
       console.log('Getting hint for FEN:', fen);
-  
-      // Try Chess-API.com for real Stockfish analysis
-      let bestMove = null;
-      let evaluation = null;
-      let engineError = null;
-  
-      try {
-        console.log('Trying Chess-API.com for engine analysis...');
-        
-        const chessApiResponse = await fetch('https://chess-api.com/v1', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fen: fen,
-            depth: 15
-          })
-        });
-  
-        if (chessApiResponse.ok) {
-          const chessApiData = await chessApiResponse.json();
-          console.log('Chess-API response:', chessApiData);
-          
-          if (chessApiData.bestMove) {
-            bestMove = chessApiData.bestMove;
-            evaluation = chessApiData.evaluation ? `${chessApiData.evaluation / 100}` : 'Unknown';
-            console.log('Got engine move:', bestMove);
-          }
-        } else {
-          engineError = `Chess-API returned ${chessApiResponse.status}`;
-        }
-      } catch (apiError) {
-        engineError = `Chess-API failed: ${apiError.message}`;
-        console.log('Chess-API failed:', apiError);
-      }
-  
-      // Improved prompt with engine data if available
-      const gptPrompt = `You are analyzing a chess position${bestMove ? ' with engine assistance' : ''}.
-  
-  FEN: ${fen}
-  ${bestMove ? `Engine suggests: ${bestMove}` : ''}
-  ${evaluation ? `Position evaluation: ${evaluation}` : ''}
-  ${userMove ? `User is considering: ${userMove}` : ''}
-  Question: ${question || 'What is the best move?'}
-  
-  ${bestMove ? 
-    `The chess engine suggests ${bestMove}. Please explain why this move is strong and what ideas it contains.` :
-    `Please analyze this position carefully. Only suggest moves that exist in this FEN position. If uncertain, focus on general principles.`
-  }
-  
-  Provide clear, educational analysis.`;
+      console.log('Solution move:', solutionMove);
+      console.log('Puzzle type:', puzzleType);
   
       // Check if OpenAI key exists
       if (!process.env.OPENAI_API_KEY) {
-        console.log('No OpenAI API key, returning basic analysis');
+        console.log('No OpenAI API key');
         return res.status(200).json({
           success: true,
-          hint: 'OpenAI API key not configured. Please add OPENAI_API_KEY to environment variables.',
-          bestMove: 'Unknown',
+          hint: `The best move is ${solutionMove || 'unknown'}. OpenAI API key needed for detailed explanation.`,
+          bestMove: solutionMove || 'Unknown',
           explanation: 'API configuration needed'
         });
       }
   
-      const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4',
-          messages: [
-            { role: 'system', content: 'You are a chess coach. Analyze positions and suggest moves with explanations.' },
-            { role: 'user', content: gptPrompt }
-          ],
-          max_tokens: 300,
-          temperature: 0.2
-        })
-      });
+      // Create intelligent prompt with the CORRECT answer
+      const gptPrompt = `You are a chess coach explaining a tactical puzzle to a student.
   
-      if (!gptResponse.ok) {
-        const errorText = await gptResponse.text();
-        console.error('GPT Error:', errorText);
-        throw new Error(`OpenAI API failed: ${gptResponse.status}`);
-      }
+  Position (FEN): ${fen}
+  Puzzle Type: ${puzzleType || 'tactical puzzle'}
+  Correct Answer: ${solutionMove}
+  ${userMove ? `Student is considering: ${userMove}` : ''}
+  ${moveNumber ? `This is move ${moveNumber} in the solution` : ''}
   
-      const gptData = await gptResponse.json();
-      console.log('GPT Response:', gptData);
-      
-      const explanation = gptData.choices?.[0]?.message?.content || 'No analysis available';
-      console.log('Extracted explanation:', explanation);
+  Student asks: "${question || 'What is the best move?'}"
   
-      // Return in format your frontend expects
-      const response = {
-        success: true,
-        hint: explanation,
-        bestMove: bestMove || 'See analysis',
-        evaluation: evaluation,
-        explanation: explanation,
-        engineUsed: bestMove ? 'Chess-API.com (Stockfish 17)' : 'GPT Analysis Only',
-        engineError: engineError,
-        timestamp: new Date().toISOString()
-      };
-      
-      console.log('Final API response:', response);
-      return res.status(200).json(response);
+  Your job:
+  1. Confirm that ${solutionMove} is indeed the best move
+  2. Explain WHY this move works (what tactical theme it uses)
+  3. Show what happens after this move
+  4. If the student suggested a different move, explain why ${solutionMove} is better
   
-    } catch (error) {
-      console.error('API Error:', error);
-      
-      // Always return something instead of crashing
-      return res.status(200).json({
-        success: false,
-        hint: `Error: ${error.message}. For this position, look for tactical patterns like pins, forks, and checks.`,
-        bestMove: 'Error',
-        explanation: 'API temporarily unavailable'
-      });
-    }
+  ${userMove && userMove !== solutionMove ? 
+    `The student suggested ${userMove}, but the correct answer is ${solutionMove}. Explain why ${solutionMove} is superior.` : 
+    `Explain why ${solutionMove} is the key move in this position.`
   }
   
-  // Alternative simpler version if you want to skip engine entirely:
-  export async function handlerGPTOnly(req, res) {
-    const { fen, question } = req.query;
+  Focus on the tactical pattern (fork, pin, skewer, discovered attack, etc.) and be educational.`;
   
-    try {
       const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -158,30 +70,56 @@ export default async function handler(req, res) {
           messages: [
             { 
               role: 'system', 
-              content: 'You are a chess grandmaster. Analyze positions and suggest the best moves with clear explanations.' 
+              content: 'You are an expert chess coach. You always have the correct answer and explain chess tactics clearly to help students learn.' 
             },
-            { 
-              role: 'user', 
-              content: `Analyze this chess position: ${fen}\nQuestion: ${question}\n\nProvide: 1) Best move 2) Why it's good 3) Key ideas to remember` 
-            }
+            { role: 'user', content: gptPrompt }
           ],
           max_tokens: 400,
-          temperature: 0.2
+          temperature: 0.3
         })
       });
   
+      if (!gptResponse.ok) {
+        const errorText = await gptResponse.text();
+        console.error('GPT Error:', errorText);
+        
+        // Return basic hint even if GPT fails
+        return res.status(200).json({
+          success: true,
+          hint: `The best move is ${solutionMove}. This appears to be a ${puzzleType || 'tactical'} puzzle.`,
+          bestMove: solutionMove,
+          explanation: `Best move: ${solutionMove}`
+        });
+      }
+  
       const gptData = await gptResponse.json();
+      console.log('GPT Response received');
       
-      return res.status(200).json({
+      const explanation = gptData.choices?.[0]?.message?.content || `The best move is ${solutionMove}`;
+  
+      // Return in format your frontend expects
+      const response = {
         success: true,
-        explanation: gptData.choices[0].message.content,
-        method: 'GPT-4 Analysis'
-      });
+        hint: explanation,
+        bestMove: solutionMove,
+        puzzleType: puzzleType,
+        explanation: explanation,
+        method: 'Solution-guided GPT analysis',
+        timestamp: new Date().toISOString()
+      };
+      
+      console.log('Returning hint with solution:', solutionMove);
+      return res.status(200).json(response);
   
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        error: error.message
+      console.error('API Error:', error);
+      
+      // Always return something useful
+      return res.status(200).json({
+        success: true,
+        hint: `Error occurred, but try looking for tactical patterns like checks, captures, and threats.`,
+        bestMove: req.query.solutionMove || 'Unknown',
+        explanation: 'API temporarily unavailable'
       });
     }
   }
