@@ -1,5 +1,4 @@
 import fetch from 'node-fetch';
-import Stockfish from 'stockfish.js';
 
 export default async function handler(req, res) {
   try {
@@ -8,22 +7,17 @@ export default async function handler(req, res) {
     if (!fen) return res.status(400).json({ hint: 'FEN is required' });
     if (!process.env.OPENAI_API_KEY) return res.status(500).json({ hint: 'AI key not configured' });
 
-    // Initialize Stockfish engine
-    const engine = Stockfish();
-
-    const bestMove = await new Promise((resolve, reject) => {
-      engine.onmessage = (msg) => {
-        const line = msg.data || msg;
-        if (line.startsWith('bestmove')) {
-          resolve(line.split(' ')[1]);
-        }
-      };
-      engine.postMessage(`position fen ${fen}`);
-      engine.postMessage('go depth 15');
-
-      // timeout in case Stockfish fails
-      setTimeout(() => reject(new Error('Stockfish timeout')), 5000);
+    // Call a Stockfish API (example: lichess.org’s cloud API)
+    const sfResp = await fetch('https://lichess.org/api/cloud-eval', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `fen=${encodeURIComponent(fen)}&multiPv=1`
     });
+
+    const sfData = await sfResp.json();
+    if (!sfData?.pvs?.[0]?.moves) return res.status(500).json({ hint: 'Stockfish API error' });
+
+    const bestMove = sfData.pvs[0].moves.split(' ')[0];
 
     // Compose prompt for GPT
     const prompt = `
