@@ -1,5 +1,14 @@
 // /api/getHint.js
 export default async function handler(req, res) {
+    // Add CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+  
     if (req.method !== 'GET') {
       return res.status(405).json({ error: 'Method not allowed' });
     }
@@ -12,75 +21,35 @@ export default async function handler(req, res) {
       }
   
       console.log('Getting hint for FEN:', fen);
-      console.log('Question:', question);
   
-      // Try to get Stockfish evaluation from Lichess
+      // SIMPLIFIED VERSION - Skip Lichess for now, go straight to GPT
       let bestMove = null;
       let evaluation = null;
-      let engineError = null;
   
-      try {
-        // Method 1: Try Lichess Cloud Eval API
-        const lichessResponse = await fetch(`https://lichess.org/api/cloud-eval?fen=${encodeURIComponent(fen)}&multiPv=1`, {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'Chess-Hint-App/1.0'
-          },
-          timeout: 8000
-        });
-  
-        if (lichessResponse.ok) {
-          const lichessData = await lichessResponse.json();
-          console.log('Lichess response:', lichessData);
-  
-          if (lichessData.pvs && lichessData.pvs.length > 0) {
-            const bestLine = lichessData.pvs[0];
-            bestMove = bestLine.moves.split(' ')[0]; // First move
-            evaluation = bestLine.cp ? `${bestLine.cp / 100}` : (bestLine.mate ? `Mate in ${bestLine.mate}` : 'Unknown');
-          }
-        } else {
-          engineError = `Lichess API returned ${lichessResponse.status}`;
-        }
-      } catch (lichessErr) {
-        engineError = `Lichess API failed: ${lichessErr.message}`;
-        console.log('Lichess failed, trying alternative...');
-  
-        // Method 2: Try Chess.com API (if available)
-        try {
-          const chesscomResponse = await fetch('https://api.chess.com/pub/puzzle', {
-            timeout: 5000
-          });
-          // This is just a fallback example - you'd need a real analysis API
-        } catch (chesscomErr) {
-          console.log('Chess.com API also failed');
-        }
-      }
-  
-      // Method 3: If all APIs fail, try a simple heuristic or basic analysis
-      if (!bestMove) {
-        console.log('All engines failed, using GPT analysis only');
-        bestMove = 'Unable to calculate'; // or try to extract from basic rules
-      }
-  
-      // Now use GPT to explain the position and give advice
-      const gptPrompt = `
-  You are a chess master analyzing this position:
+      // Basic chess analysis with GPT only (more reliable)
+      const gptPrompt = `Analyze this chess position and give the best move:
   
   FEN: ${fen}
-  ${bestMove && bestMove !== 'Unable to calculate' ? `Best engine move: ${bestMove}` : ''}
-  ${evaluation ? `Position evaluation: ${evaluation}` : ''}
   ${userMove ? `User is considering: ${userMove}` : ''}
-  ${stockfishMove ? `Previous computer move: ${stockfishMove}` : ''}
+  Question: ${question || 'What is the best move?'}
   
-  Question: ${question || 'What is the best move and why?'}
+  Provide:
+  1. The best move in algebraic notation
+  2. Brief explanation why it's good
+  3. Any key tactics
   
-  Please provide:
-  1. The best move (if you can determine it)
-  2. Clear explanation of why it's good
-  3. What to look for in this position
-  4. Any tactical themes present
+  Keep it concise and educational.`;
   
-  Be concise but educational. If the engine couldn't calculate, still give your best chess advice.`;
+      // Check if OpenAI key exists
+      if (!process.env.OPENAI_API_KEY) {
+        console.log('No OpenAI API key, returning basic analysis');
+        return res.status(200).json({
+          success: true,
+          hint: 'OpenAI API key not configured. Please add OPENAI_API_KEY to environment variables.',
+          bestMove: 'Unknown',
+          explanation: 'API configuration needed'
+        });
+      }
   
       const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -91,40 +60,47 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: 'gpt-4',
           messages: [
-            { role: 'system', content: 'You are a chess grandmaster providing educational analysis.' },
+            { role: 'system', content: 'You are a chess coach. Analyze positions and suggest moves with explanations.' },
             { role: 'user', content: gptPrompt }
           ],
-          max_tokens: 500,
-          temperature: 0.3
+          max_tokens: 300,
+          temperature: 0.2
         })
       });
   
       if (!gptResponse.ok) {
-        throw new Error(`GPT API failed: ${gptResponse.status}`);
+        const errorText = await gptResponse.text();
+        console.error('GPT Error:', errorText);
+        throw new Error(`OpenAI API failed: ${gptResponse.status}`);
       }
   
       const gptData = await gptResponse.json();
-      const explanation = gptData.choices[0].message.content;
+      console.log('GPT Response:', gptData);
+      
+      const explanation = gptData.choices?.[0]?.message?.content || 'No analysis available';
+      console.log('Extracted explanation:', explanation);
   
-      // Return successful response
-      return res.status(200).json({
+      // Return in format your frontend expects
+      const response = {
         success: true,
-        bestMove: bestMove,
-        evaluation: evaluation,
+        hint: explanation,
+        bestMove: 'See analysis',
         explanation: explanation,
-        engineUsed: bestMove !== 'Unable to calculate' ? 'Lichess Cloud Eval' : 'GPT Analysis Only',
-        engineError: engineError,
         timestamp: new Date().toISOString()
-      });
+      };
+      
+      console.log('Final API response:', response);
+      return res.status(200).json(response);
   
     } catch (error) {
       console.error('API Error:', error);
       
-      // Return error but don't crash
-      return res.status(500).json({
+      // Always return something instead of crashing
+      return res.status(200).json({
         success: false,
-        error: error.message,
-        fallbackAdvice: 'Unable to analyze position. Try checking for basic tactics: pins, forks, discovered attacks, and piece safety.'
+        hint: `Error: ${error.message}. For this position, look for tactical patterns like pins, forks, and checks.`,
+        bestMove: 'Error',
+        explanation: 'API temporarily unavailable'
       });
     }
   }
