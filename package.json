@@ -4,7 +4,8 @@
   "type": "module",
   "dependencies": {
     "node-fetch": "^3.3.2",
-    "stockfish": "^17.1.0"
+    "stockfish": "^17.1.0",
+    "stockfish.js": "^10.0.2"
   },
   "main": "IndexScript.js",
   "scripts": {
