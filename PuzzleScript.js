@@ -32,7 +32,7 @@ function updatePuzzleInfo(puzzle, fen) {
   document.getElementById('puzzle-rating').textContent = `Rating: ${puzzle.rating}`;
   
 
-  const themes = puzzle.themes.split(' ').slice(0, 3); // First 3 themes
+  const themes = puzzle.themes.split(' ').slice(0, 3);
   const themeText = themes.map(theme => 
     theme.charAt(0).toUpperCase() + theme.slice(1)
   ).join(' • ');
@@ -241,16 +241,58 @@ if (hintBtn) {
   hintBtn.addEventListener('click', showHint);
 }
 
+
 const nextBtn = document.getElementById('nextPuzzleBtn');
 if (nextBtn) { 
   nextBtn.addEventListener('click', () => { loadPuzzle() });
 }
 
-const toggleButtonElement2 = document.getElementById('coachBtn'); 
-const popupElement = document.getElementById('chatPopup');
-toggleButtonElement2.addEventListener('click', () => { 
-  popupElement.classList.toggle('hidden');
+const coachBtn = document.getElementById('coachBtn');
+const chatPopup = document.getElementById('chatPopup');
+const chatMessages = document.getElementById('chatMessages');
+const chatInput = document.getElementById('chatInput');
+const chatSend = document.getElementById('chatSend');
+
+coachBtn.addEventListener('click', () => {
+  chatPopup.classList.toggle('hidden');
 });
+
+chatSend.addEventListener('click', async () => {
+  const question = chatInput.value.trim();
+  if (!question) return;
+
+ 
+  const userMsg = document.createElement('div');
+  userMsg.classList.add('user');
+  userMsg.innerHTML = `<strong>You:</strong> ${question}`;
+  chatMessages.appendChild(userMsg);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  chatInput.value = "";
+
+ 
+  const aiMsg = document.createElement('div');
+  aiMsg.classList.add('ai');
+  aiMsg.innerHTML = `<strong>Coach:</strong> Coach is thinking...`;
+  chatMessages.appendChild(aiMsg);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  try {
+    const fen = chess.fen();
+    const res = await fetch(`/api/getHint?fen=${fen}&userMove=&stockfishMove=&question=${encodeURIComponent(question)}`);
+    const data = await res.json();
+    aiMsg.innerHTML = `<strong>Coach:</strong> ${data.hint}`;
+  } catch (e) {
+    aiMsg.innerHTML = `<strong>Coach:</strong> Error getting hint`;
+  }
+
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+});
+
+
+chatInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') chatSend.click();
+});
+
 
 await loadPuzzle();
 })

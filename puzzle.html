@@ -50,11 +50,47 @@
     </div>
   </div>
 
-  <!-- coach stuff -->
-  <button id="coachBtn">Coach</button>
-  <div id="chatPopup" class="hidden">
-    <p>Hey! I can help you with the puzzle.</p>
-  </div>
+  
+  <button id="coachBtn" style="position:fixed; bottom:20px; right:20px; z-index:1000; padding:10px 15px; border:none; border-radius:6px; background:#304aa0; color:white; cursor:pointer;">Ask Coach</button>
+
+<div id="chatPopup" class="hidden" style="
+  position:fixed;
+  bottom:70px;
+  right:20px;
+  width:300px;
+  height:400px;
+  background:#1e1e1e;
+  border:1px solid #444;
+  border-radius:8px;
+  display:flex;
+  flex-direction:column;
+  padding:10px;
+  color:white;
+  font-family:Arial, sans-serif;
+  box-shadow:0 4px 12px rgba(0,0,0,0.5);
+  z-index:1000;
+">
+  <div id="chatMessages" style="flex:1; overflow-y:auto; margin-bottom:10px;"></div>
+  <input id="chatInput" type="text" placeholder="Ask me a hint..." style="
+    padding:5px;
+    border:none;
+    border-radius:4px;
+    outline:none;
+    width:calc(100% - 60px);
+    background:#333;
+    color:white;
+  "/>
+  <button id="chatSend" style="
+    padding:5px 8px;
+    margin-left:5px;
+    border:none;
+    border-radius:4px;
+    background:#304aa0;
+    color:white;
+    cursor:pointer;
+  ">Send</button>
+</div>
+
 </main>
 
 <script src="PuzzleScript.js"></script>

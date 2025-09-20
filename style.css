@@ -30,7 +30,7 @@ body:not(.puzzle-page) main {
 
 h2 { margin-bottom: 0.5rem; }
 
-/* button styling */
+
 .button-row {
   display: flex;
   gap: 1rem;
@@ -72,7 +72,7 @@ button:hover {
   max-width: 1200px;
 }
 
-/* chess board stuff */
+
 #board-container {
   order: 1;
   display: flex;
@@ -102,7 +102,7 @@ button:hover {
   max-width: 600px;
 }
 
-/* sidebar with puzzle info */
+
 #puzzle-info-sidebar {
   width: 280px;
   background: rgba(30, 36, 45, 0.9);
@@ -157,7 +157,7 @@ button:hover {
 .move-item.correct { color: #4CAF50; }
 .move-item.incorrect { color: #f44336; }
 
-/* next puzzle button */
+
 #nextPuzzleBtn {
   width: 100%;
   padding: 0.75rem;
@@ -175,7 +175,7 @@ button:hover {
   box-shadow: 0 4px 12px rgba(100, 181, 246, 0.3);
 }
 
-/* coach button */
+
 #coachBtn {
   position: fixed;
   bottom: 20px;
@@ -214,6 +214,68 @@ button:hover {
   box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
 }
 
+#chatMessages div {
+  max-width: 80%;
+  margin: 4px 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  word-wrap: break-word;
+  font-size: 14px;
+}
+
+
+#chatMessages div.user {
+  text-align: right;
+  background: #304aa0;
+  color: white;
+  margin-left: auto;
+}
+
+
+#chatMessages div.ai {
+  text-align: left;
+  background: #2a2a2a;
+  color: white;
+  margin-right: auto;
+}
+
+
+#chatInput {
+  padding: 5px;
+  border: none;
+  border-radius: 4px;
+  outline: none;
+  width: calc(100% - 60px);
+  background: #333;
+  color: white;
+}
+
+#chatSend {
+  padding: 5px 8px;
+  margin-left: 5px;
+  border: none;
+  border-radius: 4px;
+  background: #304aa0;
+  color: white;
+  cursor: pointer;
+}
+#chatMessages div.user {
+  text-align: right;
+  background: #304aa0;
+  color: white;
+  margin: 4px 0;
+  padding: 5px 8px;
+  border-radius: 6px;
+}
+
+#chatMessages div.ai {
+  text-align: left;
+  background: #2a2a2a;
+  color: white;
+  margin: 4px 0;
+  padding: 5px 8px;
+  border-radius: 6px;
+}
 
 
 .toast {
@@ -234,3 +296,5 @@ button:hover {
 .toast.success { background: linear-gradient(135deg, #4CAF50, #45a049); }
 .toast.error { background: linear-gradient(135deg, #f44336, #d32f2f); }
 .toast.info { background: linear-gradient(135deg, #2196F3, #1976D2); }
+#chatMessages div.user strong { color: #FFD700; }   
+#chatMessages div.ai strong { color: #64b5f6; }     
