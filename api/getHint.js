@@ -10,21 +10,20 @@ export default async function handler(req, res) {
 
     // Initialize Stockfish engine
     const engine = Stockfish();
-    let bestMove = null;
 
-    engine.onmessage = (msg) => {
-      const line = msg.data || msg;
-      if (line.startsWith('bestmove')) {
-        bestMove = line.split(' ')[1];
-      }
-    };
+    const bestMove = await new Promise((resolve, reject) => {
+      engine.onmessage = (msg) => {
+        const line = msg.data || msg;
+        if (line.startsWith('bestmove')) {
+          resolve(line.split(' ')[1]);
+        }
+      };
+      engine.postMessage(`position fen ${fen}`);
+      engine.postMessage('go depth 15');
 
-    // Send FEN to Stockfish
-    engine.postMessage(`position fen ${fen}`);
-    engine.postMessage('go depth 15');
-
-    // Wait until Stockfish returns a move
-    while (!bestMove) await new Promise(r => setTimeout(r, 50));
+      // timeout in case Stockfish fails
+      setTimeout(() => reject(new Error('Stockfish timeout')), 5000);
+    });
 
     // Compose prompt for GPT
     const prompt = `
