@@ -278,7 +278,7 @@ chatSend.addEventListener('click', async () => {
 
   try {
     const fen = chess.fen();
-    const res = await fetch(`/api/getHint?fen=${fen}&userMove=&stockfishMove=&question=${encodeURIComponent(question)}`);
+    const res = await fetch(`/api/getHint?fen=${fen}&userMove=&stockfishMove=&question=${encodeURIComponent(question)}&solutionMove=${currentPuzzle.puzzle.solution[solutionIndex]}&puzzleType=${currentPuzzle.puzzle.themes}`);
     const data = await res.json();
     aiMsg.innerHTML = `<strong>Coach:</strong> ${data.hint}`;
   } catch (e) {
