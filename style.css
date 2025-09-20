@@ -30,6 +30,9 @@ body:not(.puzzle-page) main {
 
 h2 { margin-bottom: 0.5rem; }
 
+#board {
+  touch-action: none;
+}
 
 .button-row {
   display: flex;
@@ -51,6 +54,13 @@ button:hover {
   background-color: #9bcbbd;
   color: #22272f;
 }
+img {
+  user-drag: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  -webkit-user-select: none;
+}
+
 
 #startSolvingBtn {
   padding: 1rem 3rem;

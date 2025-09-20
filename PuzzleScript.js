@@ -65,6 +65,11 @@ async function loadPuzzleDatabase() {
   }
   return puzzleDatabase;
 }
+const boardEl = document.getElementById('board');
+
+boardEl.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+boardEl.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
 
 async function getRandomPuzzleFromDatabase() {
   const db = await loadPuzzleDatabase();
