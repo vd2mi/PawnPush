@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PawnPush - Puzzle</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="puzzle-page">
+
+<header>
+  <h1>PawnPush</h1>
+</header>
+
+<main>
+  <!-- puzzle name/theme goes here -->
+  <div id="puzzle-theme">Loading puzzle...</div>
+  
+  <!-- main content wrapper -->
+  <div class="puzzle-container">
+    <!-- chess board section -->
+    <div id="board-container">
+      <div id="board"></div>
+    </div>
+
+    <!-- info sidebar -->
+    <div id="puzzle-info-sidebar">
+      <div class="info-section">
+        <h3>Puzzle Info</h3>
+        <div id="puzzle-rating">Rating: --</div>
+        <div id="turn-indicator">-- to move</div>
+      </div>
+      
+      <div class="info-section">
+        <h3>Your Moves</h3>
+        <div id="move-history"></div>
+      </div>
+      
+      <div class="info-section">
+        <button id="hintBtn">Hint</button>
+      </div>
+      
+      <div class="info-section">
+        <button id="nextPuzzleBtn">Next Puzzle</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- coach stuff -->
+  <button id="coachBtn">Coach</button>
+  <div id="chatPopup" class="hidden">
+    <p>Hey! I can help you with the puzzle.</p>
+  </div>
+</main>
+
+<script src="PuzzleScript.js"></script>
+</body>
+</html>

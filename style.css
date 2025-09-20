@@ -1,0 +1,236 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background-color: #181c22;
+  color: #d3d7db;
+}
+
+header {
+  background-color: #1e242d;
+  padding: 1rem;
+  text-align: center;
+  color: #a2c5bf;
+}
+
+
+.puzzle-page main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem;
+  gap: 1rem;
+}
+
+body:not(.puzzle-page) main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem;
+}
+
+h2 { margin-bottom: 0.5rem; }
+
+/* button styling */
+.button-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+button {
+  padding: 1rem 1.5rem;
+  background-color: #262c34;
+  color: #a2c5bf;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+button:hover {
+  background-color: #9bcbbd;
+  color: #22272f;
+}
+
+#startSolvingBtn {
+  padding: 1rem 3rem;
+  margin-top: 1rem;
+}
+
+.selected {
+  background-color: #4caf50;
+  color: white;
+}
+
+
+.puzzle-container {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start; 
+  justify-content: center;
+  width: 100%;
+  max-width: 1200px;
+}
+
+/* chess board stuff */
+#board-container {
+  order: 1;
+  display: flex;
+  justify-content: center;
+  margin: 0;
+}
+
+#board {
+  width: 80vw;
+  max-width: 600px;
+  aspect-ratio: 1/1;
+  background-color: #22272f;
+  border-radius: 12px;
+}
+
+
+#puzzle-theme {
+  text-align: center;
+  font-size: 1.3rem;
+  color: #64b5f6;
+  margin-bottom: 1.5rem;
+  font-weight: 600;
+  padding: 0.5rem;
+  background: rgba(100, 181, 246, 0.1);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 600px;
+}
+
+/* sidebar with puzzle info */
+#puzzle-info-sidebar {
+  width: 280px;
+  background: rgba(30, 36, 45, 0.9);
+  border: 2px solid rgba(100, 181, 246, 0.2);
+  border-radius: 15px;
+  padding: 1.5rem;
+  color: #e8e8e8;
+  order: 2;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.info-section {
+  margin-bottom: 2rem;
+}
+
+.info-section h3 {
+  color: #64b5f6;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+#puzzle-rating, #turn-indicator {
+  background: rgba(100,181,246,0.1);
+  padding: 0.5rem;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+}
+
+.white-turn {
+  background: rgba(255,255,255,0.1) !important;
+  color: #fff !important;
+}
+.black-turn {
+  background: rgba(0,0,0,0.3) !important;
+  color: #ddd !important;
+}
+
+
+#move-history {
+  min-height: 100px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-family: monospace;
+}
+
+.move-item {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.move-item.correct { color: #4CAF50; }
+.move-item.incorrect { color: #f44336; }
+
+/* next puzzle button */
+#nextPuzzleBtn {
+  width: 100%;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #64b5f6, #42a5f5);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+#nextPuzzleBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(100, 181, 246, 0.3);
+}
+
+/* coach button */
+#coachBtn {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 1rem 1.5rem;
+}
+
+#chatPopup {
+  position: fixed;
+  bottom: 70px;
+  right: 20px;
+  background-color: #232a33;
+  color: #a2c5bf;
+  border: 1px solid #7da6a0;
+  border-radius: 12px;
+  padding: 1rem;
+  width: 200px;
+}
+
+.hidden { display: none; }
+#hintBtn {
+  width: 100%;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #FF9800, #F57C00);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s;
+  margin-bottom: 0.5rem;
+}
+
+#hintBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+}
+
+
+
+.toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  color: white;
+  font-weight: 500;
+  transform: translateX(400px);
+  transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.toast.show { transform: translateX(0); }
+.toast.success { background: linear-gradient(135deg, #4CAF50, #45a049); }
+.toast.error { background: linear-gradient(135deg, #f44336, #d32f2f); }
+.toast.info { background: linear-gradient(135deg, #2196F3, #1976D2); }
