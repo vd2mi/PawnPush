@@ -1,19 +1,41 @@
 import fetch from 'node-fetch';
+import Stockfish from 'stockfish';
 
 export default async function handler(req, res) {
     try {
-        const { fen, userMove, stockfishMove, question } = req.query;
+        const { fen, userMove, question } = req.query;
 
-        // Check if API key exists
+        if (!fen) {
+            return res.status(400).json({ hint: 'FEN is required' });
+        }
+
         if (!process.env.OPENAI_API_KEY) {
-            console.error('OpenAI API key is missing');
             return res.status(500).json({ hint: 'AI service configuration error' });
+        }
+
+        // Create Stockfish engine
+        const engine = Stockfish();
+        let bestMove = null;
+
+        engine.onmessage = (event) => {
+            const line = event.data || event;
+            if (line.startsWith('bestmove')) {
+                bestMove = line.split(' ')[1];
+            }
+        };
+
+        engine.postMessage(`position fen ${fen}`);
+        engine.postMessage('go depth 15');
+
+        // Wait until Stockfish returns a move
+        while (!bestMove) {
+            await new Promise((r) => setTimeout(r, 50));
         }
 
         const prompt = `
 Chess position (FEN): ${fen}
 User move: ${userMove || 'N/A'}
-Stockfish best move: ${stockfishMove || 'N/A'}
+Stockfish best move: ${bestMove}
 User question: ${question || 'N/A'}
 Explain simply why this move is good/bad and give a tip for the next move.
         `;
@@ -33,16 +55,9 @@ Explain simply why this move is good/bad and give a tip for the next move.
 
         const data = await response.json();
 
-        // Check if OpenAI returned an error
-        if (!response.ok) {
-            console.error('OpenAI API error:', data);
-            return res.status(500).json({ hint: 'AI service error' });
-        }
-
-        // Check if response has expected structure
-        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-            console.error('Unexpected OpenAI response structure:', data);
-            return res.status(500).json({ hint: 'Invalid AI response' });
+        if (!response.ok || !data.choices || !data.choices[0] || !data.choices[0].message) {
+            console.error('OpenAI API error or unexpected response:', data);
+            return res.status(500).json({ hint: 'AI service error or invalid response' });
         }
 
         res.status(200).json({ hint: data.choices[0].message.content });
@@ -52,4 +67,3 @@ Explain simply why this move is good/bad and give a tip for the next move.
         res.status(500).json({ hint: 'Error fetching hint from AI' });
     }
 }
-  
