@@ -1,6 +1,5 @@
-// /api/getHint.js
 export default async function handler(req, res) {
-    // Add CORS headers
+    
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -24,7 +23,7 @@ export default async function handler(req, res) {
       console.log('Solution move:', solutionMove);
       console.log('Puzzle type:', puzzleType);
   
-      // Check if OpenAI key exists
+      
       if (!process.env.OPENAI_API_KEY) {
         console.log('No OpenAI API key');
         return res.status(200).json({
@@ -34,30 +33,18 @@ export default async function handler(req, res) {
           explanation: 'API configuration needed'
         });
       }
+      const gptPrompt = `You are a chess coach. Be concise and direct.
   
-      // Create intelligent prompt with the CORRECT answer
-      const gptPrompt = `You are a chess coach explaining a tactical puzzle to a student.
+  Position: ${fen}
+  Best move: ${solutionMove}
+  Question: "${question || 'What is the best move?'}"
   
-  Position (FEN): ${fen}
-  Puzzle Type: ${puzzleType || 'tactical puzzle'}
-  Correct Answer: ${solutionMove}
-  ${userMove ? `Student is considering: ${userMove}` : ''}
-  ${moveNumber ? `This is move ${moveNumber} in the solution` : ''}
+  Explain in 2-3 sentences:
+  - Why ${solutionMove} is the best move
+  - What tactical pattern it uses (fork, pin, skewer, etc.)
+  - The immediate result
   
-  Student asks: "${question || 'What is the best move?'}"
-  
-  Your job:
-  1. Confirm that ${solutionMove} is indeed the best move
-  2. Explain WHY this move works (what tactical theme it uses)
-  3. Show what happens after this move
-  4. If the student suggested a different move, explain why ${solutionMove} is better
-  
-  ${userMove && userMove !== solutionMove ? 
-    `The student suggested ${userMove}, but the correct answer is ${solutionMove}. Explain why ${solutionMove} is superior.` : 
-    `Explain why ${solutionMove} is the key move in this position.`
-  }
-  
-  Focus on the tactical pattern (fork, pin, skewer, discovered attack, etc.) and be educational.`;
+  Be brief and educational. Don't say "yes indeed" or repeat the question.`;
   
       const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -74,8 +61,8 @@ export default async function handler(req, res) {
             },
             { role: 'user', content: gptPrompt }
           ],
-          max_tokens: 400,
-          temperature: 0.3
+          max_tokens: 150,
+          temperature: 0.2
         })
       });
   
@@ -83,7 +70,7 @@ export default async function handler(req, res) {
         const errorText = await gptResponse.text();
         console.error('GPT Error:', errorText);
         
-        // Return basic hint even if GPT fails
+        
         return res.status(200).json({
           success: true,
           hint: `The best move is ${solutionMove}. This appears to be a ${puzzleType || 'tactical'} puzzle.`,
@@ -97,7 +84,7 @@ export default async function handler(req, res) {
       
       const explanation = gptData.choices?.[0]?.message?.content || `The best move is ${solutionMove}`;
   
-      // Return in format your frontend expects
+      
       const response = {
         success: true,
         hint: explanation,
@@ -114,7 +101,6 @@ export default async function handler(req, res) {
     } catch (error) {
       console.error('API Error:', error);
       
-      // Always return something useful
       return res.status(200).json({
         success: true,
         hint: `Error occurred, but try looking for tactical patterns like checks, captures, and threats.`,
