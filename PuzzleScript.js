@@ -261,6 +261,18 @@ const chatSend = document.getElementById('chatSend');
 coachBtn.addEventListener('click', () => {
   chatPopup.classList.toggle('hidden');
 });
+let isOpen = false;
+
+function toggleChat() {
+    isOpen = !isOpen;
+    if (isOpen) {
+        chatPopup.classList.add('show');
+    } else {
+        chatPopup.classList.remove('show');
+    }
+}
+
+coachBtn.addEventListener('click', toggleChat);
 
 chatSend.addEventListener('click', async () => {
   const question = chatInput.value.trim();
