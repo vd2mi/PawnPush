@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PawnPush - Game Review</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="review-page">
+
+<header>
+  <div class="header-content">
+    <h1>PawnPush</h1>
+    <p class="tagline">Game Review with Stockfish Analysis</p>
+    <a href="index.html" class="back-btn">← Back to Menu</a>
+  </div>
+</header>
+
+<main>
+  <div class="game-review-container">
+    <div class="controls-panel">
+      <!-- Engine Status -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-icon">🔧</div>
+          <h3>Engine Status</h3>
+        </div>
+        <div class="engine-status">
+          <div id="statusDot" class="status-dot"></div>
+          <div id="statusText" class="status-text">Loading Stockfish...</div>
+        </div>
+      </div>
+
+      <!-- Game Input -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-icon">📋</div>
+          <h3>Load Game</h3>
+        </div>
+        <div class="input-group">
+          <label for="pgnInput">Paste PGN or enter moves:</label>
+          <textarea id="pgnInput" rows="4" placeholder="1. e4 e5 2. Nf3 Nc6 3. Bb5 a6..."></textarea>
+        </div>
+        <div class="input-group">
+          <label for="fenInput">Or load from FEN:</label>
+          <input type="text" id="fenInput" placeholder="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1">
+        </div>
+        <div class="button-grid">
+          <button class="btn btn-primary" id="loadGameBtn">Load Game</button>
+          <button class="btn btn-secondary" id="clearBtn">Clear</button>
+        </div>
+      </div>
+
+      <!-- Move Navigation -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-icon">⏯️</div>
+          <h3>Navigation</h3>
+        </div>
+        <div class="move-controls">
+          <button class="move-btn" id="firstBtn" title="First move">⏮️</button>
+          <button class="move-btn" id="prevBtn" title="Previous move">⏪</button>
+          <button class="move-btn" id="nextBtn" title="Next move">⏩</button>
+          <button class="move-btn" id="lastBtn" title="Last move">⏭️</button>
+        </div>
+      </div>
+
+      <!-- Analysis -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-icon">🧠</div>
+          <h3>Analysis</h3>
+        </div>
+        <div class="evaluation-bar">
+          <div id="evalBar" class="evaluation-fill"></div>
+        </div>
+        <div class="input-group">
+          <button class="btn btn-primary" id="analyzeBtn">
+            <span class="btn-icon">🧠</span>
+            <span class="btn-text">Analyze Position</span>
+          </button>
+        </div>
+        <div id="analysisDisplay" class="analysis-display">
+          Load a game and click "Analyze Position" to see Stockfish analysis...
+        </div>
+      </div>
+
+      <!-- Move List -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-icon">📋</div>
+          <h3>Move List</h3>
+        </div>
+        <div id="moveList" class="move-list">
+          No game loaded
+        </div>
+      </div>
+    </div>
+
+    <div class="board-section">
+      <div class="board-wrapper">
+        <div id="board"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="game-review.js"></script>
+</body>
+</html>

@@ -4,7 +4,7 @@ toggleButtonElement1.addEventListener('click',() => {
     const position = window.selectedPosition || 'middlegame';
     window.location.href = `puzzle.html?difficulty=${difficulty}&position=${position}`;
 });
-    
+
 
 
 document.querySelectorAll("#difficulty-section button").forEach(btn => {
@@ -24,3 +24,7 @@ document.querySelectorAll("#position-section button").forEach(btn => {
     console.log('Selected position:', window.selectedPosition)
   }
 })
+const toggleButtonElement2 = document.getElementById('gamereviewBtn');
+toggleButtonElement2.addEventListener('click',() => {
+    window.location.href = 'game-review.html';
+  })
