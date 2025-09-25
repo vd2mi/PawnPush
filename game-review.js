@@ -93,84 +93,196 @@ async function loadStockfish() {
   }
 }
 
+
+
+// Function to get the correct WASM part name
+function getWasmPartName(partNumber) {
+  return `stockfish-17.1-single-a496a04-part-${partNumber}.wasm`;
+}
+
 async function loadLocalStockfish() {
   try {
-    const wasmJsPath = './stockfish/stockfish.wasm.js';
-    const wasmPath = './stockfish/stockfish.wasm';
-    
-    const response = await fetch(wasmJsPath);
-    if (!response.ok) {
-      throw new Error(`Local stockfish JS not found at ${wasmJsPath}`);
-    }
-    
-    const wasmResponse = await fetch(wasmPath);
-    if (!wasmResponse.ok) {
-      throw new Error(`Local stockfish WASM not found at ${wasmPath}`);
-    }
-    
-    console.log('✅ Local Stockfish files found, initializing...');
-    
-    const Stockfish = await import('./stockfish/stockfish.wasm.js');
-    const engine = await Stockfish.default();
-    
-    stockfish = {
-      postMessage: function(cmd) {
-        console.log('→ Local WASM:', cmd);
-        engine.postMessage(cmd);
-      },
-      onmessage: null,
-      terminate: function() {
-        engine.terminate();
+      updateEngineStatus('Loading Stockfish WASM...', false);
+
+      if (!checkWasmSupport()) {
+          throw new Error('WebAssembly not supported');
       }
-    };
-    
-    engine.onmessage = function(event) {
-      console.log('← Local WASM:', event.data);
-      if (stockfish.onmessage) {
-        stockfish.onmessage(event);
-      }
-    };
-    
-    setupStockfishListeners();
-    stockfish.postMessage('uci');
-    engineType = 'local-wasm';
-    
-    showToast('Local Stockfish WASM loaded successfully!', 'success');
-    console.log('✅ Local Stockfish WASM initialized');
-    
+
+      const baseUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
+      const wasmJsPath = `${baseUrl}stockfish/stockfish-17.1-single-a496a04.js`;
+
+      console.log('Base URL:', baseUrl);
+      console.log('WASM JS Path:', wasmJsPath);
+
+      return new Promise((resolve, reject) => {
+          window.Module = {
+              // The key fix: update locateFile to handle the new file names
+              locateFile: function(path) {
+                  console.log('Module locateFile called with:', path);
+                  // Match any path ending in .wasm to handle multi-part files
+                  if (path.endsWith('.wasm')) {
+                      // The engine requests 'stockfish.wasm' internally, so we use the first part
+                      // as a placeholder. The browser will load the other parts automatically if
+                      // they're linked correctly in the .js file.
+                      const wasmFileName = `stockfish-17.1-single-a496a04-part-0.wasm`;
+                      const fullPath = `${baseUrl}stockfish/${wasmFileName}`;
+                      console.log('Returning WASM path:', fullPath);
+                      return fullPath;
+                  }
+                  // For other files, such as the .js itself, construct the full path
+                  const fullPath = wasmJsPath.replace(/[^/]*$/, '') + path;
+                  console.log('Returning other file path:', fullPath);
+                  return fullPath;
+              },
+              onRuntimeInitialized: function() {
+                  console.log('Stockfish runtime initialized');
+                  try {
+                      if (typeof window.Stockfish === 'function') {
+                          const engine = window.Stockfish();
+                          stockfish = {
+                              postMessage: function(cmd) {
+                                  console.log('→ Direct WASM:', cmd);
+                                  engine.postMessage(cmd);
+                              },
+                              onmessage: null,
+                              terminate: function() {
+                                  if (engine.terminate) engine.terminate();
+                              }
+                          };
+                          engine.onmessage = function(msg) {
+                              console.log('← Direct WASM:', msg);
+                              if (stockfish.onmessage) {
+                                  stockfish.onmessage({
+                                      data: msg
+                                  });
+                              }
+                          };
+                          setupStockfishListeners();
+                          engineType = 'direct-wasm';
+                          showToast('Stockfish WASM loaded successfully!', 'success');
+                          resolve();
+                      } else {
+                          console.error('Stockfish function not found, available:', typeof window.Stockfish);
+                          reject(new Error('Stockfish constructor not available'));
+                      }
+                  } catch (engineError) {
+                      console.error('Engine creation failed:', engineError);
+                      reject(engineError);
+                  }
+              },
+              printErr: function(text) {
+                  console.warn('WASM Error:', text);
+              },
+              print: function(text) {
+                  console.log('WASM Output:', text);
+              }
+          };
+
+          const script = document.createElement('script');
+          script.src = wasmJsPath;
+          script.onload = () => {
+              console.log('Stockfish script loaded, waiting for runtime initialization...');
+          };
+          script.onerror = (error) => {
+              console.error('Failed to load stockfish script:', error);
+              reject(new Error(`Failed to load script from ${wasmJsPath}`));
+          };
+          document.head.appendChild(script);
+
+          setTimeout(() => {
+              reject(new Error('Stockfish loading timeout'));
+          }, 30000);
+      });
   } catch (error) {
-    console.error('Local WASM loading failed:', error);
-    await loadLocalStockfishWorker();
+      console.error('Local WASM loading failed:', error);
+      throw error;
   }
 }
 
-async function loadLocalStockfishWorker() {
-  try {
-    const workerCode = `
-      importScripts('./stockfish/stockfish.wasm.js');
-      
-      // Override locateFile to find wasm in correct directory
-      if (typeof Module === 'undefined') {
-        var Module = {};
-      }
-      Module.locateFile = function(path, scriptDirectory) {
+
+async function loadLocalStockfishWorkerFixed() {
+  const baseUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
+  const wasmJsUrl = `${baseUrl}stockfish/stockfish.wasm.js`;
+  const wasmUrl = `${baseUrl}stockfish/stockfish.wasm`;
+  
+  console.log('Trying Worker with fixed paths...');
+  console.log('Worker WASM JS URL:', wasmJsUrl);
+  console.log('Worker WASM URL:', wasmUrl);
+  
+  const workerCode = `
+    // Set up the Module configuration BEFORE importing the script
+    self.Module = {
+      locateFile: function(path) {
+        console.log('Worker Module.locateFile called with:', path);
         if (path.endsWith('.wasm')) {
-          return './stockfish/' + path;
+          return '${wasmUrl}';
         }
-        return scriptDirectory + path;
-      };
-      
-      // Re-import with correct path
-      importScripts('./stockfish/stockfish.wasm.js');
-    `;
+        // For any other files, use the stockfish directory
+        return '${baseUrl}stockfish/' + path;
+      },
+      onRuntimeInitialized: function() {
+        console.log('Worker: Stockfish runtime initialized');
+        self.postMessage({type: 'ready'});
+      },
+      printErr: function(text) {
+        console.warn('Worker WASM Error:', text);
+      },
+      print: function(text) {
+        console.log('Worker WASM Output:', text);
+      }
+    };
     
+    let stockfishEngine = null;
+    
+    // Import the stockfish script
+    try {
+      importScripts('${wasmJsUrl}');
+      console.log('Worker: Stockfish script imported');
+      
+      // The Stockfish function should now be available
+      if (typeof Stockfish !== 'undefined') {
+        stockfishEngine = Stockfish();
+        
+        stockfishEngine.onmessage = function(msg) {
+          self.postMessage({type: 'engine', data: msg});
+        };
+        
+        console.log('Worker: Stockfish engine created');
+      }
+    } catch (e) {
+      console.error('Worker: Failed to import or create Stockfish:', e);
+      self.postMessage({type: 'error', error: e.message});
+    }
+    
+    // Handle messages from main thread
+    self.onmessage = function(e) {
+      const command = e.data;
+      console.log('Worker received:', command);
+      
+      if (stockfishEngine) {
+        stockfishEngine.postMessage(command);
+      } else {
+        console.error('Worker: Stockfish engine not ready');
+        self.postMessage({type: 'error', error: 'Engine not ready'});
+      }
+    };
+  `;
+  
+  return new Promise((resolve, reject) => {
     const blob = new Blob([workerCode], { type: 'application/javascript' });
     const worker = new Worker(URL.createObjectURL(blob));
     
+    let isReady = false;
+    
     stockfish = {
       postMessage: function(cmd) {
-        console.log('→ Local WASM Worker:', cmd);
-        worker.postMessage(cmd);
+        if (isReady) {
+          console.log('→ Fixed Worker:', cmd);
+          worker.postMessage(cmd);
+        } else {
+          console.warn('Worker not ready yet, queuing command:', cmd);
+          setTimeout(() => this.postMessage(cmd), 1000);
+        }
       },
       onmessage: null,
       terminate: function() {
@@ -179,28 +291,31 @@ async function loadLocalStockfishWorker() {
     };
     
     worker.onmessage = function(event) {
-      console.log('← Local WASM Worker:', event.data);
-      if (stockfish.onmessage) {
-        stockfish.onmessage(event);
+      const msg = event.data;
+      
+      if (msg.type === 'ready') {
+        console.log('Worker is ready');
+        isReady = true;
+        setupStockfishListeners();
+        engineType = 'worker-fixed';
+        showToast('Stockfish Worker loaded successfully!', 'success');
+        resolve();
+      } else if (msg.type === 'engine') {
+        console.log('← Fixed Worker:', msg.data);
+        if (stockfish.onmessage) {
+          stockfish.onmessage({data: msg.data});
+        }
+      } else if (msg.type === 'error') {
+        console.error('Worker error:', msg.error);
+        reject(new Error(msg.error));
       }
     };
     
     worker.onerror = function(error) {
-      console.error('Local WASM Worker error:', error);
-      throw error;
+      console.error('Worker error event:', error);
+      reject(error);
     };
-    
-    setupStockfishListeners();
-    stockfish.postMessage('uci');
-    engineType = 'local-wasm-worker';
-    
-    showToast('Local Stockfish WASM Worker loaded!', 'success');
-    console.log('✅ Local Stockfish WASM Worker initialized');
-    
-  } catch (error) {
-    console.error('Worker-based loading failed:', error);
-    throw error;
-  }
+  });
 }
 
 async function loadStockfishFromCDN() {
