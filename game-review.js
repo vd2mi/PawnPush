@@ -95,7 +95,6 @@ async function loadStockfish() {
 
 
 
-// Function to get the correct WASM part name
 function getWasmPartName(partNumber) {
   return `stockfish-17.1-single-a496a04-part-${partNumber}.wasm`;
 }
@@ -116,24 +115,19 @@ async function loadLocalStockfish() {
 
       return new Promise((resolve, reject) => {
           window.Module = {
-              // The key fix: update locateFile to handle the new file names
               locateFile: function(path) {
                   console.log('Module locateFile called with:', path);
-                  // Match any path ending in .wasm to handle multi-part files
                   if (path.endsWith('.wasm')) {
-                      // The engine requests 'stockfish.wasm' internally, so we use the first part
-                      // as a placeholder. The browser will load the other parts automatically if
-                      // they're linked correctly in the .js file.
-                      const wasmFileName = `stockfish-17.1-single-a496a04-part-0.wasm`;
+                      const wasmFileName = `stockfish-17.1-single-a496a04.wasm`;
                       const fullPath = `${baseUrl}stockfish/${wasmFileName}`;
                       console.log('Returning WASM path:', fullPath);
                       return fullPath;
                   }
-                  // For other files, such as the .js itself, construct the full path
                   const fullPath = wasmJsPath.replace(/[^/]*$/, '') + path;
                   console.log('Returning other file path:', fullPath);
                   return fullPath;
               },
+              enginePartsCount: 6,
               onRuntimeInitialized: function() {
                   console.log('Stockfish runtime initialized');
                   try {
@@ -191,7 +185,7 @@ async function loadLocalStockfish() {
 
           setTimeout(() => {
               reject(new Error('Stockfish loading timeout'));
-          }, 30000);
+          }, 60000); // Increased timeout to 60 seconds
       });
   } catch (error) {
       console.error('Local WASM loading failed:', error);
