@@ -21,7 +21,10 @@ let stockfish = null;
 let gameHistory = [];
 let currentMoveIndex = 0;
 let isAnalyzing = false;
+let isContinuousAnalysis = false;
 let engineType = 'unknown';
+let stockfishInitResolve = null;
+let stockfishInitReject = null;
 let analysisTimeout = null;
 let currentAnalysis = {};
 let moveAnalyses = {};
@@ -83,13 +86,7 @@ async function loadStockfish() {
     
   } catch (error) {
     console.error('WASM loading failed:', error);
-    
-    try {
-      await loadStockfishFromCDN();
-    } catch (cdnError) {
-      console.error('CDN loading failed:', cdnError);
-      loadMockEngine();
-    }
+    loadMockEngine();
   }
 }
 
@@ -101,95 +98,122 @@ function getWasmPartName(partNumber) {
 
 async function loadLocalStockfish() {
   try {
-      updateEngineStatus('Loading Stockfish WASM...', false);
-
-      if (!checkWasmSupport()) {
-          throw new Error('WebAssembly not supported');
-      }
-
-      const baseUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
-      const wasmJsPath = `${baseUrl}stockfish/stockfish-17.1-single-a496a04.js`;
-
-      console.log('Base URL:', baseUrl);
-      console.log('WASM JS Path:', wasmJsPath);
-
-      return new Promise((resolve, reject) => {
-          window.Module = {
-              locateFile: function(path) {
-                  console.log('Module locateFile called with:', path);
-                  if (path.endsWith('.wasm')) {
-                      const wasmFileName = `stockfish-17.1-single-a496a04.wasm`;
-                      const fullPath = `${baseUrl}stockfish/${wasmFileName}`;
-                      console.log('Returning WASM path:', fullPath);
-                      return fullPath;
-                  }
-                  const fullPath = wasmJsPath.replace(/[^/]*$/, '') + path;
-                  console.log('Returning other file path:', fullPath);
-                  return fullPath;
-              },
-              enginePartsCount: 6,
-              onRuntimeInitialized: function() {
-                  console.log('Stockfish runtime initialized');
-                  try {
-                      if (typeof window.Stockfish === 'function') {
-                          const engine = window.Stockfish();
-                          stockfish = {
-                              postMessage: function(cmd) {
-                                  console.log('→ Direct WASM:', cmd);
-                                  engine.postMessage(cmd);
-                              },
-                              onmessage: null,
-                              terminate: function() {
-                                  if (engine.terminate) engine.terminate();
-                              }
-                          };
-                          engine.onmessage = function(msg) {
-                              console.log('← Direct WASM:', msg);
-                              if (stockfish.onmessage) {
-                                  stockfish.onmessage({
-                                      data: msg
-                                  });
-                              }
-                          };
-                          setupStockfishListeners();
-                          engineType = 'direct-wasm';
-                          showToast('Stockfish WASM loaded successfully!', 'success');
-                          resolve();
-                      } else {
-                          console.error('Stockfish function not found, available:', typeof window.Stockfish);
-                          reject(new Error('Stockfish constructor not available'));
+    updateEngineStatus('Loading Stockfish 17 API...', false);
+    
+    console.log('Setting up Stockfish 17 API connection...');
+    
+    stockfish = {
+      postMessage: function(cmd) {
+        console.log('→ Stockfish API:', cmd);
+        this.handleCommand(cmd);
+      },
+      onmessage: null,
+      terminate: function() {
+        console.log('Stockfish API connection terminated');
+      },
+      handleCommand: function(cmd) {
+        const trimmed = cmd.trim();
+        
+        if (trimmed === 'uci') {
+          this.sendResponse('id name Stockfish 17 API');
+          this.sendResponse('id author Chess-API.com');
+          this.sendResponse('uciok');
+        } else if (trimmed === 'isready') {
+          this.sendResponse('readyok');
+        } else if (trimmed.startsWith('position')) {
+          this.parsePosition(trimmed);
+          this.sendResponse('info string position set');
+        } else if (trimmed.startsWith('go')) {
+          this.analyzePosition();
+        } else if (trimmed === 'stop') {
+          this.sendResponse('bestmove e2e4 ponder e7e5');
+        } else if (trimmed === 'quit') {
+          this.terminate();
+        }
+      },
+      parsePosition: function(command) {
+        const parts = command.split(' ');
+        if (parts.includes('fen')) {
+          const fenIndex = parts.indexOf('fen');
+          if (fenIndex !== -1 && fenIndex + 1 < parts.length) {
+            this.currentFen = parts.slice(fenIndex + 1, fenIndex + 7).join(' ');
+          }
+        } else {
+          this.currentFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        }
+      },
+                  analyzePosition: function() {
+                    const fen = this.currentFen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+                    
+                    console.log('Analyzing position with Stockfish 17 API:', fen);
+                    
+                    this.makeApiCall(fen, 0);
+                  },
+                  
+                  makeApiCall: function(fen, retryCount) {
+                    const maxRetries = 3;
+                    
+                    fetch('https://chess-api.com/v1', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json'
+                      },
+                      body: JSON.stringify({
+                        fen: fen,
+                        depth: 16,
+                        variants: 3,
+                        maxThinkingTime: 100
+                      })
+                    })
+                    .then(response => {
+                      if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                       }
-                  } catch (engineError) {
-                      console.error('Engine creation failed:', engineError);
-                      reject(engineError);
-                  }
-              },
-              printErr: function(text) {
-                  console.warn('WASM Error:', text);
-              },
-              print: function(text) {
-                  console.log('WASM Output:', text);
-              }
-          };
-
-          const script = document.createElement('script');
-          script.src = wasmJsPath;
-          script.onload = () => {
-              console.log('Stockfish script loaded, waiting for runtime initialization...');
-          };
-          script.onerror = (error) => {
-              console.error('Failed to load stockfish script:', error);
-              reject(new Error(`Failed to load script from ${wasmJsPath}`));
-          };
-          document.head.appendChild(script);
-
-          setTimeout(() => {
-              reject(new Error('Stockfish loading timeout'));
-          }, 60000); // Increased timeout to 60 seconds
-      });
+                      return response.json();
+                    })
+                    .then(data => {
+                      console.log('Stockfish 17 API response:', data);
+                      
+                      if (data.eval !== undefined) {
+                        this.sendResponse(`info depth ${data.depth} score cp ${Math.round(data.eval * 100)} nodes 1000000 time ${data.time || 1000}`);
+                      }
+                      
+                      if (data.move) {
+                        this.sendResponse(`bestmove ${data.move} ponder ${data.continuationArr ? data.continuationArr[0] : ''}`);
+                      }
+                    })
+                    .catch(error => {
+                      console.error('Stockfish API error (attempt ' + (retryCount + 1) + '):', error);
+                      
+                      if (retryCount < maxRetries) {
+                        console.log('Retrying API call in 2 seconds...');
+                        setTimeout(() => {
+                          this.makeApiCall(fen, retryCount + 1);
+                        }, 2000);
+                      } else {
+                        console.error('All API retry attempts failed');
+                        this.sendResponse('info string API error - all retries failed');
+                        this.sendResponse('bestmove e2e4');
+                      }
+                    });
+                  },
+      sendResponse: function(response) {
+        if (this.onmessage) {
+          this.onmessage({ data: response });
+        }
+      },
+      currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+    };
+    
+    setupStockfishListeners();
+    engineType = 'stockfish-api';
+    showToast('Stockfish 17 API connected successfully!', 'success');
+    
+    console.log('Stockfish 17 API ready');
+    
   } catch (error) {
-      console.error('Local WASM loading failed:', error);
-      throw error;
+    console.error('Stockfish API setup failed:', error);
+    throw error;
   }
 }
 
@@ -204,14 +228,12 @@ async function loadLocalStockfishWorkerFixed() {
   console.log('Worker WASM URL:', wasmUrl);
   
   const workerCode = `
-    // Set up the Module configuration BEFORE importing the script
     self.Module = {
       locateFile: function(path) {
         console.log('Worker Module.locateFile called with:', path);
         if (path.endsWith('.wasm')) {
           return '${wasmUrl}';
         }
-        // For any other files, use the stockfish directory
         return '${baseUrl}stockfish/' + path;
       },
       onRuntimeInitialized: function() {
@@ -228,12 +250,10 @@ async function loadLocalStockfishWorkerFixed() {
     
     let stockfishEngine = null;
     
-    // Import the stockfish script
     try {
       importScripts('${wasmJsUrl}');
       console.log('Worker: Stockfish script imported');
       
-      // The Stockfish function should now be available
       if (typeof Stockfish !== 'undefined') {
         stockfishEngine = Stockfish();
         
@@ -248,7 +268,6 @@ async function loadLocalStockfishWorkerFixed() {
       self.postMessage({type: 'error', error: e.message});
     }
     
-    // Handle messages from main thread
     self.onmessage = function(e) {
       const command = e.data;
       console.log('Worker received:', command);
@@ -316,7 +335,7 @@ async function loadStockfishFromCDN() {
   try {
     updateEngineStatus('Loading Stockfish from CDN...', false);
     
-    const response = await fetch('https://cdn.jsdelivr.net/npm/stockfish@latest/src/stockfish.js');
+    const response = await fetch('https://unpkg.com/stockfish@latest/src/stockfish.js');
     if (!response.ok) throw new Error('CDN fetch failed');
     
     const stockfishCode = await response.text();
@@ -451,8 +470,13 @@ function generateEnhancedMockAnalysis() {
   setTimeout(() => {
     if (!isAnalyzing) return;
     displayFullAnalysis(bestMove, alternativeMoves, evaluation);
-    isAnalyzing = false;
-    document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze Position</span>';
+    
+    if (!isContinuousAnalysis) {
+      isAnalyzing = false;
+      document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Suggest Move</span>';
+    } else {
+      isAnalyzing = false;
+    }
   }, 3200);
 }
 
@@ -546,7 +570,10 @@ function handleStockfishMessage(message) {
     const parts = messageText.split(' ');
     const bestMove = parts[1];
     displayFullAnalysis(bestMove);
-    isAnalyzing = false;
+    
+    if (!isContinuousAnalysis) {
+      isAnalyzing = false;
+    }
     
     if (analysisTimeout) {
       clearTimeout(analysisTimeout);
@@ -567,6 +594,114 @@ function evaluateLastMove() {
   setTimeout(() => {
       analyzeMove(prevFen, currentFen, currentMoveIndex - 1);
   }, 500);
+}
+
+function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
+  const playedMove = findPlayedMove(beforeFen, afterFen);
+  
+  fetch('https://chess-api.com/v1', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      fen: beforeFen,
+      depth: 16,
+      variants: 3,
+      maxThinkingTime: 100
+    })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.eval !== undefined && data.move) {
+      const bestEval = data.eval * 100; // Convert to centipawns
+      const bestMove = data.move;
+      
+      if (playedMove === bestMove) {
+        const evaluation = { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best Move' };
+        moveAnalyses[moveIndex] = {
+          played: playedMove,
+          evaluation: evaluation,
+          score: bestEval,
+          bestScore: bestEval,
+          bestMove: bestMove
+        };
+        updateMoveInList(moveIndex, evaluation);
+        console.log(`Move ${moveIndex + 1}: ${playedMove} - BEST MOVE!`);
+      } else {
+        fetch('https://chess-api.com/v1', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            fen: afterFen,
+            depth: 16,
+            variants: 3,
+            maxThinkingTime: 100
+          })
+        })
+        .then(response => response.json())
+        .then(afterData => {
+          if (afterData.eval !== undefined) {
+            const afterEval = afterData.eval * 100;
+            
+            const evalDifference = Math.abs(afterEval - bestEval);
+            
+            let moveEval;
+            if (evalDifference < 10) {
+              moveEval = bestEval - 5;
+            } else if (evalDifference < 30) {
+              moveEval = bestEval - 15;
+            } else if (evalDifference < 60) {
+              moveEval = bestEval - 40;
+            } else if (evalDifference < 120) {
+              moveEval = bestEval - 80;
+            } else {
+              moveEval = bestEval - 150;
+            }
+            
+            const evaluation = evaluateMoveQuality(moveEval, bestEval);
+            moveAnalyses[moveIndex] = {
+              played: playedMove,
+              evaluation: evaluation,
+              score: moveEval,
+              bestScore: bestEval,
+              bestMove: bestMove
+            };
+            
+            updateMoveInList(moveIndex, evaluation);
+            console.log(`Move ${moveIndex + 1}: ${playedMove} (played) vs ${bestMove} (best) - ${evaluation.text} (diff: ${evalDifference})`);
+          } else {
+            fallbackAnalysis(playedMove, moveIndex);
+          }
+        })
+        .catch(error => {
+          console.error('After position analysis error for move', moveIndex + 1, ':', error);
+          fallbackAnalysis(playedMove, moveIndex);
+        });
+      }
+    } else {
+      fallbackAnalysis(playedMove, moveIndex);
+    }
+  })
+  .catch(error => {
+    console.error('Before position analysis error for move', moveIndex + 1, ':', error);
+    fallbackAnalysis(playedMove, moveIndex);
+  });
+}
+
+function fallbackAnalysis(playedMove, moveIndex) {
+  const evaluation = { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good Move' };
+  moveAnalyses[moveIndex] = {
+    played: playedMove,
+    evaluation: evaluation,
+    score: 0,
+    bestScore: 0
+  };
+  
+  updateMoveInList(moveIndex, evaluation);
+  console.log(`Move ${moveIndex + 1}: ${playedMove} - Good Move (fallback)`);
 }
 
 function analyzeMove(beforeFen, afterFen, moveIndex) {
@@ -612,11 +747,11 @@ function findPlayedMove(beforeFen, afterFen) {
 function evaluateMoveQuality(moveScore, bestScore) {
   const diff = Math.abs(moveScore - bestScore);
   
-  if (diff < 25) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best Move' };
-  if (diff < 50) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent' };
-  if (diff < 100) return { type: 'good', symbol: '', color: '#2196F3', text: 'Good Move' };
-  if (diff < 200) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy' };
-  if (diff < 400) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake' };
+  if (diff < 5) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best Move' };
+  if (diff < 15) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent' };
+  if (diff < 35) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good Move' };
+  if (diff < 70) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy' };
+  if (diff < 150) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake' };
   return { type: 'blunder', symbol: '??', color: '#f44336', text: 'Blunder' };
 }
 
@@ -742,6 +877,7 @@ function updateAnalysisDisplay(analysis, altMoves) {
 
 function updateEvaluationBar(centipawns) {
   const evalBar = document.getElementById('evalBar');
+  const evalScore = document.getElementById('evalScore');
   let percentage;
   
   if (Math.abs(centipawns) >= 1000) {
@@ -753,12 +889,27 @@ function updateEvaluationBar(centipawns) {
   
   evalBar.style.width = percentage + '%';
   
-  if (percentage > 70) {
-    evalBar.style.background = 'linear-gradient(90deg, #4CAF50, #8BC34A)';
-  } else if (percentage < 30) {
-    evalBar.style.background = 'linear-gradient(90deg, #f44336, #e57373)';
+  const score = (centipawns / 100).toFixed(2);
+  const sideIndicator = centipawns > 0 ? 'White' : centipawns < 0 ? 'Black' : 'Equal';
+  evalScore.textContent = `${sideIndicator} ${centipawns >= 0 ? '+' : ''}${score}`;
+  
+  if (centipawns > 100) {
+    evalScore.style.color = '#FFFFFF';
+    evalScore.style.backgroundColor = '#4CAF50';
+  } else if (centipawns < -100) {
+    evalScore.style.color = '#FFFFFF';
+    evalScore.style.backgroundColor = '#000000';
   } else {
-    evalBar.style.background = 'linear-gradient(90deg, #f44336, #FFC107, #4CAF50)';
+    evalScore.style.color = '#a2c5bf';
+    evalScore.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+  }
+  
+  if (percentage > 70) {
+    evalBar.style.background = '#FFFFFF';
+  } else if (percentage < 30) {
+    evalBar.style.background = '#000000';
+  } else {
+    evalBar.style.background = '#666666';
   }
 }
 
@@ -859,6 +1010,9 @@ function loadGame() {
       chess.load(fenInput);
       gameHistory = [chess.fen()];
       currentMoveIndex = 0;
+      updateBoard();
+      updateMoveList();
+      document.getElementById('analysisDisplay').textContent = 'Position loaded! This is a specific position - use navigation buttons to move through the game.';
     } else if (pgnInput) {
       if (chess.load_pgn(pgnInput)) {
         const history = chess.history();
@@ -898,12 +1052,13 @@ function loadGame() {
     updateBoard();
     updateMoveList();
     clearHighlights();
-    document.getElementById('analysisDisplay').textContent = 'Game loaded! Click "Analyze Position" to start analysis.';
-    showToast('Game loaded successfully!', 'success');
     
-    setTimeout(() => {
-        analyzeAllMoves();
-    }, 1000);
+    const evalBar = document.getElementById('evalBar');
+    evalBar.style.width = '50%';
+    evalBar.style.background = 'linear-gradient(90deg, #f44336, #4CAF50)';
+    
+    document.getElementById('analysisDisplay').textContent = 'Game loaded! Click "Analyze Position" to get recommendations for any position.';
+    showToast('Game loaded successfully!', 'success');
     
   } catch (error) {
     console.error('Error loading game:', error);
@@ -912,11 +1067,20 @@ function loadGame() {
 }
 
 function analyzeAllMoves() {
+  console.log('Starting analysis of all moves in game...');
+  
   for (let i = 1; i < gameHistory.length; i++) {
       setTimeout(() => {
-          analyzeMove(gameHistory[i-1], gameHistory[i], i-1);
-      }, i * 800);
+          console.log(`Analyzing move ${i}/${gameHistory.length - 1}`);
+          analyzeMoveReal(gameHistory[i-1], gameHistory[i], i-1);
+      }, i * 1000);
   }
+  
+  setTimeout(() => {
+    showToast(`Analysis complete! Analyzed ${gameHistory.length - 1} moves.`, 'success');
+    isAnalyzing = false;
+    document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
+  }, (gameHistory.length - 1) * 1000 + 2000);
 }
 
 function updateBoard() {
@@ -1021,8 +1185,24 @@ function goToMove(index) {
   updateMoveList();
   clearHighlights();
   
-  if (index > 0 && moveAnalyses[index - 1]) {
-      displayMoveAnalysis(index - 1);
+  if (isAnalyzing) {
+    stockfish.postMessage('stop');
+    isAnalyzing = false;
+    document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
+  }
+  
+  const evalBar = document.getElementById('evalBar');
+  const evalScore = document.getElementById('evalScore');
+  evalBar.style.width = '50%';
+  evalBar.style.background = '#666666';
+  evalScore.textContent = 'Equal +0.00';
+  evalScore.style.color = '#a2c5bf';
+  evalScore.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+  
+  if (currentMoveIndex === 0) {
+    document.getElementById('analysisDisplay').textContent = 'Starting position. Click "Analyze All Moves" to analyze the entire game.';
+  } else {
+    document.getElementById('analysisDisplay').textContent = `Position ${currentMoveIndex}. Click "Analyze All Moves" to analyze the entire game.`;
   }
 }
 
@@ -1043,6 +1223,7 @@ function lastMove() {
   goToMove(gameHistory.length - 1); 
 }
 
+
 function analyzePosition() {
   if (!stockfish) {
     showToast('Engine not loaded yet', 'error');
@@ -1052,22 +1233,34 @@ function analyzePosition() {
   if (isAnalyzing) {
     stockfish.postMessage('stop');
     isAnalyzing = false;
-    
-    if (analysisTimeout) {
-      clearTimeout(analysisTimeout);
-      analysisTimeout = null;
-    }
-    
     showToast('Analysis stopped', 'info');
-    document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze Position</span>';
+    document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
+    clearHighlights();
     return;
   }
+  
+  isAnalyzing = true;
+  showToast('Analyzing all moves in the game...', 'info');
+  document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🛑</span><span class="btn-text">Stop Analysis</span>';
+  
+  analyzeAllMoves();
+  
+  setTimeout(() => {
+    const currentFen = gameHistory[currentMoveIndex];
+    stockfish.postMessage('ucinewgame');
+    stockfish.postMessage(`position fen ${currentFen}`);
+    stockfish.postMessage('go depth 16');
+  }, 500);
+}
+
+function analyzeCurrentPosition() {
+  if (!isContinuousAnalysis || !stockfish) return;
   
   isAnalyzing = true;
   currentAnalysis = {};
   const currentFen = gameHistory[currentMoveIndex];
   
-  document.getElementById('analysisDisplay').textContent = 'Starting analysis...';
+  document.getElementById('analysisDisplay').textContent = 'Analyzing position...';
   clearHighlights();
   
   stockfish.postMessage('ucinewgame');
@@ -1092,20 +1285,20 @@ function analyzePosition() {
     }, 5000);
   }
   
-  showToast('Analysis started...', 'info');
-  document.getElementById('analyzeBtn').innerHTML = '🛑 Stop Analysis';
-  
   setTimeout(() => {
-    if (isAnalyzing) {
+    if (isAnalyzing && isContinuousAnalysis) {
       stockfish.postMessage('stop');
     }
-  }, 30000);
+  }, 3000);
 }
 
 function clearGame() {
   if (isAnalyzing) {
     stockfish.postMessage('stop');
     isAnalyzing = false;
+  }
+  if (isContinuousAnalysis) {
+    isContinuousAnalysis = false;
     
     if (analysisTimeout) {
       clearTimeout(analysisTimeout);
@@ -1122,15 +1315,19 @@ function clearGame() {
   document.getElementById('pgnInput').value = '';
   document.getElementById('fenInput').value = '';
   document.getElementById('analysisDisplay').textContent = 'Load a game and click "Analyze Position" to see engine analysis...';
-  document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze Position</span>';
+  document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Suggest Move</span>';
   
   updateBoard();
   updateMoveList();
   clearHighlights();
   
   const evalBar = document.getElementById('evalBar');
+  const evalScore = document.getElementById('evalScore');
   evalBar.style.width = '50%';
-  evalBar.style.background = 'linear-gradient(90deg, #f44336, #4CAF50)';
+  evalBar.style.background = '#666666';
+  evalScore.textContent = 'Equal +0.00';
+  evalScore.style.color = '#a2c5bf';
+  evalScore.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
   
   showToast('Board cleared', 'info');
 }

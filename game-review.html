@@ -79,17 +79,26 @@
         <div class="evaluation-bar">
           <div id="evalBar" class="evaluation-fill"></div>
         </div>
+        <div id="evalScore" class="eval-score">+0.00</div>
         <div class="input-group">
           <button class="btn btn-primary" id="analyzeBtn">
             <span class="btn-icon">🧠</span>
-            <span class="btn-text">Analyze Position</span>
+            <span class="btn-text">Analyze All Moves</span>
           </button>
         </div>
         <div id="analysisDisplay" class="analysis-display">
-          Load a game and click "Analyze Position" to see Stockfish analysis...
+          Load a game and click "Analyze All Moves" to see Stockfish analysis for every move...
         </div>
       </div>
+    </div>
 
+    <div class="board-section">
+      <div class="board-wrapper">
+        <div id="board"></div>
+      </div>
+    </div>
+
+    <div class="move-list-panel">
       <div class="section">
         <div class="section-header">
           <div class="section-icon">📋</div>
@@ -98,12 +107,6 @@
         <div id="moveList" class="move-list">
           No game loaded
         </div>
-      </div>
-    </div>
-
-    <div class="board-section">
-      <div class="board-wrapper">
-        <div id="board"></div>
       </div>
     </div>
   </div>
