@@ -23,6 +23,22 @@
         <span class="stat-number">∞</span>
         <span class="stat-label">Learning</span>
       </div>
+      <div class="stat-item daily-puzzle-stat" id="daily-puzzle-stat">
+        <div class="daily-puzzle-main">
+          <span class="stat-number">📅</span>
+          <span class="stat-label">Daily Puzzle</span>
+          <span class="daily-rating-small" id="daily-puzzle-rating">--</span>
+        </div>
+        <div class="daily-puzzle-mini">
+          <div class="mini-rating">
+            <span id="mini-daily-rating">--</span>
+          </div>
+          <div class="mini-themes">
+            <span id="mini-daily-themes">Loading...</span>
+          </div>
+          <button id="mini-dailyPuzzleBtn" class="mini-daily-btn">Solve</button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -47,7 +63,15 @@
       </div>
     </section>
 
-    <button id="startSolvingBtn">Start Solving!</button>
+    <div class="main-buttons">
+      <button id="startSolvingBtn">Start Solving!</button>
+      <div class="or-divider">OR</div>
+      <button id="dailyPuzzleBtn" class="daily-puzzle-btn">
+        <span class="btn-icon">🎯</span>
+        <span class="btn-text">Solve Daily Puzzle</span>
+      </button>
+    </div>
+    
     <button id="gamereviewBtn">Game review!</button>
   </main>
 

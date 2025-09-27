@@ -36,7 +36,14 @@ function updatePuzzleInfo(puzzle, fen) {
   const themeText = themes.map(theme => 
     theme.charAt(0).toUpperCase() + theme.slice(1)
   ).join(' • ');
-  document.getElementById('puzzle-theme').textContent = themeText;
+  
+  // Add daily puzzle indicator
+  const themeElement = document.getElementById('puzzle-theme');
+  if (puzzle.isDaily) {
+    themeElement.innerHTML = `<span class="daily-indicator">📅 Daily Puzzle</span> • ${themeText}`;
+  } else {
+    themeElement.textContent = themeText;
+  }
   
 
   document.getElementById('move-history').innerHTML = '<em>No moves yet</em>';
@@ -67,9 +74,49 @@ async function loadPuzzleDatabase() {
 }
 const boardEl = document.getElementById('board');
 
-boardEl.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
-boardEl.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+  boardEl.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+  boardEl.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 
+
+
+async function getDailyPuzzle() {
+  try {
+    const dailyPuzzleJson = sessionStorage.getItem('dailyPuzzle');
+    if (!dailyPuzzleJson) {
+      throw new Error('No daily puzzle data found');
+    }
+    
+    const dailyData = JSON.parse(dailyPuzzleJson);
+    
+    // Extract the position from the PGN using initialPly
+    const pgn = dailyData.game.pgn;
+    const initialPly = dailyData.puzzle.initialPly;
+    
+    // Create a temporary chess instance to get the position
+    const tempChess = new Chess();
+    const moves = pgn.split(' ').filter(move => move && !move.includes('.') && !move.includes('[') && !move.includes(']'));
+    
+    // Play moves up to initialPly
+    for (let i = 0; i < initialPly; i++) {
+      if (moves[i]) {
+        tempChess.move(moves[i]);
+      }
+    }
+    
+    return {
+      puzzle: {
+        fen: tempChess.fen(),
+        solution: dailyData.puzzle.solution,
+        rating: dailyData.puzzle.rating,
+        themes: dailyData.puzzle.themes.join(' '),
+        isDaily: true
+      }
+    };
+  } catch (error) {
+    console.error('Error loading daily puzzle:', error);
+    return null;
+  }
+}
 
 async function getRandomPuzzleFromDatabase() {
   const db = await loadPuzzleDatabase();
@@ -79,7 +126,12 @@ async function getRandomPuzzleFromDatabase() {
   const urlParams = new URLSearchParams(window.location.search);
   const difficulty = urlParams.get('difficulty') || 'beginner';
   const position = urlParams.get('position') || 'middlegame';
+  const type = urlParams.get('type');
   
+  // Check if this is a daily puzzle request
+  if (type === 'daily') {
+    return await getDailyPuzzle();
+  }
   
   const filtered = db.filter(puzzle => 
     puzzle.Difficulty === difficulty && puzzle.Position === position
@@ -240,6 +292,7 @@ function clearHints() {
   }
   hintLevel = 0;
 }
+
 
 const hintBtn = document.getElementById('hintBtn');
 if (hintBtn) {

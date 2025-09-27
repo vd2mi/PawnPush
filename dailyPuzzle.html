@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PawnPush - Puzzle</title>
+  <title>PawnPush - Daily Puzzle</title>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
@@ -24,8 +24,8 @@
 
 <main>
   <div id="puzzle-theme" class="puzzle-theme-card">
-    <div class="theme-icon">🎯</div>
-    <div class="theme-text">Loading puzzle...</div>
+    <div class="theme-icon">📅</div>
+    <div class="theme-text">Loading daily puzzle...</div>
   </div>
   
   <div class="puzzle-container">
@@ -73,21 +73,19 @@
             <span class="btn-icon">💡</span>
             <span class="btn-text">Get Hint</span>
           </button>
-          <button id="nextPuzzleBtn" class="action-btn next-btn">
-            <span class="btn-icon">⏭</span>
-            <span class="btn-text">Next Puzzle</span>
+          <button id="backToMenuBtn" class="action-btn back-btn">
+            <span class="btn-icon">🏠</span>
+            <span class="btn-text">Back to Menu</span>
           </button>
         </div>
       </div>
     </div>
   </div>
 
-
   <button id="coachBtn" class="coach-floating-btn">
     <span class="coach-icon">🤖</span>
     <span class="coach-text">Ask Coach</span>
   </button>
-
 
   <div id="chatPopup" class="chat-popup hidden">
     <div class="chat-header">
@@ -105,6 +103,6 @@
 
 </main>
 
-<script src="PuzzleScript.js"></script>
+<script src="dailyPuzzle.js"></script>
 </body>
 </html>
