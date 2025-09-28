@@ -30,7 +30,7 @@ body:not(.puzzle-page) main {
 
 h2 { margin-bottom: 0.5rem; }
 
-/* Daily Puzzle in Stats Bar */
+
 .daily-puzzle-stat {
   position: relative;
   cursor: pointer;
@@ -148,7 +148,7 @@ h2 { margin-bottom: 0.5rem; }
   font-size: 1rem;
 }
 
-/* Daily puzzle indicator in puzzle page */
+
 .daily-indicator {
   background: linear-gradient(135deg, #4a9eff, #6bb6ff);
   color: white;
@@ -159,7 +159,7 @@ h2 { margin-bottom: 0.5rem; }
   margin-right: 0.5rem;
 }
 
-/* Main buttons section */
+
 .main-buttons {
   display: flex;
   flex-direction: column;
@@ -196,12 +196,12 @@ h2 { margin-bottom: 0.5rem; }
   right: -70px;
 }
 
-/* Board container */
+
 #board-container {
   position: relative;
 }
 
-/* Remove all borders from chessboard */
+
 #board,
 .chessboard-63f37,
 .board-b72b1,
@@ -215,7 +215,7 @@ th {
   box-shadow: none !important;
 }
 
-/* Remove borders from all chessboard elements */
+
 div[id*="board"],
 div[class*="board"],
 div[class*="chessboard"],
@@ -224,7 +224,7 @@ table[class*="board"] {
   outline: none !important;
 }
 
-/* Responsive design for smaller screens */
+
 @media (max-width: 768px) {
   .main-content {
     flex-direction: column;
@@ -1584,7 +1584,7 @@ textarea:focus, input:focus {
     color: #e8e8e8;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
     backdrop-filter: blur(10px);
-    order: 1; /* Left side */
+    order: 1; 
   }
   
   .board-section {
@@ -1593,7 +1593,7 @@ textarea:focus, input:focus {
     border-radius: 16px;
     padding: 1rem;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    order: 2; /* Center */
+    order: 2; 
     flex: 1;
     min-width: 500px;
   }
@@ -1607,7 +1607,7 @@ textarea:focus, input:focus {
     color: #e8e8e8;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
     backdrop-filter: blur(10px);
-    order: 3; /* Right side */
+    order: 3; 
   }
   
   .board-wrapper {
@@ -1819,7 +1819,7 @@ textarea:focus, input:focus {
     color: #94a3b8;
   }
   
-  /* Highlight squares */
+
   .square-highlight {
     background: rgba(255, 235, 59, 0.8) !important;
     box-shadow: inset 0 0 3px rgba(255, 235, 59, 1);
@@ -1830,7 +1830,7 @@ textarea:focus, input:focus {
     box-shadow: inset 0 0 3px rgba(76, 175, 80, 1);
   }
   
-  /* Mobile Responsive */
+
   @media (max-width: 1024px) {
     .game-review-container {
       flex-direction: column;
