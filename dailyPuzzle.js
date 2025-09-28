@@ -55,6 +55,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentPuzzle = null;
   let solutionIndex = 0;
   let hintLevel = 0;
+  let puzzleSolved = false;
 
   async function getDailyPuzzle() {
     try {
@@ -65,23 +66,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       
       const dailyData = JSON.parse(dailyPuzzleJson);
       
-      // Extract the position from the PGN using initialPly
+
       const pgn = dailyData.game.pgn;
       const initialPly = dailyData.puzzle.initialPly;
       
-      // Create a temporary chess instance to get the position
+
       const tempChess = new Chess();
       const moves = pgn.split(' ').filter(move => move && !move.includes('.') && !move.includes('[') && !move.includes(']'));
       
-      // Play moves up to initialPly (the puzzle starts after this many moves)
+
       for (let i = 0; i < initialPly; i++) {
         if (moves[i]) {
           tempChess.move(moves[i]);
         }
       }
-      
-      // The puzzle position is one move after initialPly
-      // We need to play one more move to get to the actual puzzle position
+
       if (moves[initialPly]) {
         tempChess.move(moves[initialPly]);
       }
@@ -113,10 +112,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       draggable: true,
       pieceTheme:'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
       onDragStart: function(source, piece, position, orientation) {
+        if (puzzleSolved) return false
         if (chess.turn() !== piece.charAt(0)) return false
         if (chess.moves({square:source}).length === 0) return false
       },
       onDrop: function(source, target){
+        if (puzzleSolved) return 'snapback'
         const move = chess.move({ from:source, to:target, promotion:"q" })
         if (!move) return 'snapback'
 
@@ -131,6 +132,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           board.position(chess.fen())
           showToast('Correct move!', 'success')
           if (solutionIndex >= currentPuzzle.puzzle.solution.length){
+            puzzleSolved = true
             setTimeout(() => {
               showToast('Daily puzzle solved! 🎉', 'success')
             }, 800)
@@ -185,6 +187,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   
     solutionIndex = 0
+    puzzleSolved = false
   
     initBoardIfNeeded()
     board.position(chess.fen())
