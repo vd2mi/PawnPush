@@ -251,7 +251,7 @@ async function getRandomPuzzleFromDatabase() {
     solutionIndex = 0
   
     initBoardIfNeeded()
-    board.position(chess.fen(), false)
+    board.position(chess.fen(), true)
     updatePuzzleInfo(data.puzzle, chess.fen());
   
     console.log('Full puzzle object:', data.puzzle)
