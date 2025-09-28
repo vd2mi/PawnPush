@@ -33,7 +33,9 @@ let isDragging = false;
 function initBoard() {
   board = Chessboard('board', {
     position: chess.fen(),
-    pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+    pieceTheme: function(piece) {
+      return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png';
+    },
     draggable: true,
     onDragStart: onDragStart,
     onDrop: onDrop,

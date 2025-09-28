@@ -33,7 +33,7 @@ export default async function handler(req, res) {
           explanation: 'API configuration needed'
         });
       }
-      const gptPrompt = `You are a chess coach. Be concise and direct.
+      const gptPrompt = `You are a chess Grandmaster teaching a student. Be concise and direct.
   
   Position: ${fen}
   Best move: ${solutionMove}

@@ -168,7 +168,9 @@ async function getRandomPuzzleFromDatabase() {
     board = Chessboard("board", {
       position: chess.fen(),
       draggable:true ,
-      pieceTheme:'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+      pieceTheme: function(piece) {
+        return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png';
+      },
       onDragStart: function(source, piece, position, orientation)
       {
         if (chess.turn()!== piece.charAt(0)) return false
@@ -186,7 +188,7 @@ async function getRandomPuzzleFromDatabase() {
           clearHints();
           addMoveToHistory(userMove, true);
           solutionIndex++
-          board.position(chess.fen())
+          board.position(chess.fen(), false)
           showToast('Correct move!', 'success')
           if (solutionIndex >= currentPuzzle.puzzle.solution.length){
             setTimeout(() => {
@@ -197,12 +199,11 @@ async function getRandomPuzzleFromDatabase() {
         } else {
           addMoveToHistory(userMove, false);
           chess.undo()
-          board.position(chess.fen())
+          board.position(chess.fen(), false)
           showToast('Try again', 'error')
           return 'snapback'
         }
-      },
-      onSnapEnd:function(){ board.position(chess.fen()) }
+      }
     })
     board.greySquare = function(square) {
       const squareEl = document.querySelector(`.square-${square}`);
@@ -250,7 +251,7 @@ async function getRandomPuzzleFromDatabase() {
     solutionIndex = 0
   
     initBoardIfNeeded()
-    board.position(chess.fen())
+    board.position(chess.fen(), false)
     updatePuzzleInfo(data.puzzle, chess.fen());
   
     console.log('Full puzzle object:', data.puzzle)

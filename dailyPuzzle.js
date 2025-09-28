@@ -57,14 +57,36 @@ document.addEventListener("DOMContentLoaded", async () => {
   let hintLevel = 0;
   let puzzleSolved = false;
 
+  async function fetchDailyPuzzle() {
+    try {
+      const response = await fetch('https://lichess.org/api/puzzle/daily');
+      if (!response.ok) {
+        throw new Error('Failed to fetch daily puzzle');
+      }
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error fetching daily puzzle:', error);
+      return null;
+    }
+  }
+
   async function getDailyPuzzle() {
     try {
-      const dailyPuzzleJson = sessionStorage.getItem('dailyPuzzle');
-      if (!dailyPuzzleJson) {
-        throw new Error('No daily puzzle data found');
-      }
+      let dailyData = null;
       
-      const dailyData = JSON.parse(dailyPuzzleJson);
+      // First try to get from sessionStorage
+      const dailyPuzzleJson = sessionStorage.getItem('dailyPuzzle');
+      if (dailyPuzzleJson) {
+        dailyData = JSON.parse(dailyPuzzleJson);
+      } else {
+        // Fallback: fetch directly from API
+        console.log('No daily puzzle in sessionStorage, fetching from API...');
+        dailyData = await fetchDailyPuzzle();
+        if (!dailyData) {
+          throw new Error('Failed to fetch daily puzzle from API');
+        }
+      }
       
 
       const pgn = dailyData.game.pgn;
@@ -110,7 +132,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     board = Chessboard("board", {
       position: chess.fen(),
       draggable: true,
-      pieceTheme:'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+      pieceTheme: function(piece) {
+        return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png';
+      },
       onDragStart: function(source, piece, position, orientation) {
         if (puzzleSolved) return false
         if (chess.turn() !== piece.charAt(0)) return false
@@ -129,7 +153,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           clearHints();
           addMoveToHistory(userMove, true);
           solutionIndex++
-          board.position(chess.fen())
+          board.position(chess.fen(), false)
           showToast('Correct move!', 'success')
           if (solutionIndex >= currentPuzzle.puzzle.solution.length){
             puzzleSolved = true
@@ -140,12 +164,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         } else {
           addMoveToHistory(userMove, false);
           chess.undo()
-          board.position(chess.fen())
+          board.position(chess.fen(), false)
           showToast('Try again', 'error')
           return 'snapback'
         }
-      },
-      onSnapEnd: function(){ board.position(chess.fen()) }
+      }
     })
     board.greySquare = function(square) {
       const squareEl = document.querySelector(`.square-${square}`);
@@ -190,7 +213,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     puzzleSolved = false
   
     initBoardIfNeeded()
-    board.position(chess.fen())
+    board.position(chess.fen(), false)
     updatePuzzleInfo(data.puzzle, chess.fen());
   
     console.log('Daily puzzle loaded:', data.puzzle)
