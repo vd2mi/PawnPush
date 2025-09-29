@@ -29,6 +29,12 @@ toggleButtonElement2.addEventListener('click',() => {
     window.location.href = 'game-review.html';
   })
 
+const survivalBtn = document.getElementById('survivalBtn');
+if (survivalBtn){
+  survivalBtn.addEventListener('click', () => {
+    window.location.href = 'survival.html';
+  })
+}
 
 let dailyPuzzleData = null;
 

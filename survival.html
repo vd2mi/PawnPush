@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PawnPush - Survival</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="puzzle-page">
+
+<header>
+  <div class="header-content">
+    <h1>PawnPush</h1>
+    <div class="puzzle-navigation">
+      <a href="index.html" class="back-btn">← Back to Menu</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="puzzle-theme" class="puzzle-theme-card">
+    <div class="theme-icon">♾️</div>
+    <div class="theme-text">Survival Mode</div>
+  </div>
+
+  <div class="puzzle-container">
+    <div id="board-container" class="x">
+      <div class="board-wrapper">
+        <div id="board"></div>
+      </div>
+    </div>
+
+    <div id="puzzle-info-sidebar" class="info-sidebar">
+      <div class="info-section puzzle-details">
+        <div class="section-header">
+          <div class="section-icon">📊</div>
+          <h3>Survival Info</h3>
+        </div>
+        <div class="info-cards">
+          <div id="survival-score" class="info-card">
+            <span class="info-label">Score</span>
+            <span class="info-value" id="score-value">0</span>
+          </div>
+          <div id="survival-lives" class="info-card">
+            <span class="info-label">Lives</span>
+            <span class="info-value" id="lives-value">❤️❤️❤️</span>
+          </div>
+          <div id="puzzle-rating" class="info-card">
+            <span class="info-label">Rating</span>
+            <span class="info-value" id="rating-value">--</span>
+          </div>
+          <div id="turn-indicator" class="info-card turn-card">
+            <span class="info-label">Turn</span>
+            <span class="info-value">-- to move</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-section move-section">
+        <div class="section-header">
+          <div class="section-icon">📝</div>
+          <h3>Move History</h3>
+        </div>
+        <div id="move-history" class="move-history-container">
+          <em class="no-moves">No moves yet</em>
+        </div>
+      </div>
+
+      <div class="info-section actions-section">
+        <div class="section-header">
+          <div class="section-icon">💡</div>
+          <h3>Actions</h3>
+        </div>
+        <div class="action-buttons">
+          <button id="hintBtn" class="action-btn hint-btn">
+            <span class="btn-icon">💡</span>
+            <span class="btn-text">Get Hint</span>
+          </button>
+          <button id="restartBtn" class="action-btn back-btn">
+            <span class="btn-icon">🔁</span>
+            <span class="btn-text">Restart</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button id="coachBtn" class="coach-floating-btn">
+    <span class="coach-icon">🤖</span>
+    <span class="coach-text">Ask Coach</span>
+  </button>
+
+  <div id="chatPopup" class="chat-popup hidden">
+    <div class="chat-header">
+      <div class="chat-title">
+        <span class="chat-icon">🤖</span>
+        <span>Chess Coach</span>
+      </div>
+    </div>
+    <div id="chatMessages" class="chat-messages"></div>
+    <div class="chat-input-area">
+      <input id="chatInput" type="text" placeholder="Ask me for a hint..." class="chat-input"/>
+      <button id="chatSend" class="chat-send-btn">→</button>
+    </div>
+  </div>
+
+</main>
+
+<script src="survival.js"></script>
+</body>
+</html>
+
