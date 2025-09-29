@@ -164,7 +164,7 @@ async function loadLocalStockfish() {
                         fen: fen,
                         depth: 16,
                         variants: 3,
-                        maxThinkingTime: 100
+                        maxThinkingTime: 5000
                       })
                     })
                     .then(response => {
@@ -610,7 +610,7 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
       fen: beforeFen,
       depth: 16,
       variants: 3,
-      maxThinkingTime: 100
+      maxThinkingTime: 5000
     })
   })
   .then(response => response.json())
@@ -626,7 +626,8 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
           evaluation: evaluation,
           score: bestEval,
           bestScore: bestEval,
-          bestMove: bestMove
+          bestMove: bestMove,
+          alternatives: []
         };
         updateMoveInList(moveIndex, evaluation);
         console.log(`Move ${moveIndex + 1}: ${playedMove} - BEST MOVE!`);
@@ -640,7 +641,7 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
             fen: afterFen,
             depth: 16,
             variants: 3,
-            maxThinkingTime: 100
+            maxThinkingTime: 5000
           })
         })
         .then(response => response.json())
@@ -669,7 +670,8 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
               evaluation: evaluation,
               score: moveEval,
               bestScore: bestEval,
-              bestMove: bestMove
+              bestMove: bestMove,
+              alternatives: []
             };
             
             updateMoveInList(moveIndex, evaluation);
@@ -699,7 +701,8 @@ function fallbackAnalysis(playedMove, moveIndex) {
     played: playedMove,
     evaluation: evaluation,
     score: 0,
-    bestScore: 0
+    bestScore: 0,
+    alternatives: []
   };
   
   updateMoveInList(moveIndex, evaluation);
@@ -857,7 +860,7 @@ function updateAnalysisDisplay(analysis, altMoves) {
       text += `\nLast move: ${moveAnalysis.played} - ${moveAnalysis.evaluation.text}`;
       text += `\nMove score: ${(moveAnalysis.score/100).toFixed(2)}`;
       text += `\nBest score: ${(moveAnalysis.bestScore/100).toFixed(2)}`;
-      if (moveAnalysis.alternatives.length > 0) {
+      if (moveAnalysis.alternatives && moveAnalysis.alternatives.length > 0) {
           text += `\nAlternatives: ${moveAnalysis.alternatives.join(', ')}`;
       }
   }
@@ -1168,7 +1171,7 @@ function displayMoveAnalysis(moveIndex) {
           text += `✅ Excellent! This is the best move in the position.\n`;
       }
       
-      if (analysis.alternatives.length > 0) {
+      if (analysis.alternatives && analysis.alternatives.length > 0) {
           text += `\nBetter alternatives were:\n`;
           analysis.alternatives.forEach((alt, i) => {
               text += `${i+1}. ${alt}\n`;

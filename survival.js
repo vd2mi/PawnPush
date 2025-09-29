@@ -35,6 +35,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   let lives = 3;
   let score = 0;
   let currentTargetRating = 700; // starting band
+  let isLoading = false;
+  let loadingAttempts = 0;
+  const MAX_LOADING_ATTEMPTS = 3;
 
   const livesEl = document.getElementById('lives-value');
   const scoreEl = document.getElementById('score-value');
@@ -44,6 +47,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   function renderScore() {
     scoreEl.textContent = String(score);
+  }
+  function showLoading(message = 'Loading puzzle...'){
+    isLoading = true;
+    const existing = document.getElementById('loading-overlay');
+    if (!existing){
+      const overlay = document.createElement('div');
+      overlay.id = 'loading-overlay';
+      overlay.style.position = 'fixed';
+      overlay.style.inset = '0';
+      overlay.style.background = 'rgba(0,0,0,0.35)';
+      overlay.style.display = 'flex';
+      overlay.style.alignItems = 'center';
+      overlay.style.justifyContent = 'center';
+      overlay.style.zIndex = '9999';
+      overlay.style.backdropFilter = 'blur(1px)';
+      overlay.innerHTML = `<div style="background:#111;color:#fff;padding:12px 16px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.4);font-weight:600;">${message}</div>`;
+      document.body.appendChild(overlay);
+    } else {
+      existing.querySelector('div').textContent = message;
+    }
+    const themeEl = document.querySelector('#puzzle-theme .theme-text');
+    if (themeEl) themeEl.textContent = 'Loading puzzle...';
+  }
+  function hideLoading(){
+    isLoading = false;
+    const existing = document.getElementById('loading-overlay');
+    if (existing) existing.remove();
   }
   function resetRun() {
     lives = 3; score = 0; currentTargetRating = 700; renderLives(); renderScore(); loadNextPuzzle();
@@ -91,10 +121,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       draggable: true,
       pieceTheme: function(piece){ return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png'; },
       onDragStart: function(source, piece){
+        if (isLoading) return false;
         if (chess.turn() !== piece.charAt(0)) return false;
         if (chess.moves({ square: source }).length === 0) return false;
       },
       onDrop: function(source, target){
+        if (isLoading) return 'snapback';
         const move = chess.move({ from: source, to: target, promotion: 'q' });
         if (!move) return 'snapback';
         const correctMove = currentPuzzle?.puzzle?.solution?.[solutionIndex];
@@ -173,6 +205,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function loadNextPuzzle(){
     hintLevel = 0;
+    if (!isLoading) showLoading('Loading puzzle...');
+    loadingAttempts = 0;
     const data = await getPuzzleByRatingBand();
     if (!data || !data.puzzle.solution || data.puzzle.solution.length === 0) { return loadNextPuzzle(); }
     currentPuzzle = data;
@@ -182,59 +216,104 @@ document.addEventListener('DOMContentLoaded', async () => {
     initBoardIfNeeded();
     // Simulate to final position along solution, evaluate that, and choose player's side
     const startFen = chess.fen();
-    const { finalFen, evalScore } = evaluateFinalPosition(startFen, data.puzzle.solution);
-    const playerOrientation = evalScore > 0 ? 'white' : evalScore < 0 ? 'black' : (chess.turn() === 'w' ? 'white' : 'black');
-    console.log('Survival orientation decision', {
-      startFen,
-      finalFen,
-      evalScore,
-      chosenPlayer: playerOrientation,
-      sideToMoveAtStart: chess.turn(),
-      firstSolutionMove: data.puzzle.solution[0]
-    });
-    board.orientation(playerOrientation);
-    board.position(chess.fen(), true);
-    updatePuzzleInfo(data.puzzle, chess.fen());
-    document.querySelector('#puzzle-theme .theme-text').textContent = `Survival • Target ~${currentTargetRating}`;
-    const sideToMoveColor = chess.turn() === 'w' ? 'white' : 'black';
-    if (playerOrientation !== sideToMoveColor) {
-      console.log('Turn mismatch. Auto-playing first solution move so chosen side moves next.');
-      autoplayFirstSolutionMove();
-    }
-  }
-
-  function evaluatePosition(chessInstance){
-    const values = { p:1, n:3, b:3, r:5, q:9, k:0 };
-    let score = 0;
-    const boardArr = chessInstance.board();
-    for (let r = 0; r < 8; r++){
-      for (let c = 0; c < 8; c++){
-        const piece = boardArr[r][c];
-        if (!piece) continue;
-        const val = values[piece.type] || 0;
-        score += piece.color === 'w' ? val : -val;
+    const attemptEval = async () => {
+      try {
+        const { finalFen, evalScore } = await evaluateFinalPosition(startFen, data.puzzle.solution);
+        const playerOrientation = evalScore > 0 ? 'white' : evalScore < 0 ? 'black' : (chess.turn() === 'w' ? 'white' : 'black');
+        console.log('Survival orientation decision', {
+          startFen,
+          finalFen,
+          evalScore,
+          chosenPlayer: playerOrientation,
+          sideToMoveAtStart: chess.turn(),
+          firstSolutionMove: data.puzzle.solution[0]
+        });
+        board.orientation(playerOrientation);
+        board.position(chess.fen(), true);
+        updatePuzzleInfo(data.puzzle, chess.fen());
+        document.querySelector('#puzzle-theme .theme-text').textContent = `Survival • Target ~${currentTargetRating}`;
+        const sideToMoveColor = chess.turn() === 'w' ? 'white' : 'black';
+        if (playerOrientation !== sideToMoveColor) {
+          console.log('Turn mismatch. Auto-playing first solution move so chosen side moves next.');
+          autoplayFirstSolutionMove();
+        }
+        hideLoading();
+      } catch (error) {
+        loadingAttempts += 1;
+        console.warn('Evaluate failed, attempt', loadingAttempts, error);
+        if (loadingAttempts < MAX_LOADING_ATTEMPTS) {
+          showLoading(`Evaluating position... (retry ${loadingAttempts}/${MAX_LOADING_ATTEMPTS})`);
+          setTimeout(attemptEval, 700);
+        } else {
+          hideLoading();
+          showToast('Engine busy. Skipping to next puzzle...', 'error');
+          setTimeout(() => loadNextPuzzle(), 600);
+        }
       }
-    }
-    return score;
+    };
+    await attemptEval();
   }
 
-  function evaluateFinalPosition(startFen, solutionMoves){
+  async function evaluatePosition(chessInstance){
+    const fen = chessInstance.fen();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); 
+    
     try {
-      const sim = new Chess();
-      sim.load(startFen);
-      for (const uci of solutionMoves) {
-        const from = uci.substring(0,2);
-        const to = uci.substring(2,4);
-        const promo = uci.substring(4) || 'q';
-        const mv = sim.move({ from, to, promotion: promo });
-        if (!mv) break;
+      const response = await fetch('https://chess-api.com/v1', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          fen: fen,
+          depth: 12,
+          variants: 3,
+          maxThinkingTime: 3000,
+          move: ''
+        }),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+    
+      if (!response.ok) {
+        throw new Error(`Stockfish API error: ${response.status} ${response.statusText}`);
       }
-      const finalFen = sim.fen();
-      const evalScore = evaluatePosition(sim);
-      return { finalFen, evalScore };
-    } catch(e){
-      return { finalFen: startFen, evalScore: evaluatePosition(new Chess(startFen)) };
+      
+      const data = await response.json();
+      
+      if (data.eval === undefined) {
+        throw new Error('Stockfish API returned invalid response');
+      }
+      
+      return Math.round(data.eval);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('Stockfish API timeout');
+      }
+      throw error;
     }
+  }
+
+  async function evaluateFinalPosition(startFen, solutionMoves){
+    const sim = new Chess();
+    sim.load(startFen);
+    
+    for (const uci of solutionMoves) {
+      const from = uci.substring(0,2);
+      const to = uci.substring(2,4);
+      const promo = uci.substring(4) || 'q';
+      const mv = sim.move({ from, to, promotion: promo });
+      if (!mv) {
+        throw new Error(`Invalid move in solution: ${uci}`);
+      }
+    }
+    
+    const finalFen = sim.fen();
+    const evalScore = await evaluatePosition(sim);
+    return { finalFen, evalScore };
   }
 
   function showHint(){
