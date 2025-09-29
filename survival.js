@@ -75,6 +75,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     const existing = document.getElementById('loading-overlay');
     if (existing) existing.remove();
   }
+  function simpleMaterialEval(chessInstance){
+    // Returns centipawns: positive favors White, negative favors Black
+    const values = { p:100, n:320, b:330, r:500, q:900, k:0 };
+    let score = 0;
+    const grid = chessInstance.board();
+    for (let r = 0; r < 8; r++){
+      for (let c = 0; c < 8; c++){
+        const piece = grid[r][c];
+        if (!piece) continue;
+        const val = values[piece.type] || 0;
+        score += piece.color === 'w' ? val : -val;
+      }
+    }
+    return score;
+  }
   function resetRun() {
     lives = 3; score = 0; currentTargetRating = 700; renderLives(); renderScore(); loadNextPuzzle();
   }
@@ -283,6 +298,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       const data = await response.json();
       
+      if (data && data.type === 'error' && data.error === 'HIGH_USAGE') {
+        console.warn('Stockfish API daily limit reached; using material fallback', data);
+        return simpleMaterialEval(chessInstance);
+      }
       if (data.eval === undefined) {
         throw new Error('Stockfish API returned invalid response');
       }
