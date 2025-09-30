@@ -72,6 +72,17 @@ function onSnapEnd() {
   board.position(chess.fen());
 }
 
+function cleanFenForAnalysis(fen) {
+  // Remove en passant square to avoid Chess API validation errors
+  // Chess-API.com has strict FEN validation and rejects en passant squares
+  const parts = fen.split(' ');
+  if (parts.length >= 4 && parts[3] !== '-') {
+    console.log(`Cleaning FEN: removing en passant square "${parts[3]}" for API compatibility`);
+    parts[3] = '-'; // Set en passant to none
+  }
+  return parts.join(' ');
+}
+
 function checkWasmSupport() {
   return typeof WebAssembly === 'object' && typeof WebAssembly.instantiate === 'function';
 }
@@ -155,13 +166,16 @@ async function loadLocalStockfish() {
                   makeApiCall: function(fen, retryCount) {
                     const maxRetries = 3;
                     
+                    // Clean the FEN to avoid API validation errors with en passant
+                    const cleanedFen = this.cleanFenForApi(fen);
+                    
                     fetch('https://chess-api.com/v1', {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json'
                       },
                       body: JSON.stringify({
-                        fen: fen,
+                        fen: cleanedFen,
                         depth: 16,
                         variants: 3,
                         maxThinkingTime: 5000
@@ -175,6 +189,23 @@ async function loadLocalStockfish() {
                     })
                     .then(data => {
                       console.log('Stockfish 17 API response:', data);
+                      
+                      // Check for error responses from the API
+                      if (data.type === 'error' || data.error) {
+                        console.warn('Chess API returned error:', data.error || data.text);
+                        
+                        // Only use fallback for daily limit (HIGH_USAGE)
+                        if (data.error === 'HIGH_USAGE') {
+                          console.log('Chess API daily limit reached; using material evaluation fallback');
+                          const materialEval = this.getMaterialEvaluation(fen);
+                          this.sendResponse(`info depth 1 score cp ${materialEval} nodes 1000 time 100`);
+                          this.sendResponse(`bestmove e2e4`);
+                          return;
+                        }
+                        
+                        // For all other errors, throw to trigger retry logic
+                        throw new Error(data.text || data.error || 'Unknown API error');
+                      }
                       
                       if (data.eval !== undefined) {
                         this.sendResponse(`info depth ${data.depth} score cp ${Math.round(data.eval * 100)} nodes 1000000 time ${data.time || 1000}`);
@@ -203,6 +234,33 @@ async function loadLocalStockfish() {
         if (this.onmessage) {
           this.onmessage({ data: response });
         }
+      },
+      getMaterialEvaluation: function(fen) {
+        // Simple material count evaluation as fallback
+        const pieceValues = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
+        const board = fen.split(' ')[0];
+        let score = 0;
+        
+        for (const char of board) {
+          const lower = char.toLowerCase();
+          if (pieceValues[lower] !== undefined) {
+            const value = pieceValues[lower];
+            // White pieces are uppercase, black are lowercase
+            score += char === char.toUpperCase() ? value : -value;
+          }
+        }
+        
+        return score;
+      },
+      cleanFenForApi: function(fen) {
+        // Remove en passant square to avoid API validation errors
+        // Chess-API.com has strict FEN validation and rejects en passant squares
+        const parts = fen.split(' ');
+        if (parts.length >= 4 && parts[3] !== '-') {
+          console.log(`Cleaning FEN: removing en passant square "${parts[3]}" for API compatibility`);
+          parts[3] = '-'; // Set en passant to none
+        }
+        return parts.join(' ');
       },
       currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
     };
@@ -601,13 +659,16 @@ function evaluateLastMove() {
 function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
   const playedMove = findPlayedMove(beforeFen, afterFen);
   
+  // Clean FEN to remove en passant for API compatibility
+  const cleanBeforeFen = cleanFenForAnalysis(beforeFen);
+  
   fetch('https://chess-api.com/v1', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      fen: beforeFen,
+      fen: cleanBeforeFen,
       depth: 16,
       variants: 3,
       maxThinkingTime: 5000
@@ -615,6 +676,19 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
   })
   .then(response => response.json())
   .then(data => {
+    // Check for API errors
+    if (data.type === 'error' || data.error) {
+      console.warn(`Chess API error for move ${moveIndex + 1}:`, data.error || data.text);
+      // Only use fallback for daily limit (HIGH_USAGE)
+      if (data.error === 'HIGH_USAGE') {
+        console.log('Chess API daily limit reached; using fallback analysis');
+        fallbackAnalysis(playedMove, moveIndex);
+        return;
+      }
+      // For all other errors, throw to trigger retry/error handling
+      throw new Error(data.text || data.error || 'Unknown API error');
+    }
+    
     if (data.eval !== undefined && data.move) {
       const bestEval = data.eval * 100; // Convert to centipawns
       const bestMove = data.move;
@@ -632,13 +706,16 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
         updateMoveInList(moveIndex, evaluation);
         console.log(`Move ${moveIndex + 1}: ${playedMove} - BEST MOVE!`);
       } else {
+        // Clean FEN to remove en passant for API compatibility
+        const cleanAfterFen = cleanFenForAnalysis(afterFen);
+        
         fetch('https://chess-api.com/v1', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            fen: afterFen,
+            fen: cleanAfterFen,
             depth: 16,
             variants: 3,
             maxThinkingTime: 5000
@@ -646,6 +723,19 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
         })
         .then(response => response.json())
         .then(afterData => {
+          // Check for API errors
+          if (afterData.type === 'error' || afterData.error) {
+            console.warn(`Chess API error for move ${moveIndex + 1} (after position):`, afterData.error || afterData.text);
+            // Only use fallback for daily limit (HIGH_USAGE)
+            if (afterData.error === 'HIGH_USAGE') {
+              console.log('Chess API daily limit reached; using fallback analysis');
+              fallbackAnalysis(playedMove, moveIndex);
+              return;
+            }
+            // For all other errors, throw to trigger retry/error handling
+            throw new Error(afterData.text || afterData.error || 'Unknown API error');
+          }
+          
           if (afterData.eval !== undefined) {
             const afterEval = afterData.eval * 100;
             
@@ -682,7 +772,10 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
         })
         .catch(error => {
           console.error('After position analysis error for move', moveIndex + 1, ':', error);
-          fallbackAnalysis(playedMove, moveIndex);
+          // Add a small delay before fallback to avoid rapid retries
+          setTimeout(() => {
+            fallbackAnalysis(playedMove, moveIndex);
+          }, 500);
         });
       }
     } else {
@@ -691,7 +784,10 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
   })
   .catch(error => {
     console.error('Before position analysis error for move', moveIndex + 1, ':', error);
-    fallbackAnalysis(playedMove, moveIndex);
+    // Add a small delay before fallback to avoid rapid retries
+    setTimeout(() => {
+      fallbackAnalysis(playedMove, moveIndex);
+    }, 500);
   });
 }
 
@@ -1072,20 +1168,29 @@ function loadGame() {
 }
 
 function analyzeAllMoves() {
+  // Prevent multiple simultaneous analyses
+  if (isAnalyzing) {
+    console.log('Analysis already in progress, skipping...');
+    return;
+  }
+  
   console.log('Starting analysis of all moves in game...');
+  isAnalyzing = true;
   
   for (let i = 1; i < gameHistory.length; i++) {
       setTimeout(() => {
+          if (!isAnalyzing) return; // Check if analysis was stopped
           console.log(`Analyzing move ${i}/${gameHistory.length - 1}`);
           analyzeMoveReal(gameHistory[i-1], gameHistory[i], i-1);
-      }, i * 1000);
+      }, i * 1500); // Increased delay to reduce API rate limiting
   }
   
   setTimeout(() => {
+    if (!isAnalyzing) return; // Check if analysis was stopped
     showToast(`Analysis complete! Analyzed ${gameHistory.length - 1} moves.`, 'success');
     isAnalyzing = false;
     document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
-  }, (gameHistory.length - 1) * 1000 + 2000);
+  }, (gameHistory.length - 1) * 1500 + 2000);
 }
 
 function updateBoard() {

@@ -37,7 +37,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentTargetRating = 700; // starting band
   let isLoading = false;
   let loadingAttempts = 0;
-  const MAX_LOADING_ATTEMPTS = 3;
+  const MAX_LOADING_ATTEMPTS = 5; // Reduced - skip problematic puzzles faster
+  let loadingDotInterval = null;
 
   const livesEl = document.getElementById('lives-value');
   const scoreEl = document.getElementById('score-value');
@@ -62,16 +63,39 @@ document.addEventListener('DOMContentLoaded', async () => {
       overlay.style.justifyContent = 'center';
       overlay.style.zIndex = '9999';
       overlay.style.backdropFilter = 'blur(1px)';
-      overlay.innerHTML = `<div style="background:#111;color:#fff;padding:12px 16px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.4);font-weight:600;">${message}</div>`;
+      overlay.innerHTML = `<div id="loading-text" style="background:#111;color:#fff;padding:12px 16px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.4);font-weight:600;">${message}</div>`;
       document.body.appendChild(overlay);
     } else {
-      existing.querySelector('div').textContent = message;
+      existing.querySelector('#loading-text').textContent = message;
     }
+    
+    // Animate loading dots
+    if (loadingDotInterval) clearInterval(loadingDotInterval);
+    let dotCount = 0;
+    loadingDotInterval = setInterval(() => {
+      const loadingText = document.getElementById('loading-text');
+      const themeEl = document.querySelector('#puzzle-theme .theme-text');
+      const baseMessage = message.replace(/\.+$/, ''); // Remove existing dots
+      const dots = '.'.repeat((dotCount % 3) + 1);
+      
+      if (loadingText) {
+        loadingText.textContent = baseMessage + dots;
+      }
+      if (themeEl) {
+        themeEl.textContent = 'Loading puzzle' + dots;
+      }
+      dotCount++;
+    }, 400);
+    
     const themeEl = document.querySelector('#puzzle-theme .theme-text');
-    if (themeEl) themeEl.textContent = 'Loading puzzle...';
+    if (themeEl) themeEl.textContent = 'Loading puzzle';
   }
   function hideLoading(){
     isLoading = false;
+    if (loadingDotInterval) {
+      clearInterval(loadingDotInterval);
+      loadingDotInterval = null;
+    }
     const existing = document.getElementById('loading-overlay');
     if (existing) existing.remove();
   }
@@ -89,6 +113,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
     return score;
+  }
+  
+  function cleanFenForAnalysis(fen) {
+    // Remove en passant square to avoid Chess API validation errors
+    // Chess-API.com has strict FEN validation and rejects en passant squares
+    const parts = fen.split(' ');
+    if (parts.length >= 4 && parts[3] !== '-') {
+      console.log(`Survival: Cleaning FEN, removing en passant square "${parts[3]}" for API compatibility`);
+      parts[3] = '-'; // Set en passant to none
+    }
+    return parts.join(' ');
   }
   function resetRun() {
     lives = 3; score = 0; currentTargetRating = 700; renderLives(); renderScore(); loadNextPuzzle();
@@ -220,7 +255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function loadNextPuzzle(){
     hintLevel = 0;
-    if (!isLoading) showLoading('Loading puzzle...');
+    if (!isLoading) showLoading('Loading puzzle'); // Dots added automatically
     loadingAttempts = 0;
     const data = await getPuzzleByRatingBand();
     if (!data || !data.puzzle.solution || data.puzzle.solution.length === 0) { return loadNextPuzzle(); }
@@ -257,12 +292,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadingAttempts += 1;
         console.warn('Evaluate failed, attempt', loadingAttempts, error);
         if (loadingAttempts < MAX_LOADING_ATTEMPTS) {
-          showLoading(`Evaluating position... (retry ${loadingAttempts}/${MAX_LOADING_ATTEMPTS})`);
-          setTimeout(attemptEval, 700);
+          showLoading(`Loading puzzle`); // Animated dots will be added automatically
+          setTimeout(attemptEval, 500);
         } else {
+          // After max attempts, skip to next puzzle
+          console.warn('Max loading attempts reached, skipping puzzle...');
           hideLoading();
-          showToast('Engine busy. Skipping to next puzzle...', 'error');
-          setTimeout(() => loadNextPuzzle(), 600);
+          setTimeout(() => {
+            loadNextPuzzle();
+          }, 100);
         }
       }
     };
@@ -271,8 +309,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function evaluatePosition(chessInstance){
     const fen = chessInstance.fen();
+    // Clean FEN to remove en passant for API compatibility
+    const cleanedFen = cleanFenForAnalysis(fen);
+    
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); 
+    const timeoutId = setTimeout(() => controller.abort(), 3500); // Reduced from 5000ms for faster response 
     
     try {
       const response = await fetch('https://chess-api.com/v1', {
@@ -281,7 +322,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          fen: fen,
+          fen: cleanedFen,
           depth: 12,
           variants: 3,
           maxThinkingTime: 3000,
@@ -298,20 +339,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       const data = await response.json();
       
-      if (data && data.type === 'error' && data.error === 'HIGH_USAGE') {
-        console.warn('Stockfish API daily limit reached; using material fallback', data);
-        return simpleMaterialEval(chessInstance);
+      // Only use fallback for daily limit (HIGH_USAGE), throw for other errors
+      if (data && data.type === 'error') {
+        if (data.error === 'HIGH_USAGE') {
+          console.warn('Stockfish API daily limit reached; using material fallback');
+          return simpleMaterialEval(chessInstance);
+        }
+        // For all other API errors, throw to trigger retry or skip
+        throw new Error(`Stockfish API error: ${data.error || data.text || 'Unknown error'}`);
       }
+      
       if (data.eval === undefined) {
-        throw new Error('Stockfish API returned invalid response');
+        throw new Error('Stockfish API returned invalid response - missing eval field');
       }
       
       return Math.round(data.eval);
     } catch (error) {
       clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
-        throw new Error('Stockfish API timeout');
-      }
+      // Re-throw all errors (including timeouts) to trigger retry or skip logic
       throw error;
     }
   }
