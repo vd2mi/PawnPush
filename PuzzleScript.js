@@ -1,5 +1,4 @@
 function showToast(message, type = 'info') {
-  
   const existingToast = document.querySelector('.toast');
   if (existingToast) {
     existingToast.remove();
@@ -7,61 +6,44 @@ function showToast(message, type = 'info') {
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   toast.textContent = message;
-  
   document.body.appendChild(toast);
-  
-
   setTimeout(() => toast.classList.add('show'), 100);
-  
-
   setTimeout(() => {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 300);
   }, 2000);
 }
-function updatePuzzleInfo(puzzle, fen) {
 
+function updatePuzzleInfo(puzzle, fen) {
   const fenParts = fen.split(' ');
   const turn = fenParts[1] === 'w' ? 'White' : 'Black';
-  
-
   document.getElementById('turn-indicator').textContent = `${turn} to move`;
   document.getElementById('turn-indicator').className = turn.toLowerCase() + '-turn';
-  
-
   document.getElementById('puzzle-rating').textContent = `Rating: ${puzzle.rating}`;
-  
-
   const themes = puzzle.themes.split(' ').slice(0, 3);
   const themeText = themes.map(theme => 
     theme.charAt(0).toUpperCase() + theme.slice(1)
   ).join(' • ');
-  
-  // Add daily puzzle indicator
   const themeElement = document.getElementById('puzzle-theme');
   if (puzzle.isDaily) {
     themeElement.innerHTML = `<span class="daily-indicator">📅 Daily Puzzle</span> • ${themeText}`;
   } else {
     themeElement.textContent = themeText;
   }
-  
-
   document.getElementById('move-history').innerHTML = '<em>No moves yet</em>';
 }
 
 function addMoveToHistory(move, isCorrect) {
   const moveHistory = document.getElementById('move-history');
-  
-
   if (moveHistory.innerHTML.includes('No moves yet')) {
     moveHistory.innerHTML = '';
   }
-  
   const moveDiv = document.createElement('div');
   moveDiv.className = `move-item ${isCorrect ? 'correct' : 'incorrect'}`;
   moveDiv.textContent = `${move} ${isCorrect ? '✓' : '✗'}`;
   moveHistory.appendChild(moveDiv);
 }
+
 document.addEventListener("DOMContentLoaded", async ()=>{
   let puzzleDatabase = null;
 
@@ -72,12 +54,10 @@ async function loadPuzzleDatabase() {
   }
   return puzzleDatabase;
 }
+
 const boardEl = document.getElementById('board');
-
-  boardEl.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
-  boardEl.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
-
-
+boardEl.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+boardEl.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 
 async function getDailyPuzzle() {
   try {
@@ -85,24 +65,16 @@ async function getDailyPuzzle() {
     if (!dailyPuzzleJson) {
       throw new Error('No daily puzzle data found');
     }
-    
     const dailyData = JSON.parse(dailyPuzzleJson);
-    
-    // Extract the position from the PGN using initialPly
     const pgn = dailyData.game.pgn;
     const initialPly = dailyData.puzzle.initialPly;
-    
-    // Create a temporary chess instance to get the position
     const tempChess = new Chess();
     const moves = pgn.split(' ').filter(move => move && !move.includes('.') && !move.includes('[') && !move.includes(']'));
-    
-    // Play moves up to initialPly
     for (let i = 0; i < initialPly; i++) {
       if (moves[i]) {
         tempChess.move(moves[i]);
       }
     }
-    
     return {
       puzzle: {
         fen: tempChess.fen(),
@@ -120,44 +92,43 @@ async function getDailyPuzzle() {
 
 async function getRandomPuzzleFromDatabase() {
   const db = await loadPuzzleDatabase();
-  
-  
-
   const urlParams = new URLSearchParams(window.location.search);
   const difficulty = urlParams.get('difficulty') || 'beginner';
   const position = urlParams.get('position') || 'middlegame';
   const type = urlParams.get('type');
-  
-  // Check if this is a daily puzzle request
   if (type === 'daily') {
     return await getDailyPuzzle();
   }
-  
   const filtered = db.filter(puzzle => 
     puzzle.Difficulty === difficulty && puzzle.Position === position
   );
   console.log('Looking for:', difficulty, position);
   console.log('Found puzzles:', filtered.length);
   console.log('First few puzzles:', filtered.slice(0, 3));
-  
   if (filtered.length === 0) {
-    
     const randomPuzzle = db[Math.floor(Math.random() * db.length)];
-    return { puzzle: randomPuzzle };
+    return { 
+      puzzle: {
+        fen: randomPuzzle.FEN,
+        solution: randomPuzzle.Moves.split(' '),
+        rating: randomPuzzle.Rating,
+        themes: randomPuzzle.Themes,
+        evalScore: randomPuzzle.EvalScore
+      }
+    };
   }
-  
-  
   const randomPuzzle = filtered[Math.floor(Math.random() * filtered.length)];
-  
   return {
     puzzle: {
       fen: randomPuzzle.FEN,
       solution: randomPuzzle.Moves.split(' '),
       rating: randomPuzzle.Rating,
-      themes: randomPuzzle.Themes
+      themes: randomPuzzle.Themes,
+      evalScore: randomPuzzle.EvalScore
     }
   };
 }
+
   let chess = new Chess();
   let board = null;
   let currentPuzzle = null;
@@ -171,26 +142,42 @@ async function getRandomPuzzleFromDatabase() {
       pieceTheme: function(piece) {
         return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png';
       },
-      onDragStart: function(source, piece, position, orientation)
-      {
+      onDragStart: function(source, piece, position, orientation){
         if (chess.turn()!== piece.charAt(0)) return false
         if (chess.moves({square:source}).length===0) return false
       },
       onDrop: function(source,target){
         const move = chess.move({ from:source, to:target, promotion:"q" })
         if (!move) return 'snapback'
-
         const correctMove = (currentPuzzle && currentPuzzle.puzzle && currentPuzzle.puzzle.solution)
           ? currentPuzzle.puzzle.solution[solutionIndex] : null
         const userMove = move.from + move.to + (move.promotion || '')
-
         if (correctMove && userMove===correctMove){
           clearHints();
           addMoveToHistory(userMove, true);
           solutionIndex++
           board.position(chess.fen(), false)
           showToast('Correct move!', 'success')
-          if (solutionIndex >= currentPuzzle.puzzle.solution.length){
+          if (solutionIndex < currentPuzzle.puzzle.solution.length){
+            setTimeout(() => {
+              const opponentMove = currentPuzzle.puzzle.solution[solutionIndex];
+              const from = opponentMove.substring(0, 2);
+              const to = opponentMove.substring(2, 4);
+              const promotion = opponentMove.length > 4 ? opponentMove.substring(4) : undefined;
+              const autoMove = chess.move({ from, to, promotion: promotion || 'q' });
+              if (autoMove) {
+                addMoveToHistory(opponentMove, true);
+                solutionIndex++;
+                board.position(chess.fen(), true);
+                if (solutionIndex >= currentPuzzle.puzzle.solution.length){
+                  setTimeout(() => {
+                    showToast('Puzzle solved! Loading next...', 'success')
+                    loadPuzzle()
+                  }, 800)
+                }
+              }
+            }, 350);
+          } else {
             setTimeout(() => {
               showToast('Puzzle solved! Loading next...', 'success')
               loadPuzzle()
@@ -223,23 +210,18 @@ async function getRandomPuzzleFromDatabase() {
     if (!data) {
       data = await fetchPuzzle()
     }
-  
     if (!data){ 
       showToast('Failed to load puzzle. Please try again.', 'error')
       return
     }
-  
     currentPuzzle = data
     chess = new Chess()
-  
-    
     if (!data.puzzle.solution || data.puzzle.solution.length === 0) {
       console.error('No valid solution found for puzzle');
       showToast('Puzzle error. Trying another puzzle...', 'error');
       setTimeout(() => loadPuzzle(), 1000);
       return;
     }
-    
     try { 
       chess.load(data.puzzle.fen)
     } catch(e){ 
@@ -247,13 +229,34 @@ async function getRandomPuzzleFromDatabase() {
       showToast('Failed to load puzzle. Please try again.', 'error')
       return
     }
-  
     solutionIndex = 0
-  
     initBoardIfNeeded()
+    const evalScore = data.puzzle.evalScore;
+    let winningSide = 'white';
+    if (evalScore !== undefined && evalScore !== null) {
+      winningSide = evalScore > 0 ? 'white' : 'black';
+    }
+    const sideToMove = chess.turn() === 'w' ? 'white' : 'black';
+    console.log('Puzzle setup:', { 
+      evalScore, 
+      winningSide, 
+      sideToMove,
+      firstMove: data.puzzle.solution[0]
+    });
+    if (sideToMove !== winningSide) {
+      console.log('Auto-playing first move (losing side):', data.puzzle.solution[0]);
+      const firstMove = data.puzzle.solution[0];
+      const from = firstMove.substring(0, 2);
+      const to = firstMove.substring(2, 4);
+      const promotion = firstMove.length > 4 ? firstMove.substring(4) : undefined;
+      const move = chess.move({ from, to, promotion: promotion || 'q' });
+      if (move) {
+        solutionIndex++;
+      }
+    }
+    board.orientation(winningSide);
     board.position(chess.fen(), true)
     updatePuzzleInfo(data.puzzle, chess.fen());
-  
     console.log('Full puzzle object:', data.puzzle)
     console.log('Puzzle rating:',  data.puzzle.rating )
     console.log('Solution moves:', data.puzzle.solution)
@@ -261,15 +264,11 @@ async function getRandomPuzzleFromDatabase() {
   }
   
   function showHint() {
-    
     if (!currentPuzzle || !currentPuzzle.puzzle.solution) return;
-    
     const nextMove = currentPuzzle.puzzle.solution[solutionIndex];
     if (!nextMove) return;
-    
     const fromSquare = nextMove.substring(0, 2);
     const toSquare = nextMove.substring(2, 4);
-    
     if (hintLevel === 0) {
       board.removeGreySquares();
       board.greySquare(fromSquare);
@@ -285,7 +284,6 @@ async function getRandomPuzzleFromDatabase() {
       hintLevel = 0;
     }
   }
-  
 
 function clearHints() {
   if (board) { 
@@ -294,12 +292,10 @@ function clearHints() {
   hintLevel = 0;
 }
 
-
 const hintBtn = document.getElementById('hintBtn');
 if (hintBtn) {
   hintBtn.addEventListener('click', showHint);
 }
-
 
 const nextBtn = document.getElementById('nextPuzzleBtn');
 if (nextBtn) { 
@@ -315,6 +311,7 @@ const chatSend = document.getElementById('chatSend');
 coachBtn.addEventListener('click', () => {
   chatPopup.classList.toggle('hidden');
 });
+
 let isOpen = false;
 
 function toggleChat() {
@@ -331,22 +328,17 @@ coachBtn.addEventListener('click', toggleChat);
 chatSend.addEventListener('click', async () => {
   const question = chatInput.value.trim();
   if (!question) return;
-
- 
   const userMsg = document.createElement('div');
   userMsg.classList.add('user');
   userMsg.innerHTML = `<strong>You:</strong> ${question}`;
   chatMessages.appendChild(userMsg);
   chatMessages.scrollTop = chatMessages.scrollHeight;
   chatInput.value = "";
-
- 
   const aiMsg = document.createElement('div');
   aiMsg.classList.add('ai');
   aiMsg.innerHTML = `<strong>Coach:</strong> Coach is thinking...`;
   chatMessages.appendChild(aiMsg);
   chatMessages.scrollTop = chatMessages.scrollHeight;
-
   try {
     const fen = chess.fen();
     const res = await fetch(`/api/getHint?fen=${fen}&userMove=&stockfishMove=&question=${encodeURIComponent(question)}&solutionMove=${currentPuzzle.puzzle.solution[solutionIndex]}&puzzleType=${currentPuzzle.puzzle.themes}`);
@@ -355,15 +347,12 @@ chatSend.addEventListener('click', async () => {
   } catch (e) {
     aiMsg.innerHTML = `<strong>Coach:</strong> Error getting hint`;
   }
-
   chatMessages.scrollTop = chatMessages.scrollHeight;
 });
-
 
 chatInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') chatSend.click();
 });
-
 
 await loadPuzzle();
 })

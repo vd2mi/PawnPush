@@ -9,8 +9,9 @@ PawnPush is an interactive chess puzzle platform designed to help players improv
 - **Multiple difficulty levels**: Beginner, Intermediate, Advanced, Grand Master
 - **Various position types**: Opening, Middlegame, Endgame, Checkmate
 - **Daily puzzles** with fresh content from Lichess API
-- **Over 50,000 puzzles** stored in a comprehensive database
+- **Over 50,000 pre-evaluated puzzles** with optimal side selection
 - **Interactive chessboard** with smooth drag-and-drop functionality
+- **Smart puzzle orientation** - always play from the winning side
 
 ### 🤖 **AI-Powered Learning**
 - **Smart hint system** powered by GPT-4 API
@@ -26,10 +27,11 @@ PawnPush is an interactive chess puzzle platform designed to help players improv
 - **Direct puzzle access** - no account required
 
 ### 🎮 **Game Modes**
-- **Regular puzzles** with difficulty filtering
-- **Daily puzzle** with fresh content
-- **Game review** with position analysis
-- **Hint system** with multiple levels of assistance
+- **Puzzle Mode** - Practice with filtered puzzles, automatic opponent moves
+- **Survival Mode** - Test your skills with lives system and progressive difficulty
+- **Daily Puzzle** - Fresh challenge from Lichess every day
+- **Game Review** - Analyze your games position by position
+- **Automatic Opponent Responses** - Computer plays opponent moves seamlessly
 
 ## 🛠️ Technologies Used
 
@@ -49,8 +51,6 @@ PawnPush/
 ├── api/
 │   └── getHint.js            # Serverless API for AI hints
 │
-├── stockfish/                 # Chess engine integration
-│   └── README.md
 │
 ├── index.html                 # Main landing page
 ├── puzzle.html                # Regular puzzle interface
@@ -63,8 +63,7 @@ PawnPush/
 ├── game-review.js             # Game analysis features
 │
 ├── style.css                  # Modern CSS styling
-├── puzzles.json               # 50,000+ puzzle database
-├── puzzle_summary.json        # Puzzle metadata
+├── puzzles.json               # 50,000+ pre-evaluated puzzle database
 ├── package.json               # NPM dependencies
 └── README.md                  # This file
 ```
@@ -131,10 +130,12 @@ Visit [https://pawn-push.vercel.app](https://pawn-push.vercel.app) to start solv
 ## 🔧 How It Works
 
 ### **Puzzle System**
-- **Database**: 50,000+ puzzles stored locally for instant access
+- **Database**: 50,000+ puzzles with pre-computed evaluations
 - **Daily Updates**: Fresh puzzles from Lichess API
 - **Smart Filtering**: Puzzles categorized by difficulty and position type
 - **Move Validation**: Real-time validation using chess.js
+- **Intelligent Orientation**: All puzzles evaluated to ensure users play the winning side
+- **Seamless Gameplay**: Computer automatically plays opponent responses
 
 ### **AI Integration**
 - **GPT-4 API**: Powers the intelligent hint system and coaching chat

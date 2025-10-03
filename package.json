@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
+    "chess.js": "^1.4.0",
     "node-fetch": "^3.3.2"
   },
   "main": "IndexScript.js",
