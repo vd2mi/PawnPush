@@ -46,13 +46,17 @@
             <span class="info-label">Score</span>
             <span class="info-value" id="score-value">0</span>
           </div>
+          <div id="survival-streak" class="info-card">
+            <span class="info-label">Puzzle Streak</span>
+            <span class="info-value" id="streak-value">0 🔥</span>
+          </div>
           <div id="survival-lives" class="info-card">
             <span class="info-label">Lives</span>
             <span class="info-value" id="lives-value">❤️❤️❤️</span>
           </div>
           <div id="puzzle-rating" class="info-card">
-            <span class="info-label">Rating</span>
-            <span class="info-value" id="rating-value">--</span>
+            <span class="info-label">Target ELO</span>
+            <span class="info-value" id="rating-value">800</span>
           </div>
           <div id="turn-indicator" class="info-card turn-card">
             <span class="info-label">Turn</span>
@@ -77,10 +81,6 @@
           <h3>Actions</h3>
         </div>
         <div class="action-buttons">
-          <button id="hintBtn" class="action-btn hint-btn">
-            <span class="btn-icon">💡</span>
-            <span class="btn-text">Get Hint</span>
-          </button>
           <button id="restartBtn" class="action-btn back-btn">
             <span class="btn-icon">🔁</span>
             <span class="btn-text">Restart</span>
@@ -110,6 +110,71 @@
   </div>
 
 </main>
+
+<!-- Game Over Template -->
+<template id="game-over-template">
+  <div style="text-align: left; margin: 20px 0;">
+    <div style="text-align: center; margin-bottom: 20px;">
+      <h2 id="go-title" style="font-size: 2em; margin: 10px 0; color: #f39c12;">Game Over!</h2>
+    </div>
+    
+    <div style="background: rgba(0,0,0,0.1); padding: 15px; border-radius: 10px; margin-bottom: 15px;">
+      <h3 style="margin: 0 0 10px 0; color: #3498db;">📊 Your Performance</h3>
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr style="border-bottom: 1px solid rgba(0,0,0,0.1);">
+          <td style="padding: 8px 0;"><strong>Puzzles Solved:</strong></td>
+          <td id="go-score" style="text-align: right; font-size: 1.2em; color: #27ae60;"><strong>0</strong></td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(0,0,0,0.1);">
+          <td style="padding: 8px 0;"><strong>Final ELO:</strong></td>
+          <td id="go-elo" style="text-align: right; font-size: 1.2em; color: #e74c3c;"><strong>800</strong></td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(0,0,0,0.1);">
+          <td style="padding: 8px 0;"><strong>ELO Gained:</strong></td>
+          <td id="go-elo-gained" style="text-align: right; color: #9b59b6;"><strong>+0</strong></td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(0,0,0,0.1);">
+          <td style="padding: 8px 0;"><strong>Time Played:</strong></td>
+          <td id="go-time" style="text-align: right;">0s</td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(0,0,0,0.1);">
+          <td style="padding: 8px 0;"><strong>Accuracy:</strong></td>
+          <td id="go-accuracy" style="text-align: right;"><strong>0%</strong></td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(0,0,0,0.1);">
+          <td style="padding: 8px 0;"><strong>Total Moves:</strong></td>
+          <td id="go-moves" style="text-align: right;">0 (0 ✓ / 0 ✗)</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0;"><strong>Best Puzzle Streak:</strong></td>
+          <td id="go-streak" style="text-align: right; color: #f39c12;"><strong>0 🔥</strong></td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="background: rgba(52, 152, 219, 0.1); padding: 15px; border-radius: 10px; border: 2px solid #3498db;">
+      <h3 style="margin: 0 0 10px 0; color: #3498db;">🏆 Personal Best</h3>
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr style="border-bottom: 1px solid rgba(52, 152, 219, 0.2);">
+          <td style="padding: 8px 0;"><strong>Highest ELO:</strong></td>
+          <td id="go-best-elo" style="text-align: right; font-size: 1.1em; color: #e74c3c;"><strong>800</strong></td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(52, 152, 219, 0.2);">
+          <td style="padding: 8px 0;"><strong>Best Score:</strong></td>
+          <td id="go-best-score" style="text-align: right;">0 puzzles</td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(52, 152, 219, 0.2);">
+          <td style="padding: 8px 0;"><strong>Best Puzzle Streak:</strong></td>
+          <td id="go-best-streak" style="text-align: right;">0 🔥</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0;"><strong>Set On:</strong></td>
+          <td id="go-best-date" style="text-align: right;">Today</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</template>
 
 <script src="survival.js"></script>
 </body>
