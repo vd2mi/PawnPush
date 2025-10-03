@@ -1,4 +1,4 @@
-function showToast(message, type = 'info') {
+function showToast(message, type = 'info', duration = 2000) {
   const existingToast = document.querySelector('.toast');
   if (existingToast) {
     existingToast.remove();
@@ -11,7 +11,52 @@ function showToast(message, type = 'info') {
   setTimeout(() => {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 300);
-  }, 2000);
+  }, duration);
+}
+
+function animateHeartLoss() {
+  const livesEl = document.getElementById('lives-value');
+  if (livesEl) {
+    livesEl.style.animation = 'heartShake 0.5s ease-in-out';
+    livesEl.style.filter = 'drop-shadow(0 0 8px rgba(255, 0, 0, 0.8))';
+    
+    setTimeout(() => {
+      livesEl.style.animation = 'heartFlash 0.3s ease';
+    }, 200);
+    
+    setTimeout(() => {
+      livesEl.style.animation = '';
+      livesEl.style.filter = '';
+    }, 600);
+  }
+}
+
+if (!document.getElementById('heart-animations')) {
+  const style = document.createElement('style');
+  style.id = 'heart-animations';
+  style.textContent = `
+    @keyframes heartShake {
+      0%, 100% { transform: translateX(0) scale(1); }
+      10%, 30%, 50%, 70%, 90% { transform: translateX(-3px) scale(1.15); }
+      20%, 40%, 60%, 80% { transform: translateX(3px) scale(1.15); }
+    }
+    
+    @keyframes heartFlash {
+      0%, 100% { 
+        filter: drop-shadow(0 0 8px rgba(255, 0, 0, 0.8)) brightness(1);
+      }
+      50% { 
+        filter: drop-shadow(0 0 15px rgba(255, 0, 0, 1)) brightness(1.5);
+      }
+    }
+    
+    @keyframes heartBreak {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.3) rotate(-5deg); opacity: 0.7; }
+      100% { transform: scale(0.9) rotate(0deg); opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
 }
 
 function updatePuzzleInfo(puzzle, fen, score, lives, targetElo, streak) {
@@ -30,9 +75,10 @@ function updatePuzzleInfo(puzzle, fen, score, lives, targetElo, streak) {
     streakEl.textContent = `${streak} 🔥`;
   }
   
+  const livesEl = document.getElementById('lives-value');
   const redHearts = '❤️'.repeat(lives);
   const grayHearts = '🖤'.repeat(3 - lives);
-  document.getElementById('lives-value').textContent = redHearts + grayHearts;
+  livesEl.textContent = redHearts + grayHearts;
   
   document.getElementById('rating-value').textContent = targetElo;
   
@@ -175,7 +221,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     if (currentStreak > bestStreak) {
                       bestStreak = currentStreak;
                       if (currentStreak >= 3) {
-                        showToast(`🔥 ${currentStreak} puzzle streak! 🔥`, 'success');
+                        showToast(`🔥 ${currentStreak} puzzle streak! 🔥`, 'success', 3500);
                       }
                     }
                     const increment = eloIncrement();
@@ -195,7 +241,7 @@ document.addEventListener("DOMContentLoaded", async () => {
               if (currentStreak > bestStreak) {
                 bestStreak = currentStreak;
                 if (currentStreak >= 3) {
-                  showToast(`🔥 ${currentStreak} puzzle streak! 🔥`, 'success');
+                  showToast(`🔥 ${currentStreak} puzzle streak! 🔥`, 'success', 3500);
                 }
               }
               const increment = eloIncrement();
@@ -215,14 +261,16 @@ document.addEventListener("DOMContentLoaded", async () => {
           board.position(chess.fen(), false);
           lives--;
           
+          animateHeartLoss();
+          
           if (lives <= 0) {
             gameOver = true;
-            showToast(`Game Over! Final Score: ${score}`, 'error');
+            showToast(`Game Over! Final Score: ${score}`, 'error', 3000);
             setTimeout(() => {
               showGameOverScreen();
             }, 500);
           } else {
-            showToast(`Wrong move! Lives remaining: ${lives}`, 'error');
+            showToast(`Wrong move! Lives remaining: ${lives}`, 'error', 3000);
             updatePuzzleInfo(currentPuzzle.puzzle, chess.fen(), score, lives, currentElo, currentStreak);
           }
           
