@@ -1,3 +1,19 @@
+const sounds = {
+  move: new Audio('audio/move.mp3'),
+  capture: new Audio('audio/capture.mp3'),
+  castle: new Audio('audio/castle.mp3'),
+  check: new Audio('audio/move-check.mp3'),
+  wrong: new Audio('audio/wrong.mp3'),
+  solved: new Audio('audio/solved.mp3')
+};
+
+function playSound(soundName) {
+  if (sounds[soundName]) {
+    sounds[soundName].currentTime = 0;
+    sounds[soundName].play().catch(e => console.log('Audio play failed:', e));
+  }
+}
+
 function showToast(message, type = 'info') {
   const existingToast = document.querySelector('.toast');
   if (existingToast) {
@@ -150,6 +166,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         const userMove = move.from + move.to + (move.promotion || '')
 
         if (correctMove && userMove === correctMove){
+          if (chess.in_check()) {
+            playSound('check');
+          } else if (move.flags.includes('k') || move.flags.includes('q')) {
+            playSound('castle');
+          } else if (move.captured) {
+            playSound('capture');
+          } else {
+            playSound('move');
+          }
           clearHints();
           addMoveToHistory(userMove, true);
           solutionIndex++
@@ -158,10 +183,12 @@ document.addEventListener("DOMContentLoaded", async () => {
           if (solutionIndex >= currentPuzzle.puzzle.solution.length){
             puzzleSolved = true
             setTimeout(() => {
+              playSound('solved');
               showToast('Daily puzzle solved! 🎉', 'success')
             }, 800)
           }
         } else {
+          playSound('wrong');
           addMoveToHistory(userMove, false);
           chess.undo()
           board.position(chess.fen(), false)

@@ -1,3 +1,18 @@
+const sounds = {
+  move: new Audio('audio/move.mp3'),
+  capture: new Audio('audio/capture.mp3'),
+  castle: new Audio('audio/castle.mp3'),
+  check: new Audio('audio/move-check.mp3'),
+  wrong: new Audio('audio/wrong.mp3')
+};
+
+function playSound(soundName) {
+  if (sounds[soundName]) {
+    sounds[soundName].currentTime = 0;
+    sounds[soundName].play().catch(e => console.log('Audio play failed:', e));
+  }
+}
+
 function showToast(message, type = 'info') {
   const existingToast = document.querySelector('.toast');
   if (existingToast) {
@@ -59,6 +74,16 @@ function onDrop(source, target) {
   });
 
   if (move === null) return 'snapback';
+
+  if (chess.in_check()) {
+    playSound('check');
+  } else if (move.flags.includes('k') || move.flags.includes('q')) {
+    playSound('castle');
+  } else if (move.captured) {
+    playSound('capture');
+  } else {
+    playSound('move');
+  }
 
   gameHistory = gameHistory.slice(0, currentMoveIndex + 1);
   gameHistory.push(chess.fen());

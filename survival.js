@@ -1,3 +1,19 @@
+const sounds = {
+  move: new Audio('audio/move.mp3'),
+  capture: new Audio('audio/capture.mp3'),
+  castle: new Audio('audio/castle.mp3'),
+  check: new Audio('audio/move-check.mp3'),
+  wrong: new Audio('audio/wrong.mp3'),
+  solved: new Audio('audio/solved.mp3')
+};
+
+function playSound(soundName) {
+  if (sounds[soundName]) {
+    sounds[soundName].currentTime = 0;
+    sounds[soundName].play().catch(e => console.log('Audio play failed:', e));
+  }
+}
+
 function showToast(message, type = 'info', duration = 2000) {
   const existingToast = document.querySelector('.toast');
   if (existingToast) {
@@ -194,6 +210,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         const userMove = move.from + move.to + (move.promotion || '');
         
         if (correctMove && userMove === correctMove){
+          if (chess.in_check()) {
+            playSound('check');
+          } else if (move.flags.includes('k') || move.flags.includes('q')) {
+            playSound('castle');
+          } else if (move.captured) {
+            playSound('capture');
+          } else {
+            playSound('move');
+          }
           addMoveToHistory(userMove, true);
           totalMoves++;
           correctMoves++;
@@ -210,12 +235,22 @@ document.addEventListener("DOMContentLoaded", async () => {
               const autoMove = chess.move({ from, to, promotion: promotion || 'q' });
               
               if (autoMove) {
+                if (chess.in_check()) {
+                  playSound('check');
+                } else if (autoMove.flags.includes('k') || autoMove.flags.includes('q')) {
+                  playSound('castle');
+                } else if (autoMove.captured) {
+                  playSound('capture');
+                } else {
+                  playSound('move');
+                }
                 addMoveToHistory(opponentMove, true);
                 solutionIndex++;
                 board.position(chess.fen(), true);
                 
                 if (solutionIndex >= currentPuzzle.puzzle.solution.length){
                   setTimeout(() => {
+                    playSound('solved');
                     score++;
                     currentStreak++;
                     if (currentStreak > bestStreak) {
@@ -236,6 +271,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             }, 350);
           } else {
             setTimeout(() => {
+              playSound('solved');
               score++;
               currentStreak++;
               if (currentStreak > bestStreak) {
@@ -253,6 +289,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             }, 800);
           }
         } else {
+          playSound('wrong');
           addMoveToHistory(userMove, false);
           totalMoves++;
           incorrectMoves++;
