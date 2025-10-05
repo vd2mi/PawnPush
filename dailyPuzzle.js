@@ -200,7 +200,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     board.greySquare = function(square) {
       const squareEl = document.querySelector(`.square-${square}`);
       if (squareEl) {
-        squareEl.style.backgroundColor = 'rgba(48, 74, 160, 0.6)';
+        squareEl.style.backgroundColor = 'rgba(255, 251, 41, 0.85)';
       }
     };
     board.removeGreySquares = function() {

@@ -55,34 +55,47 @@
         <button id="diff-beginner">Beginner</button>
         <button id="diff-intermediate">Intermediate</button>
         <button id="diff-advanced">Advanced</button>
-        <button id="diff-grandmaster">Grand Master</button>
+        <button id="diff-grandmaster">GrandMaster</button>
       </div>
     </section>
 
     <section id="position-section">
-      <h2>Select Position Type</h2>
+      <h2>Select Position</h2>
       <div class="button-row">
         <button id="pos-opening">Opening</button>
-        <button id="pos-middlegame">Middlegame</button>
-        <button id="pos-endgame">Endgame</button>
-        <button id="pos-checkmate">Checkmate</button>
+        <button id="pos-middlegame">MiddleGame</button>
+        <button id="pos-endgame">EndGame</button>
+        <button id="pos-checkmate">CheckMate</button>
       </div>
     </section>
 
-    <div class="main-buttons">
-      <button id="startSolvingBtn">Start Solving!</button>
-      <div class="or-divider">OR</div>
-      <button id="dailyPuzzleBtn" class="daily-puzzle-btn">
-        <span class="btn-icon">🎯</span>
-        <span class="btn-text">Solve Daily Puzzle</span>
+    <button id="startSolvingBtn">Start Solving!</button>
+    
+    <div class="game-modes-grid">
+      <button id="dailyPuzzleBtn" class="mode-card daily-mode">
+        <div class="mode-icon">📅</div>
+        <div class="mode-content">
+          <div class="mode-title">Daily Puzzle</div>
+          <div class="mode-desc">Fresh challenge every day</div>
+        </div>
       </button>
-      <button id="survivalBtn" class="survival-btn">
-        <span class="btn-icon">♾️</span>
-        <span class="btn-text">Survival Puzzle Rush!(DEMO)</span>
+      
+      <button id="survivalBtn" class="mode-card survival-mode">
+        <div class="mode-icon">♾️</div>
+        <div class="mode-content">
+          <div class="mode-title">Survival Rush</div>
+          <div class="mode-desc">3 lives, climb the ladder</div>
+        </div>
+      </button>
+      
+      <button id="gamereviewBtn" class="mode-card review-mode">
+        <div class="mode-icon">🔍</div>
+        <div class="mode-content">
+          <div class="mode-title">Game Review</div>
+          <div class="mode-desc">Analyze your games</div>
+        </div>
       </button>
     </div>
-    
-    <button id="gamereviewBtn">Game review!</button>
   </main>
 
   <script src="IndexScript.js"></script>
