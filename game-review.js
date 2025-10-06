@@ -1,15 +1,7 @@
-const sounds = {
-  move: new Audio('audio/move.mp3'),
-  capture: new Audio('audio/capture.mp3'),
-  castle: new Audio('audio/castle.mp3'),
-  check: new Audio('audio/move-check.mp3'),
-  wrong: new Audio('audio/wrong.mp3')
-};
-
+// Audio is now managed by  AudioManagerfile
 function playSound(soundName) {
-  if (sounds[soundName]) {
-    sounds[soundName].currentTime = 0;
-    sounds[soundName].play().catch(e => console.log('Audio play failed:', e));
+  if (window.audioManager) {
+    window.audioManager.playSound(soundName);
   }
 }
 
