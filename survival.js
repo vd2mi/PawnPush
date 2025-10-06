@@ -1,4 +1,5 @@
-import { collection, addDoc, getDocs, doc, updateDoc, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
+import { db } from "./api/firebase.js";
+import { collection, addDoc, getDocs, doc, updateDoc, query, orderBy, limit } from "firebase/firestore";
 
 function playSound(soundName) {
   if (window.audioManager) {
@@ -401,7 +402,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function getLeaderboard() {
     try {
-      const leaderboardRef = collection(window.db, 'leaderboard');
+      const leaderboardRef = collection(db, 'leaderboard');
       const q = query(leaderboardRef, orderBy('elo', 'desc'), orderBy('score', 'desc'), limit(10));
       const querySnapshot = await getDocs(q);
       
@@ -419,7 +420,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function addToLeaderboard(score, elo, streak, playerName) {
     try {
-      const leaderboardRef = collection(window.db, 'leaderboard');
+      const leaderboardRef = collection(db, 'leaderboard');
       
       // Check if player already exists
       const existingPlayer = await findPlayerByName(playerName);
@@ -427,7 +428,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (existingPlayer) {
         // Update existing player if new score is better
         if (elo > existingPlayer.elo || (elo === existingPlayer.elo && score > existingPlayer.score)) {
-          const playerRef = doc(window.db, 'leaderboard', existingPlayer.id);
+          const playerRef = doc(db, 'leaderboard', existingPlayer.id);
           await updateDoc(playerRef, {
             score: score,
             elo: elo,
@@ -459,7 +460,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function findPlayerByName(playerName) {
     try {
-      const leaderboardRef = collection(window.db, 'leaderboard');
+      const leaderboardRef = collection(db, 'leaderboard');
       const querySnapshot = await getDocs(leaderboardRef);
       
       let foundPlayer = null;
