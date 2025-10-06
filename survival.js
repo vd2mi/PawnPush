@@ -422,11 +422,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const leaderboardRef = collection(db, 'leaderboard');
       
-      // Check if player already exists
       const existingPlayer = await findPlayerByName(playerName);
       
       if (existingPlayer) {
-        // Update existing player if new score is better
         if (elo > existingPlayer.elo || (elo === existingPlayer.elo && score > existingPlayer.score)) {
           const playerRef = doc(db, 'leaderboard', existingPlayer.id);
           await updateDoc(playerRef, {
@@ -441,7 +439,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           return { success: true, updated: false, message: 'Score not better than existing' };
         }
       } else {
-        // Add new player
         await addDoc(leaderboardRef, {
           name: playerName,
           score: score,

@@ -4,7 +4,7 @@ import { getFirestore } from "firebase/firestore";
 import { getAnalytics } from "firebase/analytics";
 
 const firebaseConfig = {
-  apiKey: "YOUR_FIREBASE_API_KEY",
+  apiKey: "AIzaSyBz6YA8veeDSY-naBqYdafJbcnfsnDi3EY",
   authDomain: "pawnpush-leaderboard.firebaseapp.com",
   projectId: "pawnpush-leaderboard",
   storageBucket: "pawnpush-leaderboard.appspot.com",
