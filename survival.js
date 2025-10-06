@@ -1,5 +1,5 @@
 import { db } from "./api/firebase.js";
-import { collection, addDoc, getDocs, doc, updateDoc, query, orderBy, limit } from "firebase/firestore";
+import { collection, addDoc, getDocs, doc, updateDoc, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
 
 function playSound(soundName) {
   if (window.audioManager) {
