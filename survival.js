@@ -1,10 +1,11 @@
-  // Audio is now managed by  AudioManagerfile
+import { db } from "./api/firebase.js";
+import { collection, addDoc, getDocs, doc, updateDoc, query, orderBy, limit } from "firebase/firestore";
+
 function playSound(soundName) {
   if (window.audioManager) {
     window.audioManager.playSound(soundName);
   }
 }
-
 function showToast(message, type = 'info', duration = 2000) {
   const existingToast = document.querySelector('.toast');
   if (existingToast) {
@@ -384,76 +385,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     return false;
   }
 
-  function getLeaderboard() {
-    const saved = localStorage.getItem('survivalLeaderboard');
-    return saved ? JSON.parse(saved) : [];
-  }
-
-  function saveLeaderboard(leaderboard) {
-    localStorage.setItem('survivalLeaderboard', JSON.stringify(leaderboard));
-  }
-
-  function addToLeaderboard(score, elo, streak, playerName) {
-    const leaderboard = getLeaderboard();
-    const newEntry = {
-      name: playerName,
-      score: score,
-      elo: elo,
-      streak: streak,
-      date: new Date().toLocaleDateString()
-    };
-
-    const filteredLeaderboard = leaderboard.filter(entry => entry.name !== playerName);
-    
-    filteredLeaderboard.push(newEntry);
-    
-    filteredLeaderboard.sort((a, b) => {
-      if (b.elo !== a.elo) return b.elo - a.elo;
-      return b.score - a.score;
-    });
-    
-    const topTen = filteredLeaderboard.slice(0, 10);
-    
-    saveLeaderboard(topTen);
-    return topTen;
-  }
-
-  function isNewLeaderboardEntry(score, elo) {
-    const leaderboard = getLeaderboard();
-    
-    if (leaderboard.length < 10) return true;
-    
-    const lowestEntry = leaderboard[leaderboard.length - 1];
-    return elo > lowestEntry.elo || (elo === lowestEntry.elo && score > lowestEntry.score);
-  }
-
-  function getCurrentPlayerName() {
-    return localStorage.getItem('survivalPlayerName') || null;
-  }
-
-  function setCurrentPlayerName(name) {
-    localStorage.setItem('survivalPlayerName', name);
-  }
-
-  function hasPlayerInLeaderboard() {
-    const playerName = getCurrentPlayerName();
-    if (!playerName) return false;
-    
-    const leaderboard = getLeaderboard();
-    return leaderboard.some(entry => entry.name === playerName);
-  }
-
-  function shouldUpdatePlayerScore(score, elo) {
-    const playerName = getCurrentPlayerName();
-    if (!playerName) return false;
-    
-    const leaderboard = getLeaderboard();
-    const playerEntry = leaderboard.find(entry => entry.name === playerName);
-    
-    if (!playerEntry) return false;
-    
-    return elo > playerEntry.elo || (elo === playerEntry.elo && score > playerEntry.score);
-  }
 
   function formatTime(ms) {
     const seconds = Math.floor(ms / 1000);
@@ -469,45 +400,146 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  async function getLeaderboard() {
+    try {
+      const leaderboardRef = collection(db, 'leaderboard');
+      const q = query(leaderboardRef, orderBy('elo', 'desc'), orderBy('score', 'desc'), limit(10));
+      const querySnapshot = await getDocs(q);
+      
+      const leaderboard = [];
+      querySnapshot.forEach((doc) => {
+        leaderboard.push({ id: doc.id, ...doc.data() });
+      });
+      
+      return leaderboard;
+    } catch (error) {
+      console.error('Error getting leaderboard:', error);
+      return [];
+    }
+  }
+
+  async function addToLeaderboard(score, elo, streak, playerName) {
+    try {
+      const leaderboardRef = collection(db, 'leaderboard');
+      
+      // Check if player already exists
+      const existingPlayer = await findPlayerByName(playerName);
+      
+      if (existingPlayer) {
+        // Update existing player if new score is better
+        if (elo > existingPlayer.elo || (elo === existingPlayer.elo && score > existingPlayer.score)) {
+          const playerRef = doc(db, 'leaderboard', existingPlayer.id);
+          await updateDoc(playerRef, {
+            score: score,
+            elo: elo,
+            streak: Math.max(streak, existingPlayer.streak),
+            date: new Date().toLocaleDateString(),
+            timestamp: new Date()
+          });
+          return { success: true, updated: true };
+        } else {
+          return { success: true, updated: false, message: 'Score not better than existing' };
+        }
+      } else {
+        // Add new player
+        await addDoc(leaderboardRef, {
+          name: playerName,
+          score: score,
+          elo: elo,
+          streak: streak,
+          date: new Date().toLocaleDateString(),
+          timestamp: new Date()
+        });
+        return { success: true, updated: false, message: 'New player added' };
+      }
+    } catch (error) {
+      console.error('Error adding to leaderboard:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async function findPlayerByName(playerName) {
+    try {
+      const leaderboardRef = collection(db, 'leaderboard');
+      const querySnapshot = await getDocs(leaderboardRef);
+      
+      let foundPlayer = null;
+      querySnapshot.forEach((doc) => {
+        if (doc.data().name === playerName) {
+          foundPlayer = { id: doc.id, ...doc.data() };
+        }
+      });
+      
+      return foundPlayer;
+    } catch (error) {
+      console.error('Error finding player:', error);
+      return null;
+    }
+  }
+
+  async function isNewLeaderboardEntry(score, elo) {
+    try {
+      const leaderboard = await getLeaderboard();
+      
+      if (leaderboard.length < 10) return true;
+      
+      const lowestEntry = leaderboard[leaderboard.length - 1];
+      return elo > lowestEntry.elo || (elo === lowestEntry.elo && score > lowestEntry.score);
+    } catch (error) {
+      console.error('Error checking leaderboard entry:', error);
+      return false;
+    }
+  }
+
+  function getCurrentPlayerName() {
+    return localStorage.getItem('survivalPlayerName') || null;
+  }
+
+  function setCurrentPlayerName(name) {
+    localStorage.setItem('survivalPlayerName', name);
+  }
+
   async function showGameOverScreen() {
     const endTime = Date.now();
     const timePlayed = endTime - startTime;
     const accuracy = totalMoves > 0 ? Math.round((correctMoves / totalMoves) * 100) : 0;
     const highScore = getHighScore();
     const isNewRecord = saveHighScore(score, currentElo, bestStreak);
-    const qualifiesForLeaderboard = isNewLeaderboardEntry(score, currentElo);
+    
+    const qualifiesForLeaderboard = await isNewLeaderboardEntry(score, currentElo);
     const playerName = getCurrentPlayerName();
-    const hasPlayer = hasPlayerInLeaderboard();
-    const shouldUpdate = shouldUpdatePlayerScore(score, currentElo);
     
     if (qualifiesForLeaderboard) {
-      if (playerName && hasPlayer && shouldUpdate) {
-        addToLeaderboard(score, currentElo, bestStreak, playerName);
+      if (playerName) {
+        const result = await addToLeaderboard(score, currentElo, bestStreak, playerName);
         
-        await Swal.fire({
-          title: '🏆 Score Updated!',
-          text: `Your leaderboard score has been updated! New best: ${score} puzzles with ELO ${currentElo}`,
-          icon: 'success',
-          confirmButtonText: 'Awesome!',
-          confirmButtonColor: '#27ae60'
-        });
-      } else if (playerName && hasPlayer) {
-      } else if (playerName && !hasPlayer) {
-        addToLeaderboard(score, currentElo, bestStreak, playerName);
-        
-        await Swal.fire({
-          title: '🏆 First Leaderboard Entry!',
-          text: `Congratulations! You made it to the leaderboard with ${score} puzzles and ELO ${currentElo}`,
-          icon: 'success',
-          confirmButtonText: 'Awesome!',
-          confirmButtonColor: '#27ae60'
-        });
+        if (result.success) {
+          if (result.updated) {
+            await Swal.fire({
+              title: '🏆 Score Updated!',
+              text: `Your global leaderboard score has been updated! New best: ${score} puzzles with ELO ${currentElo}`,
+              icon: 'success',
+              confirmButtonText: 'Awesome!',
+              confirmButtonColor: '#27ae60'
+            });
+          } else if (result.message === 'New player added') {
+            await Swal.fire({
+              title: '🏆 First Global Entry!',
+              text: `Congratulations! You made it to the global leaderboard with ${score} puzzles and ELO ${currentElo}`,
+              icon: 'success',
+              confirmButtonText: 'Awesome!',
+              confirmButtonColor: '#27ae60'
+            });
+          }
+        } else {
+          console.error('Failed to update leaderboard:', result.error);
+        }
       } else {
         const { value: newPlayerName } = await Swal.fire({
-          title: '🏆 New Leaderboard Entry!',
+          title: '🏆 Global Leaderboard Entry!',
           text: `Congratulations! You scored ${score} puzzles with ELO ${currentElo}`,
           input: 'text',
-          inputLabel: 'Enter your name for the leaderboard:',
+          inputLabel: 'Enter your name for the global leaderboard:',
           inputPlaceholder: 'Your name',
           inputValidator: (value) => {
             if (!value || value.trim().length === 0) {
@@ -527,7 +559,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (newPlayerName && newPlayerName.trim()) {
           const trimmedName = newPlayerName.trim();
           setCurrentPlayerName(trimmedName);
-          addToLeaderboard(score, currentElo, bestStreak, trimmedName);
+          
+          const result = await addToLeaderboard(score, currentElo, bestStreak, trimmedName);
+          if (result.success) {
+            await Swal.fire({
+              title: '🏆 Added to Global Leaderboard!',
+              text: `Welcome to the global leaderboard! You scored ${score} puzzles with ELO ${currentElo}`,
+              icon: 'success',
+              confirmButtonText: 'Awesome!',
+              confirmButtonColor: '#27ae60'
+            });
+          }
         }
       }
     }
@@ -538,7 +580,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const title = clone.getElementById('go-title');
     let titleText = 'Game Over!';
     if (isNewRecord) titleText = '🎉 NEW RECORD! 🎉';
-    else if (qualifiesForLeaderboard) titleText = '🏆 LEADERBOARD! 🏆';
+    else if (qualifiesForLeaderboard) titleText = '🏆 GLOBAL LEADERBOARD! 🏆';
     title.textContent = titleText;
     
     clone.getElementById('go-score').innerHTML = `<strong>${score}</strong>`;
@@ -683,40 +725,53 @@ document.addEventListener("DOMContentLoaded", async () => {
     leaderboardModal.classList.add('hidden');
   }
 
-  function updateLeaderboardDisplay() {
-    const leaderboard = getLeaderboard();
-    
-    if (leaderboard.length === 0) {
+  async function updateLeaderboardDisplay() {
+    try {
+      const leaderboard = await getLeaderboard();
+      
+      if (leaderboard.length === 0) {
+        leaderboardList.innerHTML = `
+          <div class="empty-leaderboard">
+            <span class="empty-icon">🏆</span>
+            <div>No entries yet!</div>
+            <div style="font-size: 14px; margin-top: 10px;">Be the first to make the global leaderboard!</div>
+          </div>
+        `;
+        return;
+      }
+
+      const entriesHtml = leaderboard.map((entry, index) => {
+        const rank = index + 1;
+        const rankClass = rank <= 3 ? `rank-${rank}` : '';
+        const top3Class = rank <= 3 ? 'top3' : '';
+        
+        return `
+          <div class="leaderboard-entry ${rankClass} ${top3Class}">
+            <div class="rank-badge">${rank}</div>
+            <div class="entry-info">
+              <div class="entry-name">${entry.name}</div>
+              <div class="entry-date">${entry.date}</div>
+            </div>
+            <div class="entry-stats">
+              <div class="entry-elo">${entry.elo}</div>
+              <div class="entry-score">${entry.score} puzzles</div>
+              <div class="entry-streak">${entry.streak} 🔥</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      leaderboardList.innerHTML = entriesHtml;
+    } catch (error) {
+      console.error('Error loading leaderboard:', error);
       leaderboardList.innerHTML = `
         <div class="empty-leaderboard">
-          <span class="empty-icon">🏆</span>
-          <div>No entries yet!</div>
-          <div style="font-size: 14px; margin-top: 10px;">Be the first to make the leaderboard!</div>
+          <span class="empty-icon">❌</span>
+          <div>Failed to load leaderboard</div>
+          <div style="font-size: 14px; margin-top: 10px;">Please try again later</div>
         </div>
       `;
-      return;
     }
-
-    leaderboardList.innerHTML = leaderboard.map((entry, index) => {
-      const rank = index + 1;
-      const rankClass = rank <= 3 ? `rank-${rank}` : '';
-      const top3Class = rank <= 3 ? 'top3' : '';
-      
-      return `
-        <div class="leaderboard-entry ${rankClass} ${top3Class}">
-          <div class="rank-badge">${rank}</div>
-          <div class="entry-info">
-            <div class="entry-name">${entry.name}</div>
-            <div class="entry-date">${entry.date}</div>
-          </div>
-          <div class="entry-stats">
-            <div class="entry-elo">${entry.elo}</div>
-            <div class="entry-score">${entry.score} puzzles</div>
-            <div class="entry-streak">${entry.streak} 🔥</div>
-          </div>
-        </div>
-      `;
-    }).join('');
   }
 
   leaderboardBtn.addEventListener('click', showLeaderboard);

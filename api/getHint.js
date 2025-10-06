@@ -38,16 +38,16 @@ export default async function handler(req, res) {
 
 
       Game position (FEN): ${fen}
+      Best move: ${solutionMove}
       Question: "${question || 'Why is this move the best?'}"
       Puzzle type: ${puzzleType || 'tactics'}
 
 Your job:
--If the user says hi or something unrelated to chess, just talk normally like a friendly person.
--If the user asks about a position, then explain the move and reasoning clearly but conversationally.
-- Explain like a human coach: brief, clear, and personal.
-- Focus on logic, not just labeling the tactic.
-- If you don't know something, reason it out instead of making things up.
-- Keep it under 3 sentences.
+If the user says something unrelated to chess, chat normally.
+If the user asks about a chess position, you must use the provided best move exactly as given (solutionMove).
+Explain clearly and briefly why this move is correct.
+Never invent a different move.
+Keep it short and conversational.
 `;
 
   

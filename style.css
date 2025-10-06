@@ -2027,7 +2027,6 @@ textarea:focus, input:focus {
     }
   }
 
-
 .leaderboard-floating-btn {
   position: fixed;
   bottom: 90px;
@@ -2129,6 +2128,13 @@ textarea:focus, input:focus {
   gap: 12px;
 }
 
+.loading-spinner {
+  text-align: center;
+  color: #bdc3c7;
+  padding: 40px 20px;
+  font-style: italic;
+}
+
 .leaderboard-entry {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 12px;
@@ -2138,6 +2144,7 @@ textarea:focus, input:focus {
   align-items: center;
   border-left: 4px solid #ffd700;
   transition: all 0.3s ease;
+  position: relative;
 }
 
 .leaderboard-entry:hover {
@@ -2267,3 +2274,4 @@ textarea:focus, input:focus {
     font-size: 16px;
   }
 }
+
