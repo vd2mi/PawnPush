@@ -427,6 +427,34 @@ document.addEventListener("DOMContentLoaded", async () => {
     return elo > lowestEntry.elo || (elo === lowestEntry.elo && score > lowestEntry.score);
   }
 
+  function getCurrentPlayerName() {
+    return localStorage.getItem('survivalPlayerName') || null;
+  }
+
+  function setCurrentPlayerName(name) {
+    localStorage.setItem('survivalPlayerName', name);
+  }
+
+  function hasPlayerInLeaderboard() {
+    const playerName = getCurrentPlayerName();
+    if (!playerName) return false;
+    
+    const leaderboard = getLeaderboard();
+    return leaderboard.some(entry => entry.name === playerName);
+  }
+
+  function shouldUpdatePlayerScore(score, elo) {
+    const playerName = getCurrentPlayerName();
+    if (!playerName) return false;
+    
+    const leaderboard = getLeaderboard();
+    const playerEntry = leaderboard.find(entry => entry.name === playerName);
+    
+    if (!playerEntry) return false;
+    
+    return elo > playerEntry.elo || (elo === playerEntry.elo && score > playerEntry.score);
+  }
+
   function formatTime(ms) {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
@@ -448,30 +476,59 @@ document.addEventListener("DOMContentLoaded", async () => {
     const highScore = getHighScore();
     const isNewRecord = saveHighScore(score, currentElo, bestStreak);
     const qualifiesForLeaderboard = isNewLeaderboardEntry(score, currentElo);
+    const playerName = getCurrentPlayerName();
+    const hasPlayer = hasPlayerInLeaderboard();
+    const shouldUpdate = shouldUpdatePlayerScore(score, currentElo);
+    
     if (qualifiesForLeaderboard) {
-      const { value: playerName } = await Swal.fire({
-        title: '🏆 New Leaderboard Entry!',
-        text: `Congratulations! You scored ${score} puzzles with ELO ${currentElo}`,
-        input: 'text',
-        inputLabel: 'Enter your name for the leaderboard:',
-        inputPlaceholder: 'Your name',
-        inputValidator: (value) => {
-          if (!value || value.trim().length === 0) {
-            return 'Please enter a name!';
-          }
-          if (value.length > 15) {
-            return 'Name must be 15 characters or less!';
-          }
-        },
-        showCancelButton: true,
-        cancelButtonText: 'Skip',
-        confirmButtonText: 'Submit',
-        confirmButtonColor: '#27ae60',
-        cancelButtonColor: '#95a5a6'
-      });
+      if (playerName && hasPlayer && shouldUpdate) {
+        addToLeaderboard(score, currentElo, bestStreak, playerName);
+        
+        await Swal.fire({
+          title: '🏆 Score Updated!',
+          text: `Your leaderboard score has been updated! New best: ${score} puzzles with ELO ${currentElo}`,
+          icon: 'success',
+          confirmButtonText: 'Awesome!',
+          confirmButtonColor: '#27ae60'
+        });
+      } else if (playerName && hasPlayer) {
+      } else if (playerName && !hasPlayer) {
+        addToLeaderboard(score, currentElo, bestStreak, playerName);
+        
+        await Swal.fire({
+          title: '🏆 First Leaderboard Entry!',
+          text: `Congratulations! You made it to the leaderboard with ${score} puzzles and ELO ${currentElo}`,
+          icon: 'success',
+          confirmButtonText: 'Awesome!',
+          confirmButtonColor: '#27ae60'
+        });
+      } else {
+        const { value: newPlayerName } = await Swal.fire({
+          title: '🏆 New Leaderboard Entry!',
+          text: `Congratulations! You scored ${score} puzzles with ELO ${currentElo}`,
+          input: 'text',
+          inputLabel: 'Enter your name for the leaderboard:',
+          inputPlaceholder: 'Your name',
+          inputValidator: (value) => {
+            if (!value || value.trim().length === 0) {
+              return 'Please enter a name!';
+            }
+            if (value.length > 15) {
+              return 'Name must be 15 characters or less!';
+            }
+          },
+          showCancelButton: true,
+          cancelButtonText: 'Skip',
+          confirmButtonText: 'Submit',
+          confirmButtonColor: '#27ae60',
+          cancelButtonColor: '#95a5a6'
+        });
 
-      if (playerName && playerName.trim()) {
-        addToLeaderboard(score, currentElo, bestStreak, playerName.trim());
+        if (newPlayerName && newPlayerName.trim()) {
+          const trimmedName = newPlayerName.trim();
+          setCurrentPlayerName(trimmedName);
+          addToLeaderboard(score, currentElo, bestStreak, trimmedName);
+        }
       }
     }
 

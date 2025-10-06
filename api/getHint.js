@@ -28,7 +28,7 @@ export default async function handler(req, res) {
         console.log('No OpenAI API key');
         return res.status(200).json({
           success: true,
-          hint: `The best move is ${solutionMove || 'unknown'}. OpenAI API key needed for detailed explanation.`,
+          hint: `The best move is always ${solutionMove}. Explain why, don’t guess any other move.`,
           bestMove: solutionMove || 'Unknown',
           explanation: 'API configuration needed'
         });
