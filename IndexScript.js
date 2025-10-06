@@ -73,31 +73,7 @@ async function loadDailyPuzzle() {
 
 document.addEventListener('DOMContentLoaded', () => {
   loadDailyPuzzle();
-  setupAudioControls();
 });
-
-function setupAudioControls() {
-  const audioEnableBtn = document.getElementById('audioEnableBtn');
-  
-  if (audioEnableBtn && window.audioManager) {
-    if (window.audioManager.mobileDevice && !window.audioManager.isAudioReady()) {
-      audioEnableBtn.style.display = 'inline-block';
-      
-      audioEnableBtn.addEventListener('click', () => {
-        window.audioManager.enableAudio();
-        audioEnableBtn.style.display = 'none';
-        
-        window.audioManager.playSound('move').then(success => {
-          if (success) {
-            console.log('Audio enabled successfully');
-          } else {
-            console.log('Audio still not working');
-          }
-        });
-      });
-    }
-  }
-}
 
 const dailyPuzzleBtn = document.getElementById('dailyPuzzleBtn');
 dailyPuzzleBtn.addEventListener('click', () => {

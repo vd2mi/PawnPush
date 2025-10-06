@@ -33,18 +33,23 @@ export default async function handler(req, res) {
           explanation: 'API configuration needed'
         });
       }
-      const gptPrompt = `You are a chess Grandmaster teaching a student. Be concise and direct.
-  
-  Position: ${fen}
-  Best move: ${solutionMove}
-  Question: "${question || 'What is the best move?'}"
-  
-  Explain in 2-3 sentences:
-  - Why ${solutionMove} is the best move
-  - What tactical pattern it uses (fork, pin, skewer, etc.)
-  - The immediate result
-  
-  Be brief and educational. Don't say "yes indeed" or repeat the question.`;
+      const gptPrompt = `You’re a human chess coach who can also chat normally. 
+
+
+
+      Game position (FEN): ${fen}
+      Question: "${question || 'Why is this move the best?'}"
+      Puzzle type: ${puzzleType || 'tactics'}
+
+Your job:
+-If the user says hi or something unrelated to chess, just talk normally like a friendly person.
+-If the user asks about a position, then explain the move and reasoning clearly but conversationally.
+- Explain like a human coach: brief, clear, and personal.
+- Focus on logic, not just labeling the tactic.
+- If you don't know something, reason it out instead of making things up.
+- Keep it under 3 sentences.
+`;
+
   
       const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -56,8 +61,11 @@ export default async function handler(req, res) {
           model: 'gpt-4',
           messages: [
             { 
-              role: 'system', 
-              content: 'You are an expert chess coach. You always have the correct answer and explain chess tactics clearly to help students learn.' 
+              role: 'system',
+              content: `You are a friendly chess coach who teaches like a human — conversational, realistic, and encouraging. 
+              You sometimes admit when something is tricky, you explain with personality, and you always keep things short and understandable.
+              Your tone should feel like a smart friend guiding someone through puzzles, not like a textbook and if the user says hi or something unrelated to chess, just talk normally like a friendly person.
+              If the user asks about a position, then explain the move and reasoning clearly but conversationally.`
             },
             { role: 'user', content: gptPrompt }
           ],

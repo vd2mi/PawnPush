@@ -35,6 +35,7 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 ### 🎮 **Game Modes**
 - **Puzzle Mode** - Practice with filtered puzzles, automatic opponent moves
 - **Survival Mode** - Test your skills with lives system and progressive difficulty  
+- **🏆 Survival Leaderboard** - Compete for top 10 spots with name entry and ranking system
 - **Daily Puzzle** - Fresh challenge from Lichess every day with purple theme
 - **Game Review** - Analyze your games position by position with AI insights
 - **Automatic Opponent Responses** - Computer plays opponent moves seamlessly
@@ -87,7 +88,7 @@ PawnPush/
 ├── PuzzleScript.js            # Regular puzzle logic with audio integration
 ├── dailyPuzzle.js             # Daily puzzle functionality with audio
 ├── game-review.js             # Game analysis features with audio
-├── survival.js                # Survival mode with lives system
+├── survival.js                # Survival mode with lives system and leaderboard
 │
 ├── style.css                  # Modern dark theme with purple accents
 ├── audio/                     # Sound effects directory
@@ -159,6 +160,7 @@ Visit [https://pawn-push.vercel.app](https://pawn-push.vercel.app) to start solv
 - 🎯 **Daily Puzzle**: Fresh puzzle every day from Lichess with purple theme
 - 🤖 **AI Coach**: Ask questions about positions and moves
 - 💡 **Smart Hints**: Progressive hints with beautiful yellow glow effects
+- 🏆 **Survival Leaderboard**: Compete for top 10 spots and see your name in the rankings
 - 🔊 **Audio Feedback**: Satisfying sound effects for every move and action
 - 🎨 **Modern UI**: Sleek dark theme with vibrant purple accents
 - 📱 **Mobile Friendly**: Works perfectly on phones and tablets
@@ -219,6 +221,7 @@ Through developing PawnPush, I've mastered:
 - User accounts and profiles with progress tracking
 - Achievement system and skill rating progression
 - Social features and puzzle sharing capabilities
+- Global leaderboards across all game modes
 
 ### **Phase 2: Enhanced Features**
 - Multiplayer puzzle battles and tournaments

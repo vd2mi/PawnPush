@@ -384,6 +384,49 @@ document.addEventListener("DOMContentLoaded", async () => {
     return false;
   }
 
+  function getLeaderboard() {
+    const saved = localStorage.getItem('survivalLeaderboard');
+    return saved ? JSON.parse(saved) : [];
+  }
+
+  function saveLeaderboard(leaderboard) {
+    localStorage.setItem('survivalLeaderboard', JSON.stringify(leaderboard));
+  }
+
+  function addToLeaderboard(score, elo, streak, playerName) {
+    const leaderboard = getLeaderboard();
+    const newEntry = {
+      name: playerName,
+      score: score,
+      elo: elo,
+      streak: streak,
+      date: new Date().toLocaleDateString()
+    };
+
+    const filteredLeaderboard = leaderboard.filter(entry => entry.name !== playerName);
+    
+    filteredLeaderboard.push(newEntry);
+    
+    filteredLeaderboard.sort((a, b) => {
+      if (b.elo !== a.elo) return b.elo - a.elo;
+      return b.score - a.score;
+    });
+    
+    const topTen = filteredLeaderboard.slice(0, 10);
+    
+    saveLeaderboard(topTen);
+    return topTen;
+  }
+
+  function isNewLeaderboardEntry(score, elo) {
+    const leaderboard = getLeaderboard();
+    
+    if (leaderboard.length < 10) return true;
+    
+    const lowestEntry = leaderboard[leaderboard.length - 1];
+    return elo > lowestEntry.elo || (elo === lowestEntry.elo && score > lowestEntry.score);
+  }
+
   function formatTime(ms) {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
@@ -398,18 +441,48 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  function showGameOverScreen() {
+  async function showGameOverScreen() {
     const endTime = Date.now();
     const timePlayed = endTime - startTime;
     const accuracy = totalMoves > 0 ? Math.round((correctMoves / totalMoves) * 100) : 0;
     const highScore = getHighScore();
     const isNewRecord = saveHighScore(score, currentElo, bestStreak);
+    const qualifiesForLeaderboard = isNewLeaderboardEntry(score, currentElo);
+    if (qualifiesForLeaderboard) {
+      const { value: playerName } = await Swal.fire({
+        title: '🏆 New Leaderboard Entry!',
+        text: `Congratulations! You scored ${score} puzzles with ELO ${currentElo}`,
+        input: 'text',
+        inputLabel: 'Enter your name for the leaderboard:',
+        inputPlaceholder: 'Your name',
+        inputValidator: (value) => {
+          if (!value || value.trim().length === 0) {
+            return 'Please enter a name!';
+          }
+          if (value.length > 15) {
+            return 'Name must be 15 characters or less!';
+          }
+        },
+        showCancelButton: true,
+        cancelButtonText: 'Skip',
+        confirmButtonText: 'Submit',
+        confirmButtonColor: '#27ae60',
+        cancelButtonColor: '#95a5a6'
+      });
+
+      if (playerName && playerName.trim()) {
+        addToLeaderboard(score, currentElo, bestStreak, playerName.trim());
+      }
+    }
 
     const template = document.getElementById('game-over-template');
     const clone = template.content.cloneNode(true);
     
     const title = clone.getElementById('go-title');
-    title.textContent = isNewRecord ? '🎉 NEW RECORD! 🎉' : 'Game Over!';
+    let titleText = 'Game Over!';
+    if (isNewRecord) titleText = '🎉 NEW RECORD! 🎉';
+    else if (qualifiesForLeaderboard) titleText = '🏆 LEADERBOARD! 🏆';
+    title.textContent = titleText;
     
     clone.getElementById('go-score').innerHTML = `<strong>${score}</strong>`;
     clone.getElementById('go-elo').innerHTML = `<strong>${currentElo}</strong>`;
@@ -537,6 +610,71 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   chatInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') chatSend.click();
+  });
+
+  const leaderboardBtn = document.getElementById('leaderboardBtn');
+  const leaderboardModal = document.getElementById('leaderboardModal');
+  const closeLeaderboardBtn = document.getElementById('closeLeaderboardBtn');
+  const leaderboardList = document.getElementById('leaderboardList');
+
+  function showLeaderboard() {
+    leaderboardModal.classList.remove('hidden');
+    updateLeaderboardDisplay();
+  }
+
+  function hideLeaderboard() {
+    leaderboardModal.classList.add('hidden');
+  }
+
+  function updateLeaderboardDisplay() {
+    const leaderboard = getLeaderboard();
+    
+    if (leaderboard.length === 0) {
+      leaderboardList.innerHTML = `
+        <div class="empty-leaderboard">
+          <span class="empty-icon">🏆</span>
+          <div>No entries yet!</div>
+          <div style="font-size: 14px; margin-top: 10px;">Be the first to make the leaderboard!</div>
+        </div>
+      `;
+      return;
+    }
+
+    leaderboardList.innerHTML = leaderboard.map((entry, index) => {
+      const rank = index + 1;
+      const rankClass = rank <= 3 ? `rank-${rank}` : '';
+      const top3Class = rank <= 3 ? 'top3' : '';
+      
+      return `
+        <div class="leaderboard-entry ${rankClass} ${top3Class}">
+          <div class="rank-badge">${rank}</div>
+          <div class="entry-info">
+            <div class="entry-name">${entry.name}</div>
+            <div class="entry-date">${entry.date}</div>
+          </div>
+          <div class="entry-stats">
+            <div class="entry-elo">${entry.elo}</div>
+            <div class="entry-score">${entry.score} puzzles</div>
+            <div class="entry-streak">${entry.streak} 🔥</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  leaderboardBtn.addEventListener('click', showLeaderboard);
+  closeLeaderboardBtn.addEventListener('click', hideLeaderboard);
+  
+  leaderboardModal.addEventListener('click', (e) => {
+    if (e.target === leaderboardModal) {
+      hideLeaderboard();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !leaderboardModal.classList.contains('hidden')) {
+      hideLeaderboard();
+    }
   });
 
   await loadPuzzle();

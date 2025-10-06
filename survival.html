@@ -102,6 +102,11 @@
     <span class="coach-text">Ask Coach</span>
   </button>
 
+  <button id="leaderboardBtn" class="leaderboard-floating-btn">
+    <span class="leaderboard-icon">🏆</span>
+    <span class="leaderboard-text">Leaderboard</span>
+  </button>
+
   <div id="chatPopup" class="chat-popup hidden">
     <div class="chat-header">
       <div class="chat-title">
@@ -113,6 +118,18 @@
     <div class="chat-input-area">
       <input id="chatInput" type="text" placeholder="Ask me for a hint..." class="chat-input"/>
       <button id="chatSend" class="chat-send-btn">→</button>
+    </div>
+  </div>
+
+  <div id="leaderboardModal" class="leaderboard-modal hidden">
+    <div class="leaderboard-content">
+      <div class="leaderboard-header">
+        <h2>🏆 Survival Leaderboard</h2>
+        <button id="closeLeaderboardBtn" class="close-btn">×</button>
+      </div>
+      <div id="leaderboardList" class="leaderboard-list">
+        <!-- Leaderboard entries will be populated here -->
+      </div>
     </div>
   </div>
 
