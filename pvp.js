@@ -52,7 +52,7 @@ let solutionIndex = 0;
 let myScore = 0;
 let opponentScore = 0;
 let gameTimer = null;
-let timeRemaining = 120; 
+let timeRemaining = 300; 
 let puzzleDatabase = null;
 
 const roomSetupScreen = document.getElementById('room-setup-screen');
@@ -117,7 +117,7 @@ createRoomBtn.addEventListener('click', async () => {
       roomCode: roomCode,
       puzzles: puzzles,
       startTime: null,
-      duration: 120,
+      duration: 300,
       status: 'waiting',
       players: {
         host: {
@@ -413,8 +413,12 @@ function initBoard() {
       return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png';
     },
     onDragStart: function(source, piece, position, orientation){
+      // Allow dragging any piece of the correct color
       if (chess.turn() !== piece.charAt(0)) return false;
-      if (chess.moves({square:source}).length === 0) return false;
+      // Check if piece has legal moves
+      const moves = chess.moves({square: source, verbose: true});
+      if (moves.length === 0) return false;
+      return true;
     },
     onDrop: function(source, target){
       const move = chess.move({ from:source, to:target, promotion:"q" });
@@ -474,6 +478,11 @@ function handleCorrectMove(move, userMove) {
           setTimeout(() => {
             puzzleSolved();
           }, 800);
+        } else {
+          // Ensure board remains draggable for next move
+          setTimeout(() => {
+            board.position(chess.fen(), false);
+          }, 100);
         }
       }
     }, 350);
@@ -488,7 +497,12 @@ function handleWrongMove(move, userMove) {
   playSound('wrong');
   addMoveToHistory(userMove, false);
   chess.undo();
-  board.position(chess.fen(), false);
+  
+  // Ensure board is properly reset and remains draggable
+  setTimeout(() => {
+    board.position(chess.fen(), false);
+  }, 50);
+  
   showToast('Wrong move! Try again.', 'error', 2000);
 }
 
