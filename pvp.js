@@ -284,7 +284,7 @@ function showWaitingRoom(roomCode, hostName) {
 }
 
 function updateWaitingRoom(data) {
-  const guewaitingstNameEl = document.getElementById('guest-player-name');
+  const guestNameEl = document.getElementById('guest-player-name');
   const guestStatusEl = document.getElementById('guest-status');
   
   if (data.players.guest) {
