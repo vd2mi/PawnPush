@@ -275,6 +275,21 @@ h2 { margin-bottom: 0.5rem; }
   color: #FF3C00;
 }
 
+.pvp-mode {
+  background: linear-gradient(135deg, rgba(255, 51, 102, 0.15), rgba(26, 26, 26, 0.8));
+  border-color: rgba(255, 51, 102, 0.4);
+}
+
+.pvp-mode:hover {
+  background: linear-gradient(135deg, rgba(255, 51, 102, 0.25), rgba(26, 26, 26, 0.95));
+  border-color: #FF3366;
+  box-shadow: 0 12px 32px rgba(255, 51, 102, 0.3);
+}
+
+.pvp-mode .mode-title {
+  color: #FF3366;
+}
+
 .review-mode {
   background: linear-gradient(135deg, rgba(0, 255, 195, 0.1), rgba(26, 26, 26, 0.8));
   border-color: rgba(156, 203, 189, 0.4);
@@ -2272,6 +2287,357 @@ textarea:focus, input:focus {
   
   .entry-elo {
     font-size: 16px;
+  }
+}
+
+/* PVP Mode Styles */
+.room-setup-screen,
+.waiting-room-screen,
+.game-screen {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.room-setup-container {
+  display: flex;
+  gap: 30px;
+  justify-content: center;
+  align-items: stretch;
+  flex-wrap: wrap;
+  margin-top: 30px;
+}
+
+.setup-card {
+  flex: 1;
+  min-width: 300px;
+  max-width: 400px;
+  background: rgba(26, 26, 26, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 15px;
+  padding: 30px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.setup-card:hover {
+  border-color: rgba(255, 51, 102, 0.4);
+  box-shadow: 0 8px 24px rgba(255, 51, 102, 0.2);
+  transform: translateY(-5px);
+}
+
+.setup-card h2 {
+  color: #FF3366;
+  margin-bottom: 10px;
+  font-size: 24px;
+}
+
+.setup-card p {
+  color: #95a5a6;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.setup-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #95a5a6;
+  font-size: 18px;
+  font-weight: bold;
+  padding: 0 20px;
+}
+
+.room-input {
+  width: 100%;
+  padding: 12px 16px;
+  margin-bottom: 15px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #ecf0f1;
+  font-size: 16px;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.room-input:focus {
+  outline: none;
+  border-color: #FF3366;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.room-input::placeholder {
+  color: #7f8c8d;
+}
+
+.action-btn {
+  width: 100%;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, #3498db, #2980b9);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, #FF3366, #e91e63);
+}
+
+.primary-btn:hover {
+  box-shadow: 0 6px 20px rgba(255, 51, 102, 0.4);
+}
+
+.success-btn {
+  background: linear-gradient(135deg, #27ae60, #229954);
+}
+
+.success-btn:hover {
+  box-shadow: 0 6px 20px rgba(39, 174, 96, 0.4);
+}
+
+.waiting-room-container {
+  max-width: 800px;
+  margin: 30px auto;
+  text-align: center;
+}
+
+.room-code-display {
+  background: rgba(26, 26, 26, 0.8);
+  border: 2px solid rgba(255, 51, 102, 0.3);
+  border-radius: 15px;
+  padding: 30px;
+  margin-bottom: 30px;
+}
+
+.room-code-display h2 {
+  color: #ecf0f1;
+  margin-bottom: 15px;
+  font-size: 22px;
+}
+
+.room-code {
+  font-size: 48px;
+  font-weight: bold;
+  color: #FF3366;
+  letter-spacing: 8px;
+  margin: 20px 0;
+  font-family: 'Courier New', monospace;
+  text-shadow: 0 0 20px rgba(255, 51, 102, 0.5);
+}
+
+.copy-btn {
+  padding: 10px 20px;
+  background: rgba(52, 152, 219, 0.2);
+  border: 2px solid #3498db;
+  border-radius: 8px;
+  color: #3498db;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.copy-btn:hover {
+  background: rgba(52, 152, 219, 0.3);
+  transform: translateY(-2px);
+}
+
+.players-status {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 30px;
+  margin: 30px 0;
+  flex-wrap: wrap;
+}
+
+.player-card {
+  flex: 1;
+  min-width: 200px;
+  max-width: 250px;
+  background: rgba(26, 26, 26, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 25px;
+  transition: all 0.3s ease;
+}
+
+.host-card {
+  border-color: rgba(52, 152, 219, 0.4);
+}
+
+.guest-card {
+  border-color: rgba(231, 76, 60, 0.4);
+}
+
+.player-icon {
+  font-size: 48px;
+  margin-bottom: 15px;
+}
+
+.player-name {
+  font-size: 20px;
+  font-weight: bold;
+  color: #ecf0f1;
+  margin-bottom: 10px;
+}
+
+.player-status {
+  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  display: inline-block;
+}
+
+.player-status.ready {
+  background: rgba(39, 174, 96, 0.2);
+  color: #27ae60;
+}
+
+.player-status.waiting {
+  background: rgba(241, 196, 15, 0.2);
+  color: #f1c40f;
+}
+
+.vs-divider {
+  font-size: 28px;
+  font-weight: bold;
+  color: #95a5a6;
+}
+
+.match-settings {
+  background: rgba(26, 26, 26, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 30px 0;
+}
+
+.match-settings h3 {
+  color: #ecf0f1;
+  margin-bottom: 15px;
+  font-size: 18px;
+}
+
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: #95a5a6;
+}
+
+.setting-item:last-child {
+  border-bottom: none;
+}
+
+.setting-value {
+  color: #ecf0f1;
+  font-weight: bold;
+}
+
+.timer-display {
+  font-size: 48px;
+  font-weight: bold;
+  color: #FF3366;
+  text-align: center;
+  padding: 20px;
+  background: rgba(255, 51, 102, 0.1);
+  border-radius: 12px;
+  margin: 10px 0;
+  font-family: 'Courier New', monospace;
+  text-shadow: 0 0 20px rgba(255, 51, 102, 0.5);
+}
+
+.score-comparison {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+}
+
+.player-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.player-label {
+  font-size: 14px;
+  color: #95a5a6;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.score-value {
+  font-size: 36px;
+  font-weight: bold;
+}
+
+.your-score {
+  color: #3498db;
+}
+
+.opponent-score {
+  color: #e74c3c;
+}
+
+.score-vs {
+  font-size: 18px;
+  color: #95a5a6;
+  font-weight: bold;
+}
+
+@media (max-width: 768px) {
+  .room-setup-container {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .setup-divider {
+    transform: rotate(90deg);
+    margin: 20px 0;
+  }
+  
+  .room-code {
+    font-size: 32px;
+    letter-spacing: 4px;
+  }
+  
+  .players-status {
+    flex-direction: column;
+    gap: 20px;
+  }
+  
+  .vs-divider {
+    transform: rotate(90deg);
+  }
+  
+  .timer-display {
+    font-size: 36px;
+  }
+  
+  .score-comparison {
+    flex-direction: column;
+    gap: 20px;
   }
 }
 

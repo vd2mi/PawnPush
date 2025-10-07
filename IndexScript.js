@@ -36,6 +36,13 @@ if (survivalBtn){
   })
 }
 
+const pvpBtn = document.getElementById('pvpBtn');
+if (pvpBtn){
+  pvpBtn.addEventListener('click', () => {
+    window.location.href = 'pvp.html';
+  })
+}
+
 let dailyPuzzleData = null;
 
 async function fetchDailyPuzzle() {
