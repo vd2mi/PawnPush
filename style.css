@@ -6,7 +6,7 @@ body {
 }
 
 header {
-  background-color: #121212;
+  background-color: #1f1e1e;
   padding: 1rem;
   text-align: center;
   color: #cccccc;
@@ -406,7 +406,6 @@ button:hover {
   box-shadow: 0 0 15px rgba(153, 0, 255, 0.4);
 }
 
-/* Specific hover effects for difficulty and position buttons */
 #diff-beginner:hover, #diff-intermediate:hover, #diff-advanced:hover, #diff-grandmaster:hover,
 #pos-opening:hover, #pos-middlegame:hover, #pos-endgame:hover, #pos-checkmate:hover {
   background-color: #9900ff !important;
@@ -2306,7 +2305,6 @@ textarea:focus, input:focus {
   }
 }
 
-/* PVP Mode Styles */
 .room-setup-screen,
 .waiting-room-screen,
 .game-screen {
