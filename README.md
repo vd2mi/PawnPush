@@ -14,6 +14,14 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 - **Interactive chessboard** with smooth drag-and-drop functionality
 - **Smart puzzle orientation** - always play from the winning side
 
+### ⚔️ **Multiplayer Features**
+- **1v1 Private Battles** - Challenge friends with 6-digit room codes
+- **Real-time score tracking** - See your opponent's progress live
+- **5-minute puzzle races** - 20 puzzles, most solved wins
+- **Firebase-powered rooms** - Seamless real-time synchronization
+- **Instant matchmaking** - Create or join rooms in seconds
+- **Cross-device support** - Battle from any device, anywhere
+
 ### 🤖 **AI-Powered Learning**
 - **Smart hint system** powered by GPT-4 API
 - **AI coaching chat** for tailored hints and explanations
@@ -35,6 +43,7 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 ### 🎮 **Game Modes**
 - **Puzzle Mode** - Practice with filtered puzzles, automatic opponent moves
 - **Survival Mode** - Test your skills with lives system and progressive difficulty  
+- **⚔️ 1v1 Private Battle** - Challenge friends in real-time puzzle races with private room codes
 - **🏆 Global Leaderboard** - Compete worldwide with Firebase-powered cross-device rankings
 - **Daily Puzzle** - Fresh challenge from Lichess every day with purple theme
 - **Game Review** - Analyze your games position by position with AI insights
@@ -63,6 +72,7 @@ graph TB
 - **Frontend:** HTML5, CSS3, Vanilla JavaScript
 - **Chessboard UI:** [Chessboard.js](https://chessboardjs.com/) with custom piece themes
 - **Chess Logic:** [chess.js](https://github.com/jhlywa/chess.js) for move validation
+- **Backend:** Firebase Firestore for real-time multiplayer rooms and global leaderboard
 - **AI Integration:** GPT-4 via serverless API for intelligent hints
 - **External APIs:** Lichess API for daily puzzles
 - **Piece Graphics:** Chess.com piece theme for professional appearance
@@ -83,12 +93,15 @@ PawnPush/
 ├── puzzle.html                # Regular puzzle interface
 ├── dailyPuzzle.html           # Daily puzzle page
 ├── game-review.html           # Game analysis page
+├── pvp.html                   # 1v1 Private Battle interface
+├── survival.html              # Survival mode page
 │
 ├── IndexScript.js             # Main site logic & daily puzzle loading
 ├── PuzzleScript.js            # Regular puzzle logic with audio integration
 ├── dailyPuzzle.js             # Daily puzzle functionality with audio
 ├── game-review.js             # Game analysis features with audio
 ├── survival.js                # Survival mode with lives system and global leaderboard
+├── pvp.js                     # 1v1 multiplayer with Firebase real-time rooms
 │
 ├── style.css                  # Modern dark theme with purple accents
 ├── audio/                     # Sound effects directory
@@ -149,15 +162,22 @@ The app will be available locally at `http://localhost:3000`.
 Visit [https://pawn-push.vercel.app](https://pawn-push.vercel.app) to start solving puzzles immediately - no account required!
 
 ### **How to Play**
-1. **Choose your mode**: Regular puzzles or Daily puzzle
-2. **Select difficulty**: Beginner to Grand Master
+1. **Choose your mode**: Regular puzzles, Daily puzzle, Survival, or 1v1 Battle
+2. **Select difficulty**: Beginner to Grand Master (or battle your friend!)
 3. **Pick position type**: Opening, Middlegame, Endgame, or Checkmate
 4. **Make moves**: Drag and drop pieces on the interactive board
 5. **Get hints**: Use the hint system or AI coaching chat
 6. **Solve puzzles**: Complete puzzles to improve your chess skills
 
+### **1v1 Battle Mode**
+1. **Host**: Click "Create Room" and share the 6-digit code with your friend
+2. **Guest**: Enter the room code to join
+3. **Battle**: Race to solve the most puzzles in 5 minutes
+4. **Win**: Player with the highest score wins the match!
+
 ### **Features to Try**
 - 🎯 **Daily Puzzle**: Fresh puzzle every day from Lichess with purple theme
+- ⚔️ **1v1 Battle**: Challenge friends with private room codes in 5-minute puzzle races
 - 🤖 **AI Coach**: Ask questions about positions and moves
 - 💡 **Smart Hints**: Progressive hints with beautiful yellow glow effects
 - 🏆 **Global Leaderboard**: Compete worldwide with cross-device Firebase rankings
@@ -179,6 +199,14 @@ Visit [https://pawn-push.vercel.app](https://pawn-push.vercel.app) to start solv
 - **GPT-4 API**: Powers the intelligent hint system and coaching chat
 - **Contextual Hints**: AI analyzes the current position and provides relevant guidance
 - **Progressive Assistance**: Multiple hint levels from visual cues to full solutions
+
+### **Multiplayer System**
+- **Firebase Firestore**: Real-time room synchronization and data persistence
+- **Private Rooms**: Secure 6-digit room codes for private matches
+- **Live Updates**: Instant score synchronization using onSnapshot listeners
+- **Room States**: Waiting → Countdown → In Progress → Finished
+- **Automatic Cleanup**: Rooms are cleaned up when host leaves
+- **Cross-Device**: Battle from desktop vs mobile, any combination works
 
 ### **User Experience**
 - **Modern Dark Theme**: Deep `#121212` background with premium gaming aesthetic
@@ -207,13 +235,16 @@ PawnPush empowers chess players with AI-driven insights, improving problem-solvi
 Through developing PawnPush, I've mastered:
 
 - **Full-Stack Development**: Complete application architecture from frontend to API integration
+- **Real-Time Systems**: Firebase Firestore integration for live multiplayer functionality
 - **AI/ML Integration**: GPT-4 API integration for intelligent coaching and hint systems
 - **API Integration**: RESTful API design and external service integration (Lichess API)
+- **Database Design**: NoSQL schema design for real-time collaborative features
 - **UX/UI Design**: Modern dark theme design with cohesive color systems and responsive layouts
 - **Cloud Hosting**: Serverless deployment and optimization for production environments
 - **Audio Design**: HTML5 Audio API integration for immersive user experience
 - **Responsive Development**: Mobile-first design ensuring cross-platform compatibility
 - **Performance Optimization**: Efficient puzzle loading and real-time move validation
+- **Multiplayer Architecture**: Room-based matchmaking with state management
 
 ## 🚀 **Future Roadmap**
 
@@ -222,8 +253,9 @@ Through developing PawnPush, I've mastered:
 - Achievement system and skill rating progression
 - Social features and puzzle sharing capabilities
 
-### **Phase 2: Enhanced Features**
-- Multiplayer puzzle battles and tournaments
+### **Phase 2: Enhanced Features** ✅
+- ✅ Multiplayer puzzle battles with real-time synchronization
+- Ranked matchmaking and tournament system
 - Advanced AI coaching with personalized lesson plans
 - Cloud-based puzzle generation using machine learning
 

@@ -457,7 +457,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       } else {
         await addDoc(leaderboardRef, {
-          name: playerName,
+          playerName: playerName,
           score: score,
           elo: elo,
           streak: streak,
@@ -479,7 +479,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       
       let foundPlayer = null;
       querySnapshot.forEach((doc) => {
-        if (doc.data().name === playerName) {
+        if (doc.data().playerName === playerName) {
           foundPlayer = { id: doc.id, ...doc.data() };
         }
       });
@@ -763,7 +763,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           <div class="leaderboard-entry ${rankClass} ${top3Class}">
             <div class="rank-badge">${rank}</div>
             <div class="entry-info">
-              <div class="entry-name">${entry.name}</div>
+              <div class="entry-name">${entry.playerName}</div>
               <div class="entry-date">${entry.date}</div>
             </div>
             <div class="entry-stats">
