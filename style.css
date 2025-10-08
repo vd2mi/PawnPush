@@ -305,12 +305,14 @@ h2 { margin-bottom: 0.5rem; }
   color: #00FFC3;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .game-modes-grid {
     grid-template-columns: repeat(2, 1fr);
     max-width: 600px;
   }
-  
+}
+
+@media (max-width: 768px) {
   .mode-card {
     min-height: 100px;
   }
@@ -844,23 +846,28 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
+  gap: 1.5rem;
   background: linear-gradient(135deg, rgba(100, 181, 246, 0.1), rgba(100, 181, 246, 0.05));
   border: 1px solid rgba(100, 181, 246, 0.2);
   border-radius: 16px;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
+  padding: 2rem 1.5rem;
+  margin: 0 auto 2rem auto;
+  max-width: 600px;
+  width: fit-content;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
 .theme-icon {
-  font-size: 1.5rem;
+  font-size: 3rem;
+  line-height: 1;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.2));
 }
 
 .theme-text {
-  font-size: 1.3rem;
+  font-size: 2rem;
   color: #9900ff;
-  font-weight: 600;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .board-section {
@@ -1190,12 +1197,17 @@ button:hover {
   }
   
   .puzzle-theme-card {
-    padding: 1rem;
-    margin-bottom: 1rem;
+    padding: 1.5rem 1rem;
+    margin-bottom: 1.5rem;
+    gap: 1.25rem;
+  }
+  
+  .theme-icon {
+    font-size: 2.5rem;
   }
   
   .theme-text {
-    font-size: 1.1rem;
+    font-size: 1.5rem;
   }
   
   .info-sidebar {
@@ -1254,12 +1266,16 @@ button:hover {
   
   .puzzle-theme-card {
     flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.8rem;
+    gap: 0.75rem;
+    padding: 1rem;
+  }
+  
+  .theme-icon {
+    font-size: 2rem;
   }
   
   .theme-text {
-    font-size: 1rem;
+    font-size: 1.25rem;
     text-align: center;
   }
   
