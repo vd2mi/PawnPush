@@ -36,8 +36,6 @@ let analysisTimeout = null;
 let currentAnalysis = {};
 let moveAnalyses = {};
 let isDragging = false;
-let totalCentipawnLoss = 0;
-let movesAnalyzed = 0;
 
 function initBoard() {
   board = Chessboard('board', {
@@ -692,17 +690,13 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
       if (playedMove === bestMove) {
         const evaluation = { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best Move' };
         
-        totalCentipawnLoss += 0;
-        movesAnalyzed++;
-        
         moveAnalyses[moveIndex] = {
           played: playedMove,
           evaluation: evaluation,
           score: bestEval,
           bestScore: bestEval,
           bestMove: bestMove,
-          alternatives: [],
-          centipawnLoss: 0
+          alternatives: []
         };
         updateMoveInList(moveIndex, evaluation);
         console.log(`Move ${moveIndex + 1}: ${playedMove} - BEST MOVE!`);
@@ -736,24 +730,23 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
             
             const evalDifference = Math.abs(afterEval - bestEval);
             
+            // Harsher centipawn loss calculation - bigger penalties for mistakes
             let moveEval;
             if (evalDifference < 10) {
-              moveEval = bestEval - 5;
+              moveEval = bestEval - 10;
             } else if (evalDifference < 30) {
-              moveEval = bestEval - 15;
+              moveEval = bestEval - 30;
             } else if (evalDifference < 60) {
-              moveEval = bestEval - 40;
+              moveEval = bestEval - 70;
             } else if (evalDifference < 120) {
-              moveEval = bestEval - 80;
+              moveEval = bestEval - 140;
+            } else if (evalDifference < 200) {
+              moveEval = bestEval - 220;
             } else {
-              moveEval = bestEval - 150;
+              moveEval = bestEval - 300;
             }
             
             const evaluation = evaluateMoveQuality(moveEval, bestEval);
-            
-            const centipawnLoss = Math.abs(moveEval - bestEval);
-            totalCentipawnLoss += centipawnLoss;
-            movesAnalyzed++;
             
             moveAnalyses[moveIndex] = {
               played: playedMove,
@@ -761,8 +754,7 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
               score: moveEval,
               bestScore: bestEval,
               bestMove: bestMove,
-              alternatives: [],
-              centipawnLoss: centipawnLoss
+              alternatives: []
             };
             
             updateMoveInList(moveIndex, evaluation);
@@ -854,115 +846,6 @@ function evaluateMoveQuality(moveScore, bestScore) {
   if (diff < 70) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy' };
   if (diff < 150) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake' };
   return { type: 'blunder', symbol: '??', color: '#f44336', text: 'Blunder' };
-}
-
-function getGameQualityRating(avgCentipawnLoss) {
-  if (avgCentipawnLoss <= 10) {
-    return { 
-      emoji: '🤖', 
-      title: 'Literally Stockfish', 
-      color: '#FFD700',
-      message: 'Are you even human? This is engine-level precision!' 
-    };
-  } else if (avgCentipawnLoss <= 20) {
-    return { 
-      emoji: '👑', 
-      title: 'Nearly Perfect', 
-      color: '#C0C0C0',
-      message: 'Grandmaster on a good day! Outstanding performance!' 
-    };
-  } else if (avgCentipawnLoss <= 30) {
-    return { 
-      emoji: '🏆', 
-      title: 'Outstanding', 
-      color: '#CD7F32',
-      message: 'Average GM level play. Extremely impressive!' 
-    };
-  } else if (avgCentipawnLoss <= 40) {
-    return { 
-      emoji: '⭐', 
-      title: 'Excellent', 
-      color: '#4CAF50',
-      message: 'Very strong play with minimal mistakes!' 
-    };
-  } else if (avgCentipawnLoss <= 50) {
-    return { 
-      emoji: '✨', 
-      title: 'Good', 
-      color: '#8BC34A',
-      message: 'Solid game with good decision making!' 
-    };
-  } else if (avgCentipawnLoss <= 60) {
-    return { 
-      emoji: '👍', 
-      title: 'OK', 
-      color: '#2196F3',
-      message: 'Decent performance with room for improvement.' 
-    };
-  } else if (avgCentipawnLoss <= 75) {
-    return { 
-      emoji: '😐', 
-      title: 'Below Average', 
-      color: '#FF9800',
-      message: 'Several inaccuracies affected the game.' 
-    };
-  } else if (avgCentipawnLoss <= 100) {
-    return { 
-      emoji: '😕', 
-      title: 'Rough', 
-      color: '#FF5722',
-      message: 'Many mistakes were made. Study the analysis!' 
-    };
-  } else {
-    return { 
-      emoji: '💥', 
-      title: 'Chaotic', 
-      color: '#f44336',
-      message: 'Very inaccurate play. Time to hit the books!' 
-    };
-  }
-}
-
-function displayGameQualityRating() {
-  if (movesAnalyzed === 0) return;
-  
-  const avgLoss = totalCentipawnLoss / movesAnalyzed;
-  const rating = getGameQualityRating(avgLoss);
-  
-  const display = document.getElementById('analysisDisplay');
-  const ratingText = `
-╔════════════════════════════════════════╗
-║         GAME QUALITY ANALYSIS          ║
-╚════════════════════════════════════════╝
-
-${rating.emoji} ${rating.title} ${rating.emoji}
-
-Average Centipawn Loss: ${avgLoss.toFixed(2)}
-Moves Analyzed: ${movesAnalyzed}
-
-${rating.message}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-RATING SCALE:
-🤖 ≤10: Literally Stockfish
-👑 11-20: Nearly Perfect (GM excellence)
-🏆 21-30: Outstanding (GM average)
-⭐ 31-40: Excellent
-✨ 41-50: Good
-👍 51-60: OK
-😐 61-75: Below Average
-😕 76-100: Rough
-💥 101+: Chaotic
-
-Click on any move to see detailed analysis!
-  `;
-  
-  display.textContent = ratingText;
-  display.style.background = `linear-gradient(135deg, ${rating.color}22, transparent)`;
-  display.style.borderLeft = `4px solid ${rating.color}`;
-  
-  showToast(`${rating.emoji} Game Quality: ${rating.title} (Avg Loss: ${avgLoss.toFixed(2)})`, 'success');
 }
 
 function updateMoveInList(moveIndex, evaluation) {
@@ -1215,8 +1098,6 @@ function loadGame() {
   try {
     chess = new Chess();
     moveAnalyses = {};
-    totalCentipawnLoss = 0;
-    movesAnalyzed = 0;
     
     if (fenInput) {
       chess.load(fenInput);
@@ -1269,11 +1150,7 @@ function loadGame() {
     evalBar.style.width = '50%';
     evalBar.style.background = 'linear-gradient(90deg, #f44336, #4CAF50)';
     
-    const analysisDisplay = document.getElementById('analysisDisplay');
-    analysisDisplay.textContent = 'Game loaded! Click "Analyze All Moves" to see full game analysis with quality rating.';
-    analysisDisplay.style.background = '';
-    analysisDisplay.style.borderLeft = '';
-    
+    document.getElementById('analysisDisplay').textContent = 'Game loaded! Click "Analyze All Moves" to analyze every move.';
     showToast('Game loaded successfully!', 'success');
     
   } catch (error) {
@@ -1292,9 +1169,6 @@ function analyzeAllMoves() {
   console.log('Starting analysis of all moves in game...');
   isAnalyzing = true;
   
-  totalCentipawnLoss = 0;
-  movesAnalyzed = 0;
-  
   document.getElementById('analysisDisplay').textContent = 'Analyzing all moves... This may take a few minutes.';
   
   for (let i = 1; i < gameHistory.length; i++) {
@@ -1303,7 +1177,7 @@ function analyzeAllMoves() {
           console.log(`Analyzing move ${i}/${gameHistory.length - 1}`);
           document.getElementById('analysisDisplay').textContent = `Analyzing move ${i}/${gameHistory.length - 1}...`;
           analyzeMoveReal(gameHistory[i-1], gameHistory[i], i-1);
-      }, i * 1500); 
+      }, i * 2500); 
   }
   
   setTimeout(() => {
@@ -1311,9 +1185,8 @@ function analyzeAllMoves() {
     showToast(`Analysis complete! Analyzed ${gameHistory.length - 1} moves.`, 'success');
     isAnalyzing = false;
     document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
-    
-    displayGameQualityRating();
-  }, (gameHistory.length - 1) * 1500 + 3000);
+    document.getElementById('analysisDisplay').textContent = 'Analysis complete! Click on any move to see detailed evaluation.';
+  }, (gameHistory.length - 1) * 2500 + 3000);
 }
 
 function updateBoard() {
@@ -1544,14 +1417,10 @@ function clearGame() {
   currentMoveIndex = 0;
   currentAnalysis = {};
   moveAnalyses = {};
-  totalCentipawnLoss = 0;
-  movesAnalyzed = 0;
   
   document.getElementById('pgnInput').value = '';
   document.getElementById('fenInput').value = '';
   document.getElementById('analysisDisplay').textContent = 'Load a game and click "Analyze Position" to see engine analysis...';
-  document.getElementById('analysisDisplay').style.background = '';
-  document.getElementById('analysisDisplay').style.borderLeft = '';
   document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Suggest Move</span>';
   
   updateBoard();
