@@ -90,12 +90,10 @@ function onSnapEnd() {
 }
 
 function cleanFenForAnalysis(fen) {
-  // Remove en passant square to avoid Chess API validation errors
-  // Chess-API.com has strict FEN validation and rejects en passant squares
   const parts = fen.split(' ');
   if (parts.length >= 4 && parts[3] !== '-') {
     console.log(`Cleaning FEN: removing en passant square "${parts[3]}" for API compatibility`);
-    parts[3] = '-'; // Set en passant to none
+    parts[3] = '-';
   }
   return parts.join(' ');
 }
@@ -128,9 +126,9 @@ function getWasmPartName(partNumber) {
 
 async function loadLocalStockfish() {
   try {
-    updateEngineStatus('Loading Stockfish 17 API...', false);
+    updateEngineStatus('Loading Stockfish API (HuggingFace)...', false);
     
-    console.log('Setting up Stockfish 17 API connection...');
+    console.log('Setting up HuggingFace Stockfish API connection...');
     
     stockfish = {
       postMessage: function(cmd) {
@@ -145,8 +143,8 @@ async function loadLocalStockfish() {
         const trimmed = cmd.trim();
         
         if (trimmed === 'uci') {
-          this.sendResponse('id name Stockfish 17 API');
-          this.sendResponse('id author Chess-API.com');
+          this.sendResponse('id name Stockfish API (HuggingFace)');
+          this.sendResponse('id author PawnPush');
           this.sendResponse('uciok');
         } else if (trimmed === 'isready') {
           this.sendResponse('readyok');
@@ -175,7 +173,7 @@ async function loadLocalStockfish() {
                   analyzePosition: function() {
                     const fen = this.currentFen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
                     
-                    console.log('Analyzing position with Stockfish 17 API:', fen);
+                    console.log('Analyzing position with HuggingFace Stockfish API:', fen);
                     
                     this.makeApiCall(fen, 0);
                   },
@@ -183,19 +181,15 @@ async function loadLocalStockfish() {
                   makeApiCall: function(fen, retryCount) {
                     const maxRetries = 3;
                     
-                    // Clean the FEN to avoid API validation errors with en passant
                     const cleanedFen = this.cleanFenForApi(fen);
                     
-                    fetch('https://chess-api.com/v1', {
+                    fetch('/api/stockfish', {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json'
                       },
                       body: JSON.stringify({
-                        fen: cleanedFen,
-                        depth: 16,
-                        variants: 3,
-                        maxThinkingTime: 5000
+                        fen: cleanedFen
                       })
                     })
                     .then(response => {
@@ -205,31 +199,24 @@ async function loadLocalStockfish() {
                       return response.json();
                     })
                     .then(data => {
-                      console.log('Stockfish 17 API response:', data);
+                      console.log('Stockfish API response:', data);
                       
-                      // Check for error responses from the API
-                      if (data.type === 'error' || data.error) {
-                        console.warn('Chess API returned error:', data.error || data.text);
+                      if (data.error) {
+                        console.warn('Stockfish API returned error:', data.error);
                         
-                        // Only use fallback for daily limit (HIGH_USAGE)
-                        if (data.error === 'HIGH_USAGE') {
-                          console.log('Chess API daily limit reached; using material evaluation fallback');
-                          const materialEval = this.getMaterialEvaluation(fen);
-                          this.sendResponse(`info depth 1 score cp ${materialEval} nodes 1000 time 100`);
-                          this.sendResponse(`bestmove e2e4`);
-                          return;
-                        }
-                        
-                        // For all other errors, throw to trigger retry logic
-                        throw new Error(data.text || data.error || 'Unknown API error');
+                        console.log('Using material evaluation fallback');
+                        const materialEval = this.getMaterialEvaluation(fen);
+                        this.sendResponse(`info depth 1 score cp ${materialEval} nodes 1000 time 100`);
+                        this.sendResponse(`bestmove e2e4`);
+                        return;
                       }
                       
                       if (data.eval !== undefined) {
-                        this.sendResponse(`info depth ${data.depth} score cp ${Math.round(data.eval * 100)} nodes 1000000 time ${data.time || 1000}`);
+                        this.sendResponse(`info depth ${data.depth || 20} score cp ${Math.round(data.eval * 100)} nodes 1000000 time ${data.time || 1000}`);
                       }
                       
                       if (data.move) {
-                        this.sendResponse(`bestmove ${data.move} ponder ${data.continuationArr ? data.continuationArr[0] : ''}`);
+                        this.sendResponse(`bestmove ${data.move}`);
                       }
                     })
                     .catch(error => {
@@ -253,7 +240,6 @@ async function loadLocalStockfish() {
         }
       },
       getMaterialEvaluation: function(fen) {
-        // Simple material count evaluation as fallback
         const pieceValues = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
         const board = fen.split(' ')[0];
         let score = 0;
@@ -262,7 +248,6 @@ async function loadLocalStockfish() {
           const lower = char.toLowerCase();
           if (pieceValues[lower] !== undefined) {
             const value = pieceValues[lower];
-            // White pieces are uppercase, black are lowercase
             score += char === char.toUpperCase() ? value : -value;
           }
         }
@@ -270,12 +255,10 @@ async function loadLocalStockfish() {
         return score;
       },
       cleanFenForApi: function(fen) {
-        // Remove en passant square to avoid API validation errors
-        // Chess-API.com has strict FEN validation and rejects en passant squares
         const parts = fen.split(' ');
         if (parts.length >= 4 && parts[3] !== '-') {
           console.log(`Cleaning FEN: removing en passant square "${parts[3]}" for API compatibility`);
-          parts[3] = '-'; // Set en passant to none
+          parts[3] = '-';
         }
         return parts.join(' ');
       },
@@ -283,10 +266,10 @@ async function loadLocalStockfish() {
     };
     
     setupStockfishListeners();
-    engineType = 'stockfish-api';
-    showToast('Stockfish 17 API connected successfully!', 'success');
+    engineType = 'stockfish-hf-api';
+    showToast('HuggingFace Stockfish API connected successfully!', 'success');
     
-    console.log('Stockfish 17 API ready');
+    console.log('HuggingFace Stockfish API ready');
     
   } catch (error) {
     console.error('Stockfish API setup failed:', error);
@@ -676,38 +659,32 @@ function evaluateLastMove() {
 function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
   const playedMove = findPlayedMove(beforeFen, afterFen);
   
-  // Clean FEN to remove en passant for API compatibility
   const cleanBeforeFen = cleanFenForAnalysis(beforeFen);
   
-  fetch('https://chess-api.com/v1', {
+  fetch('/api/stockfish', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      fen: cleanBeforeFen,
-      depth: 16,
-      variants: 3,
-      maxThinkingTime: 5000
+      fen: cleanBeforeFen
     })
   })
-  .then(response => response.json())
+  .then(response => {
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    return response.json();
+  })
   .then(data => {
-    // Check for API errors
-    if (data.type === 'error' || data.error) {
-      console.warn(`Chess API error for move ${moveIndex + 1}:`, data.error || data.text);
-      // Only use fallback for daily limit (HIGH_USAGE)
-      if (data.error === 'HIGH_USAGE') {
-        console.log('Chess API daily limit reached; using fallback analysis');
-        fallbackAnalysis(playedMove, moveIndex);
-        return;
-      }
-      // For all other errors, throw to trigger retry/error handling
-      throw new Error(data.text || data.error || 'Unknown API error');
+    if (data.error) {
+      console.warn(`Stockfish API error for move ${moveIndex + 1}:`, data.error);
+      fallbackAnalysis(playedMove, moveIndex);
+      return;
     }
     
     if (data.eval !== undefined && data.move) {
-      const bestEval = data.eval * 100; // Convert to centipawns
+      const bestEval = data.eval * 100; 
       const bestMove = data.move;
       
       if (playedMove === bestMove) {
@@ -723,34 +700,28 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
         updateMoveInList(moveIndex, evaluation);
         console.log(`Move ${moveIndex + 1}: ${playedMove} - BEST MOVE!`);
       } else {
-        // Clean FEN to remove en passant for API compatibility
         const cleanAfterFen = cleanFenForAnalysis(afterFen);
         
-        fetch('https://chess-api.com/v1', {
+        fetch('/api/stockfish', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            fen: cleanAfterFen,
-            depth: 16,
-            variants: 3,
-            maxThinkingTime: 5000
+            fen: cleanAfterFen
           })
         })
-        .then(response => response.json())
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          return response.json();
+        })
         .then(afterData => {
-          // Check for API errors
-          if (afterData.type === 'error' || afterData.error) {
-            console.warn(`Chess API error for move ${moveIndex + 1} (after position):`, afterData.error || afterData.text);
-            // Only use fallback for daily limit (HIGH_USAGE)
-            if (afterData.error === 'HIGH_USAGE') {
-              console.log('Chess API daily limit reached; using fallback analysis');
-              fallbackAnalysis(playedMove, moveIndex);
-              return;
-            }
-            // For all other errors, throw to trigger retry/error handling
-            throw new Error(afterData.text || afterData.error || 'Unknown API error');
+          if (afterData.error) {
+            console.warn(`Stockfish API error for move ${moveIndex + 1} (after position):`, afterData.error);
+            fallbackAnalysis(playedMove, moveIndex);
+            return;
           }
           
           if (afterData.eval !== undefined) {
@@ -789,7 +760,7 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
         })
         .catch(error => {
           console.error('After position analysis error for move', moveIndex + 1, ':', error);
-          // Add a small delay before fallback to avoid rapid retries
+
           setTimeout(() => {
             fallbackAnalysis(playedMove, moveIndex);
           }, 500);
@@ -801,7 +772,6 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
   })
   .catch(error => {
     console.error('Before position analysis error for move', moveIndex + 1, ':', error);
-    // Add a small delay before fallback to avoid rapid retries
     setTimeout(() => {
       fallbackAnalysis(playedMove, moveIndex);
     }, 500);
@@ -1196,14 +1166,14 @@ function analyzeAllMoves() {
   
   for (let i = 1; i < gameHistory.length; i++) {
       setTimeout(() => {
-          if (!isAnalyzing) return; // Check if analysis was stopped
+          if (!isAnalyzing) return; 
           console.log(`Analyzing move ${i}/${gameHistory.length - 1}`);
           analyzeMoveReal(gameHistory[i-1], gameHistory[i], i-1);
-      }, i * 1500); // Increased delay to reduce API rate limiting
+      }, i * 1500); 
   }
   
   setTimeout(() => {
-    if (!isAnalyzing) return; // Check if analysis was stopped
+    if (!isAnalyzing) return; 
     showToast(`Analysis complete! Analyzed ${gameHistory.length - 1} moves.`, 'success');
     isAnalyzing = false;
     document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
