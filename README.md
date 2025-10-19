@@ -4,6 +4,16 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 
 *Experience the modern dark theme with vibrant purple accents, yellow glow hints, and immersive audio feedback*
 
+## 🔥 **Custom API Integration**
+
+**Built and deployed my own custom API from scratch!** The entire hint system, AI coaching, and Stockfish integration runs through a custom-built serverless API that's live on the website. This includes:
+- **Custom GPT-4 hint API** - intelligently analyzes positions and provides contextual coaching
+- **Stockfish integration API** - powerful chess engine analysis on-demand
+- **Firebase real-time API** - seamless multiplayer synchronization
+- **Fully deployed and production-ready** - handling real users on [pawn-push.vercel.app](https://pawn-push.vercel.app)
+
+*No third-party hint services - everything is custom-built and optimized for PawnPush!*
+
 ## ✨ Features
 
 ### 🎯 **Core Puzzle Experience**
@@ -54,15 +64,20 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 
 ```mermaid
 graph TB
-    A[Frontend HTML/JS/CSS] --> B[Serverless API GPT-4]
+    A[Frontend HTML/JS/CSS] --> B[🔥 Custom API Layer]
     A --> C[Lichess API]
     A --> D[Puzzle Database JSON]
-    B --> E[AI Hints & Coaching]
-    C --> F[Daily Puzzles]
-    D --> G[50,000+ Pre-evaluated Puzzles]
+    B --> E[GPT-4 Hints API]
+    B --> F[Stockfish Engine API]
+    B --> G[Firebase Real-time API]
+    C --> H[Daily Puzzles]
+    D --> I[50,000+ Pre-evaluated Puzzles]
     
     style A fill:#9900ff,stroke:#fff,color:#fff
-    style B fill:#00d4ff,stroke:#fff,color:#fff
+    style B fill:#ff6600,stroke:#fff,color:#fff
+    style E fill:#00d4ff,stroke:#fff,color:#fff
+    style F fill:#00d4ff,stroke:#fff,color:#fff
+    style G fill:#00d4ff,stroke:#fff,color:#fff
     style C fill:#ff1744,stroke:#fff,color:#fff
     style D fill:#ffeb3b,stroke:#000,color:#000
 ```
@@ -70,10 +85,12 @@ graph TB
 ## 🛠️ Technologies Used
 
 - **Frontend:** HTML5, CSS3, Vanilla JavaScript
+- **Custom API Layer:** 🔥 Built from scratch - serverless GPT-4, Stockfish, and Firebase integration
 - **Chessboard UI:** [Chessboard.js](https://chessboardjs.com/) with custom piece themes
 - **Chess Logic:** [chess.js](https://github.com/jhlywa/chess.js) for move validation
 - **Backend:** Firebase Firestore for real-time multiplayer rooms and global leaderboard
-- **AI Integration:** GPT-4 via serverless API for intelligent hints
+- **AI Integration:** GPT-4 via custom-built serverless API for intelligent hints
+- **Engine Integration:** Stockfish chess engine via custom API wrapper
 - **External APIs:** Lichess API for daily puzzles
 - **Piece Graphics:** Chess.com piece theme for professional appearance
 - **Styling:** Custom CSS with modern dark theme and vibrant color system
@@ -85,8 +102,10 @@ graph TB
 ```
 PawnPush/
 │
-├── api/
-│   └── getHint.js            # Serverless API for AI hints
+├── api/                       # 🔥 Custom-built API layer
+│   ├── getHint.js            # Custom GPT-4 hint API (serverless)
+│   ├── stockfish.js          # Custom Stockfish engine integration API
+│   └── firebase.js           # Firebase API configuration
 │
 │
 ├── index.html                 # Main landing page
@@ -235,9 +254,10 @@ PawnPush empowers chess players with AI-driven insights, improving problem-solvi
 Through developing PawnPush, I've mastered:
 
 - **Full-Stack Development**: Complete application architecture from frontend to API integration
+- **Custom API Development**: Built production-ready serverless APIs from scratch with GPT-4 and Stockfish
 - **Real-Time Systems**: Firebase Firestore integration for live multiplayer functionality
 - **AI/ML Integration**: GPT-4 API integration for intelligent coaching and hint systems
-- **API Integration**: RESTful API design and external service integration (Lichess API)
+- **API Design & Deployment**: RESTful API design, serverless architecture, and production deployment
 - **Database Design**: NoSQL schema design for real-time collaborative features
 - **UX/UI Design**: Modern dark theme design with cohesive color systems and responsive layouts
 - **Cloud Hosting**: Serverless deployment and optimization for production environments
