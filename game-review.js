@@ -48,9 +48,29 @@ function initBoard() {
     onDrop: onDrop,
     onSnapEnd: onSnapEnd
   });
+
+  const boardElement = document.getElementById('board');
+  let suppressRightDrag = false;
+  boardElement.addEventListener('pointerdown', function(e){ suppressRightDrag = (e.button === 2); });
+  boardElement.addEventListener('pointerup', function(){ suppressRightDrag = false; });
+  
+  boardElement.addEventListener('contextmenu', function(e) {
+    e.preventDefault();
+    const target = e.target.closest('[class*="square-"]');
+    if (target) {
+      target.classList.toggle('square-red-mark');
+    }
+  });
+
+  onDragStart = (function(orig){
+    return function(source, piece, position, orientation, event){
+      if (suppressRightDrag) return false;
+      return orig(source, piece, position, orientation, event);
+    };
+  })(onDragStart);
 }
 
-function onDragStart(source, piece, position, orientation) {
+function onDragStart(source, piece, position, orientation, event) {
   if (chess.game_over()) return false;
   if ((chess.turn() === 'w' && piece.search(/^b/) !== -1) ||
       (chess.turn() === 'b' && piece.search(/^w/) !== -1)) {

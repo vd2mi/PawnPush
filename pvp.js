@@ -405,6 +405,9 @@ function initBoard() {
   const boardEl = document.getElementById('board');
   boardEl.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
   boardEl.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+  let suppressRightDrag = false;
+  boardEl.addEventListener('pointerdown', (e) => { suppressRightDrag = (e.button === 2); });
+  boardEl.addEventListener('pointerup', () => { suppressRightDrag = false; });
   
   board = Chessboard("board", {
     position: chess.fen(),
@@ -412,13 +415,9 @@ function initBoard() {
     pieceTheme: function(piece) {
       return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png';
     },
-    onDragStart: function(source, piece, position, orientation){
-      // Allow dragging any piece of the correct color
+    onDragStart: function(source, piece, position, orientation, event){
+      if (suppressRightDrag) return false;
       if (chess.turn() !== piece.charAt(0)) return false;
-      // Check if piece has legal moves
-      const moves = chess.moves({square: source, verbose: true});
-      if (moves.length === 0) return false;
-      return true;
     },
     onDrop: function(source, target){
       const move = chess.move({ from:source, to:target, promotion:"q" });
@@ -435,6 +434,15 @@ function initBoard() {
       }
     }
   });
+  
+    const boardElement = document.getElementById('board');
+    boardElement.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      const target = e.target.closest('[class*="square-"]');
+      if (target) {
+        target.classList.toggle('square-red-mark');
+      }
+    });
 }
 
 function handleCorrectMove(move, userMove) {

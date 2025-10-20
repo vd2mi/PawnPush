@@ -15,21 +15,30 @@
   <link rel="stylesheet" href="style.css">
   <script src="audio-manager.js"></script>
 </head>
-<body class="puzzle-page">
-
-<header>
-  <div class="header-content">
-    <div style="display: flex; align-items: center; gap: 12px;">
-      <img src="icons/pawnpushicon.png" alt="PawnPush Logo" style="width: 100px; height: 80px; object-fit: contain;">
-      <h1>PawnPush</h1>
-    </div>
-    <div class="puzzle-navigation">
-      <a href="index.html" class="back-btn">← Back to Menu</a>
-    </div>
-  </div>
-</header>
+<body class="puzzle-page survival-mode-page">
 
 <main>
+  <div class="survival-top-bar">
+    <a href="index.html" class="survival-back-btn">← Menu</a>
+    <div class="survival-stats-compact">
+      <div class="stat-compact">
+        <span class="stat-compact-icon">🔥</span>
+        <span class="stat-compact-value" id="streak-value">0</span>
+      </div>
+      <div class="stat-compact">
+        <span class="stat-compact-icon" id="lives-value">❤️❤️❤️</span>
+      </div>
+      <div class="stat-compact">
+        <span class="stat-compact-label">ELO</span>
+        <span class="stat-compact-value" id="rating-value">800</span>
+      </div>
+    </div>
+    <div class="survival-score-display">
+      <span class="score-label">Score:</span>
+      <span class="score-number" id="score-value">0</span>
+    </div>
+  </div>
+
   <div id="puzzle-theme" class="puzzle-theme-card">
     <div class="theme-icon">♾️</div>
     <div class="theme-text">Survival Mode</div>
@@ -46,25 +55,9 @@
       <div class="info-section puzzle-details">
         <div class="section-header">
           <div class="section-icon">📊</div>
-          <h3>Survival Info</h3>
+          <h3>Puzzle Info</h3>
         </div>
         <div class="info-cards">
-          <div id="survival-score" class="info-card">
-            <span class="info-label">Score</span>
-            <span class="info-value" id="score-value">0</span>
-          </div>
-          <div id="survival-streak" class="info-card">
-            <span class="info-label">Puzzle Streak</span>
-            <span class="info-value" id="streak-value">0 🔥</span>
-          </div>
-          <div id="survival-lives" class="info-card">
-            <span class="info-label">Lives</span>
-            <span class="info-value" id="lives-value">❤️❤️❤️</span>
-          </div>
-          <div id="puzzle-rating" class="info-card">
-            <span class="info-label">Target ELO</span>
-            <span class="info-value" id="rating-value">800</span>
-          </div>
           <div id="turn-indicator" class="info-card turn-card">
             <span class="info-label">Turn</span>
             <span class="info-value">-- to move</span>

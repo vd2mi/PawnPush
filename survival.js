@@ -141,7 +141,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let lives = 3;
   let gameOver = false;
   let currentElo = 800;
-  const eloIncrement = () => Math.floor(Math.random() * 26) + 25; 
+  const eloIncrement = () => 25; 
   
 
   let startTime = Date.now();
@@ -150,6 +150,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let incorrectMoves = 0;
   let currentStreak = 0;
   let bestStreak = 0;
+  let suppressRightDrag = false;
 
   async function loadPuzzleDatabase() {
     if (!puzzleDatabase) {
@@ -162,6 +163,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const boardEl = document.getElementById('board');
   boardEl.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
   boardEl.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+  boardEl.addEventListener('pointerdown', (e) => { suppressRightDrag = (e.button === 2); });
+  boardEl.addEventListener('pointerup', () => { suppressRightDrag = false; });
 
   async function getRandomPuzzleFromDatabase() {
     const db = await loadPuzzleDatabase();
@@ -203,10 +206,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       pieceTheme: function(piece) {
         return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png';
       },
-      onDragStart: function(source, piece, position, orientation){
+      onDragStart: function(source, piece, position, orientation, event){
+        if (suppressRightDrag) return false;
         if (gameOver) return false;
         if (chess.turn() !== piece.charAt(0)) return false;
-        if (chess.moves({square:source}).length === 0) return false;
       },
       onDrop: function(source, target){
         if (gameOver) return 'snapback';
@@ -325,6 +328,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     });
     
+    const boardElement = document.getElementById('board');
+    boardElement.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      const target = e.target.closest('[class*="square-"]');
+      if (target) {
+        target.classList.toggle('square-red-mark');
+      }
+    });
   }
 
   async function loadPuzzle(){

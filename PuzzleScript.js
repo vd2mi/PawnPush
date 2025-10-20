@@ -65,6 +65,8 @@ async function loadPuzzleDatabase() {
 const boardEl = document.getElementById('board');
 boardEl.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
 boardEl.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+boardEl.addEventListener('pointerdown', (e) => { suppressRightDrag = (e.button === 2); });
+boardEl.addEventListener('pointerup', () => { suppressRightDrag = false; });
 
 async function getDailyPuzzle() {
   try {
@@ -140,6 +142,7 @@ async function getRandomPuzzleFromDatabase() {
   let board = null;
   let currentPuzzle = null;
   let solutionIndex = 0;
+  let suppressRightDrag = false;
 
   function initBoardIfNeeded(){
     if (board) return
@@ -149,9 +152,9 @@ async function getRandomPuzzleFromDatabase() {
       pieceTheme: function(piece) {
         return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png';
       },
-      onDragStart: function(source, piece, position, orientation){
+      onDragStart: function(source, piece, position, orientation, event){
+        if (suppressRightDrag) return false; 
         if (chess.turn()!== piece.charAt(0)) return false
-        if (chess.moves({square:source}).length===0) return false
       },
       onDrop: function(source,target){
         const move = chess.move({ from:source, to:target, promotion:"q" })
@@ -229,7 +232,17 @@ async function getRandomPuzzleFromDatabase() {
       document.querySelectorAll('[class*="square-"]').forEach(el => {
         el.style.backgroundColor = '';
       });
-    }; 
+    };
+
+    const boardElement = document.getElementById('board');
+    boardElement.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      const target = e.target.closest('[class*="square-"]');
+      if (target) {
+        target.classList.toggle('square-red-mark');
+      }
+    });
+    
   }
 
   async function loadPuzzle(){
