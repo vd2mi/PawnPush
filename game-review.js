@@ -36,6 +36,7 @@ let analysisTimeout = null;
 let currentAnalysis = {};
 let moveAnalyses = {};
 let isDragging = false;
+let selectedSquare = null;
 
 function initBoard() {
   board = Chessboard('board', {
@@ -59,6 +60,42 @@ function initBoard() {
     const target = e.target.closest('[class*="square-"]');
     if (target) {
       target.classList.toggle('square-red-mark');
+    }
+  });
+  
+  boardElement.addEventListener('click', function(e) {
+    // Find the square element (works for both empty squares and pieces)
+    let target = e.target;
+    if (target.tagName === 'IMG') {
+      target = target.parentElement;
+    }
+    target = target.closest('[class*="square-"]');
+    
+    if (!target) return;
+    const cls = Array.from(target.classList).find(c => c.startsWith('square-'));
+    if (!cls) return;
+    const square = cls.split('-')[1];
+    
+    // Clear previous selection
+    document.querySelectorAll('.square-selected').forEach(el => {
+      el.classList.remove('square-selected');
+    });
+    
+    if (!selectedSquare) {
+      const piece = chess.get(square);
+      if (!piece || piece.color !== chess.turn()) return;
+      selectedSquare = square;
+      target.classList.add('square-selected');
+    } else {
+      if (square === selectedSquare) {
+        selectedSquare = null;
+        return;
+      }
+      const result = onDrop(selectedSquare, square);
+      if (result !== 'snapback') {
+        board.position(chess.fen());
+      }
+      selectedSquare = null;
     }
   });
 

@@ -406,6 +406,7 @@ function initBoard() {
   boardEl.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
   boardEl.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
   let suppressRightDrag = false;
+  let selectedSquare = null;
   boardEl.addEventListener('pointerdown', (e) => { suppressRightDrag = (e.button === 2); });
   boardEl.addEventListener('pointerup', () => { suppressRightDrag = false; });
   
@@ -420,12 +421,10 @@ function initBoard() {
       if (chess.turn() !== piece.charAt(0)) return false;
     },
     onDrop: function(source, target){
-      const move = chess.move({ from:source, to:target, promotion:"q" });
+      const move = chess.move({ from:source, to:target, promotion:'q' });
       if (!move) return 'snapback';
-      
       const correctMove = currentPuzzle.solution[solutionIndex];
       const userMove = move.from + move.to + (move.promotion || '');
-      
       if (correctMove && userMove === correctMove){
         handleCorrectMove(move, userMove);
       } else {
@@ -441,6 +440,49 @@ function initBoard() {
       const target = e.target.closest('[class*="square-"]');
       if (target) {
         target.classList.toggle('square-red-mark');
+      }
+    });
+
+    boardElement.addEventListener('click', function(e) {
+      // Find the square element (works for both empty squares and pieces)
+      let target = e.target;
+      if (target.tagName === 'IMG') {
+        target = target.parentElement;
+      }
+      target = target.closest('[class*="square-"]');
+      
+      if (!target) return;
+      const cls = Array.from(target.classList).find(c => c.startsWith('square-'));
+      if (!cls) return;
+      const square = cls.split('-')[1];
+      
+      // Clear previous selection
+      document.querySelectorAll('.square-selected').forEach(el => {
+        el.classList.remove('square-selected');
+      });
+      
+      if (!selectedSquare) {
+        const piece = chess.get(square);
+        if (!piece || piece.color !== chess.turn()) return;
+        selectedSquare = square;
+        target.classList.add('square-selected');
+      } else {
+        if (square === selectedSquare) {
+          selectedSquare = null;
+          return;
+        }
+        const move = chess.move({ from:selectedSquare, to:square, promotion:'q' });
+        if (!move) {
+          return;
+        }
+        const correctMove = currentPuzzle.solution[solutionIndex];
+        const userMove = move.from + move.to + (move.promotion || '');
+        if (correctMove && userMove === correctMove){
+          handleCorrectMove(move, userMove);
+        } else {
+          handleWrongMove(move, userMove);
+        }
+        selectedSquare = null;
       }
     });
 }

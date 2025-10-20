@@ -151,6 +151,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentStreak = 0;
   let bestStreak = 0;
   let suppressRightDrag = false;
+  let selectedSquare = null;
 
   async function loadPuzzleDatabase() {
     if (!puzzleDatabase) {
@@ -336,6 +337,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         target.classList.toggle('square-red-mark');
       }
     });
+
+    // click-to-move removed per request
   }
 
   async function loadPuzzle(){

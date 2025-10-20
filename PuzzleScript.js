@@ -143,6 +143,7 @@ async function getRandomPuzzleFromDatabase() {
   let currentPuzzle = null;
   let solutionIndex = 0;
   let suppressRightDrag = false;
+  let selectedSquare = null;
 
   function initBoardIfNeeded(){
     if (board) return
@@ -240,6 +241,103 @@ async function getRandomPuzzleFromDatabase() {
       const target = e.target.closest('[class*="square-"]');
       if (target) {
         target.classList.toggle('square-red-mark');
+      }
+    });
+
+    boardElement.addEventListener('click', function(e) {
+      // Find the square element (works for both empty squares and pieces)
+      let target = e.target;
+      if (target.tagName === 'IMG') {
+        target = target.parentElement;
+      }
+      target = target.closest('[class*="square-"]');
+      
+      if (!target) return;
+      const cls = Array.from(target.classList).find(c => c.startsWith('square-'));
+      if (!cls) return;
+      const square = cls.split('-')[1];
+      
+      // Clear previous selection
+      document.querySelectorAll('.square-selected').forEach(el => {
+        el.classList.remove('square-selected');
+      });
+      
+      if (!selectedSquare) {
+        const piece = chess.get(square);
+        if (!piece || piece.color !== chess.turn()) return;
+        selectedSquare = square;
+        target.classList.add('square-selected');
+      } else {
+        if (square === selectedSquare) {
+          selectedSquare = null;
+          return;
+        }
+        const move = chess.move({ from:selectedSquare, to:square, promotion:'q' });
+        if (!move) {
+          return;
+        }
+        const correctMove = (currentPuzzle && currentPuzzle.puzzle && currentPuzzle.puzzle.solution)
+          ? currentPuzzle.puzzle.solution[solutionIndex] : null;
+        const userMove = move.from + move.to + (move.promotion || '');
+        if (correctMove && userMove===correctMove){
+          if (chess.in_check()) {
+            playSound('check');
+          } else if (move.flags.includes('k') || move.flags.includes('q')) {
+            playSound('castle');
+          } else if (move.captured) {
+            playSound('capture');
+          } else {
+            playSound('move');
+          }
+          clearHints();
+          addMoveToHistory(userMove, true);
+          solutionIndex++
+          board.position(chess.fen(), false)
+          showToast('Correct move!', 'success')
+          if (solutionIndex < currentPuzzle.puzzle.solution.length){
+            setTimeout(() => {
+              const opponentMove = currentPuzzle.puzzle.solution[solutionIndex];
+              const from = opponentMove.substring(0, 2);
+              const to = opponentMove.substring(2, 4);
+              const promotion = opponentMove.length > 4 ? opponentMove.substring(4) : undefined;
+              const autoMove = chess.move({ from, to, promotion: promotion || 'q' });
+              if (autoMove) {
+                if (chess.in_check()) {
+                  playSound('check');
+                } else if (autoMove.flags.includes('k') || autoMove.flags.includes('q')) {
+                  playSound('castle');
+                } else if (autoMove.captured) {
+                  playSound('capture');
+                } else {
+                  playSound('move');
+                }
+                addMoveToHistory(opponentMove, true);
+                solutionIndex++;
+                board.position(chess.fen(), true);
+                if (solutionIndex >= currentPuzzle.puzzle.solution.length){
+                  setTimeout(() => {
+                    playSound('solved');
+                    showToast('Puzzle solved! Loading next...', 'success')
+                    loadPuzzle()
+                  }, 800)
+                }
+              }
+            }, 350);
+          } else {
+            setTimeout(() => {
+              playSound('solved');
+              showToast('Puzzle solved! Loading next...', 'success')
+              loadPuzzle()
+            }, 800)
+          }
+        } else {
+          playSound('wrong');
+          addMoveToHistory(userMove, false);
+          chess.undo()
+          board.position(chess.fen(), false)
+          showToast('Try again', 'error')
+        }
+        selectedSquare = null;
       }
     });
     
