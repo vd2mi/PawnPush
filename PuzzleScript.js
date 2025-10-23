@@ -111,9 +111,6 @@ async function getRandomPuzzleFromDatabase() {
   const filtered = db.filter(puzzle => 
     puzzle.Difficulty === difficulty && puzzle.Position === position
   );
-  console.log('Looking for:', difficulty, position);
-  console.log('Found puzzles:', filtered.length);
-  console.log('First few puzzles:', filtered.slice(0, 3));
   if (filtered.length === 0) {
     const randomPuzzle = db[Math.floor(Math.random() * db.length)];
     return { 
@@ -376,14 +373,7 @@ async function getRandomPuzzleFromDatabase() {
       winningSide = evalScore > 0 ? 'white' : 'black';
     }
     const sideToMove = chess.turn() === 'w' ? 'white' : 'black';
-    console.log('Puzzle setup:', { 
-      evalScore, 
-      winningSide, 
-      sideToMove,
-      firstMove: data.puzzle.solution[0]
-    });
     if (sideToMove !== winningSide) {
-      console.log('Auto-playing first move (losing side):', data.puzzle.solution[0]);
       const firstMove = data.puzzle.solution[0];
       const from = firstMove.substring(0, 2);
       const to = firstMove.substring(2, 4);
@@ -396,10 +386,6 @@ async function getRandomPuzzleFromDatabase() {
     board.orientation(winningSide);
     board.position(chess.fen(), true)
     updatePuzzleInfo(data.puzzle, chess.fen());
-    console.log('Full puzzle object:', data.puzzle)
-    console.log('Puzzle rating:',  data.puzzle.rating )
-    console.log('Solution moves:', data.puzzle.solution)
-    console.log('Starting position (FEN):', chess.fen())
   }
   
   function showHint() {

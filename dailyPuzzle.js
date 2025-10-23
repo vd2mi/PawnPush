@@ -90,7 +90,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         dailyData = JSON.parse(dailyPuzzleJson);
       } else {
         // Fallback: fetch directly from API
-        console.log('No daily puzzle in sessionStorage, fetching from API...');
         dailyData = await fetchDailyPuzzle();
         if (!dailyData) {
           throw new Error('Failed to fetch daily puzzle from API');
@@ -317,10 +316,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     board.position(chess.fen(), false)
     updatePuzzleInfo(data.puzzle, chess.fen());
   
-    console.log('Daily puzzle loaded:', data.puzzle)
-    console.log('Puzzle rating:', data.puzzle.rating)
-    console.log('Solution moves:', data.puzzle.solution)
-    console.log('Starting position (FEN):', chess.fen())
   }
   
   function showHint() {

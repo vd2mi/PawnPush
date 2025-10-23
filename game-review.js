@@ -149,7 +149,6 @@ function onSnapEnd() {
 function cleanFenForAnalysis(fen) {
   const parts = fen.split(' ');
   if (parts.length >= 4 && parts[3] !== '-') {
-    console.log(`Cleaning FEN: removing en passant square "${parts[3]}" for API compatibility`);
     parts[3] = '-';
   }
   return parts.join(' ');
@@ -185,16 +184,13 @@ async function loadLocalStockfish() {
   try {
     updateEngineStatus('Loading Stockfish API (HuggingFace)...', false);
     
-    console.log('Setting up HuggingFace Stockfish API connection...');
     
     stockfish = {
       postMessage: function(cmd) {
-        console.log('→ Stockfish API:', cmd);
         this.handleCommand(cmd);
       },
       onmessage: null,
       terminate: function() {
-        console.log('Stockfish API connection terminated');
       },
       handleCommand: function(cmd) {
         const trimmed = cmd.trim();
@@ -230,7 +226,6 @@ async function loadLocalStockfish() {
                   analyzePosition: function() {
                     const fen = this.currentFen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
                     
-                    console.log('Analyzing position with HuggingFace Stockfish API:', fen);
                     
                     this.makeApiCall(fen, 0);
                   },
@@ -262,12 +257,10 @@ async function loadLocalStockfish() {
                       return response.json();
                     })
                     .then(data => {
-                      console.log('Stockfish API response:', data);
                       
                       if (data.error) {
                         console.warn('Stockfish API returned error:', data.error);
                         
-                        console.log('Using material evaluation fallback');
                         const materialEval = this.getMaterialEvaluation(fen);
                         this.sendResponse(`info depth 1 score cp ${materialEval} nodes 1000 time 100`);
                         this.sendResponse(`bestmove e2e4`);
@@ -275,7 +268,6 @@ async function loadLocalStockfish() {
                       }
                       
                       if (data.fallback) {
-                        console.log('Using API fallback analysis:', data.message);
                         this.sendResponse(`info depth ${data.depth} score cp ${Math.round(data.eval * 100)} nodes 1000 time ${data.time}`);
                         this.sendResponse(`bestmove ${data.move}`);
                         return;
@@ -296,7 +288,6 @@ async function loadLocalStockfish() {
                       if (retryCount < maxRetries) {
                         // Use exponential backoff for retries
                         const delay = Math.min(2000 * Math.pow(2, retryCount), 10000); // Max 10 seconds
-                        console.log(`Retrying API call in ${delay/1000} seconds...`);
                         setTimeout(() => {
                           this.makeApiCall(fen, retryCount + 1);
                         }, delay);
@@ -330,7 +321,6 @@ async function loadLocalStockfish() {
       cleanFenForApi: function(fen) {
         const parts = fen.split(' ');
         if (parts.length >= 4 && parts[3] !== '-') {
-          console.log(`Cleaning FEN: removing en passant square "${parts[3]}" for API compatibility`);
           parts[3] = '-';
         }
         return parts.join(' ');

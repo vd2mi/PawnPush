@@ -12,7 +12,6 @@ document.querySelectorAll("#difficulty-section button").forEach(btn => {
     document.querySelectorAll("#difficulty-section button").forEach(b => b.classList.remove("selected"))
     btn.classList.add("selected")
     window.selectedDifficulty = btn.id.replace('diff-','')
-    console.log('Selected difficulty:', window.selectedDifficulty)
   }
 })
 
@@ -21,7 +20,6 @@ document.querySelectorAll("#position-section button").forEach(btn => {
     document.querySelectorAll("#position-section button").forEach(b => b.classList.remove("selected"))
     btn.classList.add("selected")
     window.selectedPosition = btn.id.replace('pos-','')
-    console.log('Selected position:', window.selectedPosition)
   }
 })
 const toggleButtonElement2 = document.getElementById('gamereviewBtn');

@@ -185,7 +185,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     const randomPuzzle = finalPool[Math.floor(Math.random() * finalPool.length)];
     
-    console.log(`Current ELO: ${currentElo}, Selected puzzle rating: ${randomPuzzle.Rating}, Pool size: ${finalPool.length}`);
     
     return {
       puzzle: {

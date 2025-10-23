@@ -44,7 +44,6 @@ class AudioManager {
     this.setupUserInteractionHandler();
     
     this.isInitialized = true;
-    console.log('AudioManager initialized');
   }
 
   setupUserInteractionHandler() {
@@ -53,7 +52,6 @@ class AudioManager {
     const handleUserInteraction = () => {
       if (!this.userInteracted) {
         this.userInteracted = true;
-        console.log('User interaction detected - audio enabled');
         
         interactionEvents.forEach(event => {
           document.removeEventListener(event, handleUserInteraction, true);
@@ -78,7 +76,6 @@ class AudioManager {
     }
 
     if (this.mobileDevice && !this.userInteracted) {
-      console.log('Audio blocked - user interaction required on mobile');
       return false;
     }
 
@@ -103,7 +100,6 @@ class AudioManager {
       
       await audio.play();
       
-      console.log(`Playing sound: ${soundName}`);
       return true;
       
     } catch (error) {
@@ -127,7 +123,6 @@ class AudioManager {
 
   handleMobileAudioError() {
     if (!this.userInteracted) {
-      console.log('Mobile audio error - showing user interaction prompt');
     }
   }
 
