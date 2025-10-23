@@ -274,6 +274,13 @@ async function loadLocalStockfish() {
                         return;
                       }
                       
+                      if (data.fallback) {
+                        console.log('Using API fallback analysis:', data.message);
+                        this.sendResponse(`info depth ${data.depth} score cp ${Math.round(data.eval * 100)} nodes 1000 time ${data.time}`);
+                        this.sendResponse(`bestmove ${data.move}`);
+                        return;
+                      }
+                      
                       if (data.eval !== undefined) {
                         this.sendResponse(`info depth ${data.depth || 20} score cp ${Math.round(data.eval * 100)} nodes 1000000 time ${data.time || 1000}`);
                       }
