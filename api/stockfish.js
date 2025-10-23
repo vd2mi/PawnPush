@@ -35,6 +35,14 @@ export default async function handler(req, res) {
   }
 
   try {
+    console.log('Making request to HuggingFace API with FEN:', fen);
+    console.log('HF_TOKEN present:', !!HF_TOKEN);
+    console.log('Request body:', JSON.stringify({ 
+      fen: fen,
+      depth: 12,
+      time: 5000
+    }));
+    
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 50000);
     
@@ -44,11 +52,16 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${HF_TOKEN}`
       },
-      body: JSON.stringify({ fen }),
+      body: JSON.stringify({ 
+        fen: fen,
+        depth: 12,
+        time: 5000
+      }),
       signal: controller.signal
     });
     
     clearTimeout(timeoutId);
+    console.log('API response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -60,10 +73,9 @@ export default async function handler(req, res) {
     }
 
     const data = await response.json();
+    console.log('API response data:', JSON.stringify(data, null, 2));
     
-    // Transform the response to match the expected format
-    // The API returns: { fen, best_move, evaluation: { type: "cp", value: X } }
-    // We need to convert to centipawns format
+
     let evalScore = 0;
     if (data.evaluation) {
       if (data.evaluation.type === 'cp') {
