@@ -1223,13 +1223,10 @@ function loadGame() {
 }
 
 function analyzeAllMoves() {
-  // Prevent multiple simultaneous analyses
   if (isAnalyzing) {
-    console.log('Analysis already in progress, skipping...');
     return;
   }
   
-  console.log('Starting analysis of all moves in game...');
   isAnalyzing = true;
   
   document.getElementById('analysisDisplay').textContent = 'Analyzing all moves... This may take a few minutes.';
@@ -1237,7 +1234,6 @@ function analyzeAllMoves() {
   for (let i = 1; i < gameHistory.length; i++) {
       setTimeout(() => {
           if (!isAnalyzing) return; 
-          console.log(`Analyzing move ${i}/${gameHistory.length - 1}`);
           document.getElementById('analysisDisplay').textContent = `Analyzing move ${i}/${gameHistory.length - 1}...`;
           analyzeMoveReal(gameHistory[i-1], gameHistory[i], i-1);
       }, i * 2500); 
