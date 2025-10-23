@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout - HuggingFace API is consistently slow
     
-    const response = await fetch('https://vd2mi-stockfishapi.hf.space/api/analyze/fen', {
+    const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
