@@ -1213,8 +1213,15 @@ function loadGame() {
     evalBar.style.width = '50%';
     evalBar.style.background = 'linear-gradient(90deg, #f44336, #4CAF50)';
     
-    document.getElementById('analysisDisplay').textContent = 'Game loaded! Click "Analyze All Moves" to analyze every move.';
-    showToast('Game loaded successfully!', 'success');
+    document.getElementById('analysisDisplay').textContent = 'Game loaded! Starting automatic analysis...';
+    showToast('Game loaded successfully! Starting analysis...', 'success');
+    
+    // Automatically start analyzing all moves for PGN games
+    if (pgnInput && gameHistory.length > 1) {
+      setTimeout(() => {
+        analyzeAllMoves();
+      }, 1000); // Small delay to let UI update
+    }
     
   } catch (error) {
     console.error('Error loading game:', error);
