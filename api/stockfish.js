@@ -35,14 +35,20 @@ export default async function handler(req, res) {
   }
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 50000);
+    
     const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${HF_TOKEN}`
       },
-      body: JSON.stringify({ fen })
+      body: JSON.stringify({ fen }),
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -79,6 +85,15 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Error calling Stockfish API:', error);
+    
+    // Handle timeout errors specifically
+    if (error.name === 'AbortError') {
+      return res.status(504).json({ 
+        error: 'Request timeout - Stockfish API took too long to respond',
+        details: 'The analysis request timed out after 50 seconds'
+      });
+    }
+    
     return res.status(500).json({ 
       error: 'Failed to analyze position',
       details: error.message 

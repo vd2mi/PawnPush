@@ -240,6 +240,10 @@ async function loadLocalStockfish() {
                     
                     const cleanedFen = this.cleanFenForApi(fen);
                     
+                    // Create AbortController for timeout
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 55000); // 55 second timeout
+                    
                     fetch('/api/stockfish', {
                       method: 'POST',
                       headers: {
@@ -247,9 +251,11 @@ async function loadLocalStockfish() {
                       },
                       body: JSON.stringify({
                         fen: cleanedFen
-                      })
+                      }),
+                      signal: controller.signal
                     })
                     .then(response => {
+                      clearTimeout(timeoutId);
                       if (!response.ok) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                       }
@@ -277,13 +283,16 @@ async function loadLocalStockfish() {
                       }
                     })
                     .catch(error => {
+                      clearTimeout(timeoutId);
                       console.error('Stockfish API error (attempt ' + (retryCount + 1) + '):', error);
                       
                       if (retryCount < maxRetries) {
-                        console.log('Retrying API call in 2 seconds...');
+                        // Use exponential backoff for retries
+                        const delay = Math.min(2000 * Math.pow(2, retryCount), 10000); // Max 10 seconds
+                        console.log(`Retrying API call in ${delay/1000} seconds...`);
                         setTimeout(() => {
                           this.makeApiCall(fen, retryCount + 1);
-                        }, 2000);
+                        }, delay);
                       } else {
                         console.error('All API retry attempts failed');
                         this.sendResponse('info string API error - all retries failed');
