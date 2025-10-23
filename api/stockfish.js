@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     console.log('Request body:', JSON.stringify({ fen }));
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout - HuggingFace API is consistently slow
+    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 second timeout - give the API proper time
     
     const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
       method: 'POST',
@@ -101,7 +101,7 @@ export default async function handler(req, res) {
         depth: 1,
         time: 100,
         fallback: true,
-        message: 'API timeout - using fallback analysis (HuggingFace API consistently slow)'
+        message: 'API timeout - using fallback analysis (API taking longer than 25 seconds)'
       });
     }
     
