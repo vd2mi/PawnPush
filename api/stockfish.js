@@ -27,13 +27,11 @@ export default async function handler(req, res) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     
-    const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
-      method: 'POST',
+    const response = await fetch(`https://vd2mi-stockfishapi.hf.space/analyze/fen?fen=${encodeURIComponent(fen)}&depth=8`, {
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': `Bearer ${HF_TOKEN}`
       },
-      body: JSON.stringify({ fen, depth: 8 }),
       signal: controller.signal
     });
     
