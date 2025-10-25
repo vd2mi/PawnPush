@@ -1414,17 +1414,75 @@ function analyzePosition() {
   }
   
   isAnalyzing = true;
-  showToast('Analyzing all moves in the game...', 'info');
+  showToast('Analyzing current position...', 'info');
   document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🛑</span><span class="btn-text">Stop Analysis</span>';
   
-  analyzeAllMoves();
+  const currentFen = gameHistory[currentMoveIndex];
+  // Make direct API call for current position only
+  analyzeCurrentPositionDirectly(currentFen);
+}
+
+async function analyzeCurrentPositionDirectly(fen) {
+  try {
+    showToast('Analyzing current position...', 'info');
+    
+    const response = await fetch('/api/stockfish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fen })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.fallback) {
+      showToast('Using fallback analysis (API timeout)', 'warning');
+    } else {
+      showToast('Position analysis complete!', 'success');
+    }
+    
+    // Display the analysis results
+    displayPositionAnalysis(data);
+    
+  } catch (error) {
+    console.error('Position analysis error:', error);
+    showToast('Analysis failed: ' + error.message, 'error');
+  }
+}
+
+function displayPositionAnalysis(data) {
+  const analysisDiv = document.getElementById('analysis');
+  if (!analysisDiv) return;
   
-  setTimeout(() => {
-    const currentFen = gameHistory[currentMoveIndex];
-    stockfish.postMessage('ucinewgame');
-    stockfish.postMessage(`position fen ${currentFen}`);
-    stockfish.postMessage('go depth 16');
-  }, 500);
+  const evalScore = data.eval || 0;
+  const bestMove = data.move || 'e2e4';
+  const depth = data.depth || 1;
+  const time = data.time || 100;
+  
+  let evalText = '';
+  if (evalScore > 0.5) {
+    evalText = `+${evalScore.toFixed(2)} (White advantage)`;
+  } else if (evalScore < -0.5) {
+    evalText = `${evalScore.toFixed(2)} (Black advantage)`;
+  } else {
+    evalText = `${evalScore.toFixed(2)} (Balanced position)`;
+  }
+  
+  analysisDiv.innerHTML = `
+    <div class="analysis-section">
+      <h3>Position Analysis</h3>
+      <div class="analysis-info">
+        <p><strong>Depth:</strong> ${depth}</p>
+        <p><strong>Time:</strong> ${time}ms</p>
+        <p><strong>Evaluation:</strong> ${evalText}</p>
+        <p><strong>Best Move:</strong> ${bestMove}</p>
+        ${data.fallback ? '<p class="warning">⚠️ Using fallback analysis</p>' : ''}
+      </div>
+    </div>
+  `;
 }
 
 function analyzeCurrentPosition() {
