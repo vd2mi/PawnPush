@@ -720,6 +720,64 @@ section:hover {
   box-shadow: 0 8px 25px rgba(153, 0, 255, 0.3);
 }
 
+/* Difficulty Section - Bright Purple Theme */
+#difficulty-section {
+  background: rgba(40, 20, 50, 0.7);
+  border: 1px solid rgba(138, 43, 226, 0.3);
+}
+
+#difficulty-section:hover {
+  border-color: #8a2be2;
+  box-shadow: 0 8px 25px rgba(138, 43, 226, 0.4);
+}
+
+#difficulty-section h2 {
+  color: #8a2be2;
+  text-shadow: 0 0 10px rgba(138, 43, 226, 0.5);
+}
+
+/* Position Section - Same Bright Purple Theme */
+#position-section {
+  background: rgba(40, 20, 50, 0.7);
+  border: 1px solid rgba(138, 43, 226, 0.3);
+}
+
+#position-section:hover {
+  border-color: #8a2be2;
+  box-shadow: 0 8px 25px rgba(138, 43, 226, 0.4);
+}
+
+#position-section h2 {
+  color: #8a2be2;
+  text-shadow: 0 0 10px rgba(138, 43, 226, 0.5);
+}
+
+#difficulty-section button {
+  background: linear-gradient(135deg, rgba(138, 43, 226, 0.2), rgba(138, 43, 226, 0.1));
+  border: 1px solid rgba(138, 43, 226, 0.4);
+  color: #8a2be2;
+}
+
+#difficulty-section button:hover {
+  background: linear-gradient(135deg, rgba(138, 43, 226, 0.3), rgba(138, 43, 226, 0.2));
+  border-color: #8a2be2;
+  box-shadow: 0 4px 15px rgba(138, 43, 226, 0.3);
+  transform: translateY(-2px);
+}
+
+#position-section button {
+  background: linear-gradient(135deg, rgba(138, 43, 226, 0.2), rgba(138, 43, 226, 0.1));
+  border: 1px solid rgba(138, 43, 226, 0.4);
+  color: #8a2be2;
+}
+
+#position-section button:hover {
+  background: linear-gradient(135deg, rgba(138, 43, 226, 0.3), rgba(138, 43, 226, 0.2));
+  border-color: #8a2be2;
+  box-shadow: 0 4px 15px rgba(138, 43, 226, 0.3);
+  transform: translateY(-2px);
+}
+
 h2 {
   color: #9900ff;
   margin-bottom: 1rem;
