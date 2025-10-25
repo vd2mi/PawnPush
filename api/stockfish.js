@@ -33,7 +33,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${HF_TOKEN}`
       },
-      body: JSON.stringify({ fen, depth: 15 }),
+      body: JSON.stringify({ fen, depth: 12 }),
       signal: controller.signal
     });
     
