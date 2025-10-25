@@ -1218,13 +1218,6 @@ function loadGame() {
     document.getElementById('analysisDisplay').textContent = 'Game loaded! Starting automatic analysis...';
     showToast('Game loaded successfully! Starting analysis...', 'success');
     
-    // Automatically start analyzing all moves for PGN games
-    if (pgnInput && gameHistory.length > 1) {
-      setTimeout(() => {
-        analyzeAllMoves();
-      }, 1000); // Small delay to let UI update
-    }
-    
   } catch (error) {
     console.error('Error loading game:', error);
     showToast(`Error: ${error.message}`, 'error');
