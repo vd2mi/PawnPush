@@ -205,7 +205,9 @@ async function loadLocalStockfish() {
           this.parsePosition(trimmed);
           this.sendResponse('info string position set');
         } else if (trimmed.startsWith('go')) {
-          this.analyzePosition();
+          // Don't automatically analyze on every go command
+          // Only analyze when specifically requested via analyzePosition()
+          this.sendResponse('info string analysis skipped - use analyze button for position analysis');
         } else if (trimmed === 'stop') {
           this.sendResponse('bestmove e2e4 ponder e7e5');
         } else if (trimmed === 'quit') {
