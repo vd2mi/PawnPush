@@ -24,14 +24,21 @@ export default async function handler(req, res) {
   }
 
   try {
+    console.log('Making request to HuggingFace API...');
+    console.log('Method:', 'POST');
+    console.log('URL:', 'https://vd2mi-stockfishapi.hf.space/analyze/fen');
+    console.log('Body:', JSON.stringify({ fen, depth: 8 }));
+    
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     
-    const response = await fetch(`https://vd2mi-stockfishapi.hf.space/analyze/fen?fen=${encodeURIComponent(fen)}&depth=8`, {
-      method: 'GET',
+    const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
+      method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'Authorization': `Bearer ${HF_TOKEN}`
       },
+      body: JSON.stringify({ fen, depth: 8 }),
       signal: controller.signal
     });
     
