@@ -15,17 +15,25 @@ export default async function handler(req, res) {
 
   const { fen } = req.body;
   if (!fen) {
+    console.error('No FEN provided in request body');
     return res.status(400).json({ error: 'FEN position is required' });
   }
 
   const HF_TOKEN = process.env.HF_TOKEN;
   if (!HF_TOKEN) {
+    console.error('HF_TOKEN environment variable is not set');
     return res.status(500).json({ error: 'API token not configured' });
   }
+  
+  console.log('Received FEN analysis request:', fen.substring(0, 30) + '...');
 
   try {
+    console.log('Calling HuggingFace API with depth 15...');
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    const timeoutId = setTimeout(() => {
+      console.log('Timeout triggered for FEN:', fen.substring(0, 30) + '...');
+      controller.abort();
+    }, 20000); // 20 second timeout - reduced from 30s to prevent 502s
     
     const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
       method: 'POST',
@@ -38,9 +46,11 @@ export default async function handler(req, res) {
     });
     
     clearTimeout(timeoutId);
+    console.log('Got response from HuggingFace API, status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('HuggingFace API returned error status:', response.status, 'Error:', errorText);
       return res.status(response.status).json({ 
         error: `Stockfish API error: ${response.status}`,
         details: errorText
@@ -49,8 +59,8 @@ export default async function handler(req, res) {
 
     const data = await response.json();
     
-    console.log('Stockfish API response for FEN:', fen.substring(0, 20) + '...');
-    console.log('Full response:', JSON.stringify(data));
+    console.log('Successfully received data from HuggingFace API for FEN:', fen.substring(0, 30) + '...');
+    console.log('Best move:', data.best_move, 'Eval:', data.evaluation);
     
     // Validate that we got a valid response
     if (!data.best_move) {
@@ -81,28 +91,21 @@ export default async function handler(req, res) {
     console.error('Stockfish API error:', error.name, error.message);
     console.error('Error stack:', error.stack);
     
+    // Check if it's an abort (timeout)
     if (error.name === 'AbortError') {
-      console.log('Timeout after 30 seconds for FEN:', fen);
-      return res.status(200).json({
-        fen: fen,
-        move: 'e2e4',
-        eval: 0,
-        depth: 1,
-        time: 100,
-        fallback: true,
-        message: 'API timeout - using fallback analysis'
+      console.error('Request timed out after 20 seconds');
+      return res.status(504).json({
+        error: 'Request timeout',
+        details: 'The analysis request timed out after 20 seconds',
+        fallback: true
       });
     }
     
-    console.log('API error for FEN:', fen, 'Error:', error.message);
-    return res.status(200).json({
-      fen: fen,
-      move: 'e2e4',
-      eval: 0,
-      depth: 1,
-      time: 100,
-      fallback: true,
-      message: 'API error - using fallback analysis'
+    // Return error response for other errors
+    return res.status(500).json({
+      error: 'Stockfish API call failed',
+      details: error.message,
+      fallback: true
     });
   }
 }

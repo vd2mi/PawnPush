@@ -752,6 +752,8 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
       const bestEval = data.eval * 100; 
       const bestMove = data.move;
       
+      console.log(`Move ${moveIndex + 1}: Comparing '${playedMove}' (played) vs '${bestMove}' (best)`);
+      
       if (playedMove === bestMove) {
         // Best move - CPL = 0
         const evaluation = evaluateMoveQualityFromCPL(0);
