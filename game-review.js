@@ -920,9 +920,9 @@ function evaluateMoveQuality(moveScore, bestScore) {
   const diff = Math.abs(moveScore - bestScore);
   
   // Even harsher thresholds
-  if (diff <= 5) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best / Brilliant', score: 1.00 };
-  if (diff <= 15) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
-  if (diff <= 35) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
+  if (diff <= 10) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best / Brilliant', score: 1.00 };
+  if (diff <= 25) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
+  if (diff <= 50) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
   if (diff <= 75) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy', score: 0.60 };
   if (diff <= 150) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake', score: 0.30 };
   return { type: 'blunder', symbol: '??', color: '#f44336', text: 'Blunder', score: 0.00 };
@@ -930,9 +930,9 @@ function evaluateMoveQuality(moveScore, bestScore) {
 
 function evaluateMoveQualityFromCPL(cpl) {
   // Even harsher thresholds based on CPL
-  if (cpl <= 5) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best / Brilliant', score: 1.00 };
-  if (cpl <= 15) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
-  if (cpl <= 35) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
+  if (cpl <= 10) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best / Brilliant', score: 1.00 };
+  if (cpl <= 25) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
+  if (cpl <= 50) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
   if (cpl <= 75) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy', score: 0.60 };
   if (cpl <= 150) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake', score: 0.30 };
   return { type: 'blunder', symbol: '??', color: '#f44336', text: 'Blunder', score: 0.00 };
@@ -1353,10 +1353,19 @@ function analyzeAllMoves() {
   const totalMoves = gameHistory.length - 1;
   const startTime = Date.now(); // Moved to before setInterval
   
-  // Analyze all moves in parallel (each takes up to 5 seconds)
-  for (let i = 1; i < gameHistory.length; i++) {
-    analyzeMoveReal(gameHistory[i-1], gameHistory[i], i-1);
+  // Analyze moves sequentially with 3 second delay between each to avoid API overload
+  async function analyzeSequentially() {
+    for (let i = 1; i < gameHistory.length; i++) {
+      analyzeMoveReal(gameHistory[i-1], gameHistory[i], i-1);
+      
+      // Wait 3 seconds before starting the next move analysis
+      if (i < gameHistory.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    }
   }
+  
+  analyzeSequentially();
   
   // Wait for all moves to complete, then show results
   const checkComplete = setInterval(() => {
