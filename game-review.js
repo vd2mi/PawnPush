@@ -1208,7 +1208,7 @@ function loadGame() {
       chess.load(fenInput);
       gameHistory = [chess.fen()];
       currentMoveIndex = 0;
-      updateBoard();
+      updateBoard(true);
       updateMoveList();
       document.getElementById('analysisDisplay').textContent = 'Position loaded! This is a specific position - use navigation buttons to move through the game.';
     } else if (pgnInput) {
@@ -1252,13 +1252,21 @@ function loadGame() {
       throw new Error('Please enter PGN moves or FEN position');
     }
     
-    updateBoard();
+    updateBoard(true);
     updateMoveList();
     clearHighlights();
     
-    const evalBar = document.getElementById('evalBar');
-    evalBar.style.width = '50%';
-    evalBar.style.background = 'linear-gradient(90deg, #f44336, #4CAF50)';
+    const evalBarBoard = document.getElementById('evalBarFill');
+    const evalScoreBoard = document.getElementById('evalScoreBoard');
+    if (evalBarBoard) {
+      evalBarBoard.style.width = '50%';
+      evalBarBoard.style.background = 'linear-gradient(90deg, #f44336, #4CAF50)';
+    }
+    if (evalScoreBoard) {
+      evalScoreBoard.textContent = '+0.00';
+      evalScoreBoard.style.color = '#ffffff';
+      evalScoreBoard.style.backgroundColor = 'rgba(100, 181, 246, 0.2)';
+    }
     
     if (gameHistory.length > 1) {
       showToast('Game loaded successfully! Starting analysis...', 'success');
@@ -1426,11 +1434,13 @@ function analyzeAllMoves() {
   }, 200);
 }
 
-function updateBoard() {
+function updateBoard(skipAnalysis = false) {
   if (board && gameHistory[currentMoveIndex]) {
     chess.load(gameHistory[currentMoveIndex]);
     board.position(chess.fen());
-    analyzeCurrentPosition();
+    if (!skipAnalysis) {
+      analyzeCurrentPosition();
+    }
   }
 }
 
