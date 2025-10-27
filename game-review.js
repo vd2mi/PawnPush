@@ -1349,6 +1349,7 @@ function analyzeAllMoves() {
   // Track analysis progress
   let completedMoves = 0;
   const totalMoves = gameHistory.length - 1;
+  const startTime = Date.now(); // Moved to before setInterval
   
   // Analyze all moves in parallel (each takes up to 5 seconds)
   for (let i = 1; i < gameHistory.length; i++) {
@@ -1364,7 +1365,7 @@ function analyzeAllMoves() {
     }
     
     // Check if all moves are done (with a reasonable timeout)
-    if (completedMoves >= totalMoves || completedMoves > 0 && Date.now() - startTime > totalMoves * 5500) {
+    if (completedMoves >= totalMoves || (completedMoves > 0 && Date.now() - startTime > totalMoves * 5500)) {
       clearInterval(checkComplete);
       
       if (!isAnalyzing) return;
@@ -1388,8 +1389,6 @@ function analyzeAllMoves() {
       }, 500);
     }
   }, 200);
-  
-  const startTime = Date.now();
 }
 
 function updateBoard() {
