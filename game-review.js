@@ -141,6 +141,7 @@ function onDrop(source, target) {
   
   updateMoveList();
   evaluateLastMove();
+  analyzeCurrentPosition();
 }
 
 function onSnapEnd() {
@@ -1069,10 +1070,11 @@ function updateAnalysisDisplay(analysis, altMoves) {
 }
 
 function updateEvaluationBar(centipawns) {
-  const evalBar = document.getElementById('evalBar');
-  const evalScore = document.getElementById('evalScore');
   const evalBarBoard = document.getElementById('evalBarFill');
   const evalScoreBoard = document.getElementById('evalScoreBoard');
+  
+  if (!evalBarBoard || !evalScoreBoard) return;
+  
   let percentage;
   
   if (Math.abs(centipawns) >= 1000) {
@@ -1082,52 +1084,30 @@ function updateEvaluationBar(centipawns) {
     percentage = Math.max(5, Math.min(95, percentage));
   }
   
-  evalBar.style.width = percentage + '%';
-  if (evalBarBoard) {
-    evalBarBoard.style.width = percentage + '%';
-  }
+  evalBarBoard.style.width = percentage + '%';
   
   const score = (centipawns / 100).toFixed(2);
-  const sideIndicator = centipawns > 0 ? 'White' : centipawns < 0 ? 'Black' : 'Equal';
   const scoreText = `${centipawns >= 0 ? '+' : ''}${score}`;
   
-  evalScore.textContent = `${sideIndicator} ${scoreText}`;
-  if (evalScoreBoard) {
-    evalScoreBoard.textContent = scoreText;
-  }
+  evalScoreBoard.textContent = scoreText;
   
   if (centipawns > 100) {
-    evalScore.style.color = '#FFFFFF';
-    evalScore.style.backgroundColor = '#4CAF50';
-    if (evalScoreBoard) {
-      evalScoreBoard.style.color = '#FFFFFF';
-      evalScoreBoard.style.backgroundColor = '#4CAF50';
-    }
+    evalScoreBoard.style.color = '#FFFFFF';
+    evalScoreBoard.style.backgroundColor = '#4CAF50';
   } else if (centipawns < -100) {
-    evalScore.style.color = '#FFFFFF';
-    evalScore.style.backgroundColor = '#000000';
-    if (evalScoreBoard) {
-      evalScoreBoard.style.color = '#FFFFFF';
-      evalScoreBoard.style.backgroundColor = '#000000';
-    }
+    evalScoreBoard.style.color = '#FFFFFF';
+    evalScoreBoard.style.backgroundColor = '#000000';
   } else {
-    evalScore.style.color = '#a2c5bf';
-    evalScore.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
-    if (evalScoreBoard) {
-      evalScoreBoard.style.color = '#ffffff';
-      evalScoreBoard.style.backgroundColor = 'rgba(100, 181, 246, 0.2)';
-    }
+    evalScoreBoard.style.color = '#ffffff';
+    evalScoreBoard.style.backgroundColor = 'rgba(100, 181, 246, 0.2)';
   }
   
   if (percentage > 70) {
-    evalBar.style.background = '#FFFFFF';
-    if (evalBarBoard) evalBarBoard.style.background = '#4CAF50';
+    evalBarBoard.style.background = '#4CAF50';
   } else if (percentage < 30) {
-    evalBar.style.background = '#000000';
-    if (evalBarBoard) evalBarBoard.style.background = '#f44336';
+    evalBarBoard.style.background = '#f44336';
   } else {
-    evalBar.style.background = '#666666';
-    if (evalBarBoard) evalBarBoard.style.background = 'linear-gradient(90deg, #f44336, #666, #4CAF50)';
+    evalBarBoard.style.background = 'linear-gradient(90deg, #f44336, #666, #4CAF50)';
   }
 }
 
@@ -1450,6 +1430,21 @@ function updateBoard() {
   if (board && gameHistory[currentMoveIndex]) {
     chess.load(gameHistory[currentMoveIndex]);
     board.position(chess.fen());
+    analyzeCurrentPosition();
+  }
+}
+
+function analyzeCurrentPosition() {
+  if (!stockfish || !chess || chess.game_over()) return;
+  
+  try {
+    stockfish.postMessage('ucinewgame');
+    stockfish.postMessage(`position fen ${chess.fen()}`);
+    stockfish.postMessage('go depth 8 movetime 800');
+    
+    isAnalyzing = true;
+  } catch (e) {
+    console.error('Error analyzing position:', e);
   }
 }
 
