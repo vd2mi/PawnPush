@@ -257,6 +257,7 @@ async function loadLocalStockfish() {
                       return response.json();
                     })
                     .then(data => {
+                      console.log('API response for FEN:', cleanedFen.substring(0, 30) + '...', 'Response:', data);
                       
                       if (data.error) {
                         console.warn('Stockfish API returned error:', data.error);
@@ -268,6 +269,7 @@ async function loadLocalStockfish() {
                       }
                       
                       if (data.fallback) {
+                        console.warn('Using fallback analysis for FEN:', cleanedFen.substring(0, 30) + '...', 'Message:', data.message);
                         this.sendResponse(`info depth ${data.depth} score cp ${Math.round(data.eval * 100)} nodes 1000 time ${data.time}`);
                         this.sendResponse(`bestmove ${data.move}`);
                         return;

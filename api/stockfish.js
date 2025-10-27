@@ -49,7 +49,14 @@ export default async function handler(req, res) {
 
     const data = await response.json();
     
-    console.log('Stockfish API response:', JSON.stringify(data));
+    console.log('Stockfish API response for FEN:', fen.substring(0, 20) + '...');
+    console.log('Full response:', JSON.stringify(data));
+    
+    // Validate that we got a valid response
+    if (!data.best_move) {
+      console.error('No best_move in response:', data);
+      throw new Error('Invalid API response: no best_move');
+    }
     
     let evalScore = 0;
     if (data.evaluation) {
@@ -60,7 +67,7 @@ export default async function handler(req, res) {
       }
     }
     
-    console.log('Parsed data:', { evalScore, best_move: data.best_move });
+    console.log('Returning:', { evalScore, best_move: data.best_move, fen: data.fen });
 
     return res.status(200).json({
       fen: data.fen,
@@ -72,9 +79,10 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Stockfish API error:', error.name, error.message);
+    console.error('Error stack:', error.stack);
     
     if (error.name === 'AbortError') {
-      console.log('Timeout after 5 seconds for FEN:', fen);
+      console.log('Timeout after 30 seconds for FEN:', fen);
       return res.status(200).json({
         fen: fen,
         move: 'e2e4',
