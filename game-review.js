@@ -1891,17 +1891,21 @@ function clearGame() {
   document.getElementById('analysisDisplay').textContent = 'Load a game and click "Analyze Position" to see engine analysis...';
   document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Suggest Move</span>';
   
-  updateBoard();
+  updateBoard(true);
   updateMoveList();
   clearHighlights();
   
-  const evalBar = document.getElementById('evalBar');
-  const evalScore = document.getElementById('evalScore');
-  evalBar.style.width = '50%';
-  evalBar.style.background = '#666666';
-  evalScore.textContent = 'Equal +0.00';
-  evalScore.style.color = '#a2c5bf';
-  evalScore.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+  const evalBarBoard = document.getElementById('evalBarFill');
+  const evalScoreBoard = document.getElementById('evalScoreBoard');
+  if (evalBarBoard) {
+    evalBarBoard.style.width = '50%';
+    evalBarBoard.style.background = 'linear-gradient(90deg, #f44336, #4CAF50)';
+  }
+  if (evalScoreBoard) {
+    evalScoreBoard.textContent = '+0.00';
+    evalScoreBoard.style.color = '#ffffff';
+    evalScoreBoard.style.backgroundColor = 'rgba(100, 181, 246, 0.2)';
+  }
   
   showToast('Board cleared', 'info');
 }
