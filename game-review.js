@@ -929,12 +929,12 @@ function evaluateMoveQuality(moveScore, bestScore) {
 }
 
 function evaluateMoveQualityFromCPL(cpl) {
-  // Even harsher thresholds based on CPL
-  if (cpl <= 10) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best / Brilliant', score: 1.00 };
-  if (cpl <= 25) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
-  if (cpl <= 50) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
-  if (cpl <= 75) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy', score: 0.60 };
-  if (cpl <= 150) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake', score: 0.30 };
+  // New thresholds based on table
+  if (cpl <= 5) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best', score: 1.00 };
+  if (cpl <= 15) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
+  if (cpl <= 35) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
+  if (cpl <= 80) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy', score: 0.60 };
+  if (cpl <= 180) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake', score: 0.30 };
   return { type: 'blunder', symbol: '??', color: '#f44336', text: 'Blunder', score: 0.00 };
 }
 

@@ -28,12 +28,12 @@ export default async function handler(req, res) {
   console.log('Received FEN analysis request:', fen.substring(0, 30) + '...');
 
   try {
-    console.log('Calling HuggingFace API with depth 15...');
+    console.log('Calling HuggingFace API with depth 20...');
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       console.log('Timeout triggered for FEN:', fen.substring(0, 30) + '...');
       controller.abort();
-    }, 20000); // 20 second timeout - reduced from 30s to prevent 502s
+    }, 30000); // 30 second timeout for depth 20
     
     const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
       method: 'POST',
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${HF_TOKEN}`
       },
-      body: JSON.stringify({ fen, depth: 15 }), // Reduced depth for faster analysis
+      body: JSON.stringify({ fen, depth: 20 }), // Depth 20 for deeper analysis
       signal: controller.signal
     });
     
@@ -83,7 +83,7 @@ export default async function handler(req, res) {
       fen: data.fen,
       move: data.best_move,
       eval: evalScore / 100,
-      depth: 15,
+      depth: 20,
       time: 1000
     });
 
@@ -93,10 +93,10 @@ export default async function handler(req, res) {
     
     // Check if it's an abort (timeout)
     if (error.name === 'AbortError') {
-      console.error('Request timed out after 20 seconds');
+      console.error('Request timed out after 30 seconds');
       return res.status(504).json({
         error: 'Request timeout',
-        details: 'The analysis request timed out after 20 seconds',
+        details: 'The analysis request timed out after 30 seconds',
         fallback: true
       });
     }
