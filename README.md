@@ -56,7 +56,11 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 - **⚔️ 1v1 Private Battle** - Challenge friends in real-time puzzle races with private room codes
 - **🏆 Global Leaderboard** - Compete worldwide with Firebase-powered cross-device rankings
 - **Daily Puzzle** - Fresh challenge from Lichess every day with purple theme
-- **Game Review** - Analyze your games position by position with AI insights
+- **Game Review** - Analyze your games position by position with Stockfish engine analysis
+  - Load games via PGN, FEN, or directly from Chess.com
+  - Real-time Stockfish evaluation for every move
+  - Move-by-move analysis with automatic evaluation updates
+  - AI-powered insights into move quality and alternatives
 - **Automatic Opponent Responses** - Computer plays opponent moves seamlessly
 - **Color-coded difficulty** - Cyan (Beginner) → Blue (Intermediate) → Yellow (Advanced) → Red (Expert)
 

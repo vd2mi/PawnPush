@@ -60,24 +60,14 @@
         <div class="button-grid">
           <button class="btn btn-primary" id="loadGameBtn">Load Game</button>
           <button class="btn btn-secondary" id="clearBtn">Clear</button>
-          <button class="btn btn-primary" id="chesscomBtn" style="margin-top: 8px; width: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-            <span style="font-size: 1.2em;">♞</span> Load from Chess.com
+          <button class="btn btn-primary chesscom-btn" id="chesscomBtn">
+            <span>♞</span> Load from Chess.com
           </button>
         </div>
-      </div>
-
-
-      <div class="section">
-        <div class="section-header">
-          <div class="section-icon">⏯️</div>
-          <h3>Navigation</h3>
-        </div>
-        <div class="move-controls">
-          <button class="move-btn" id="firstBtn" title="First move">⏮️</button>
-          <button class="move-btn" id="prevBtn" title="Previous move">⏪</button>
-          <button class="move-btn" id="nextBtn" title="Next move">⏩</button>
-          <button class="move-btn" id="lastBtn" title="Last move">⏭️</button>
-        </div>
+        <button class="btn btn-primary" id="analyzeBtn">
+          <span class="btn-icon">🧠</span>
+          <span class="btn-text">Analyze</span>
+        </button>
       </div>
 
 
@@ -90,12 +80,6 @@
           <div id="evalBar" class="evaluation-fill"></div>
         </div>
         <div id="evalScore" class="eval-score">+0.00</div>
-        <div class="input-group">
-          <button class="btn btn-primary" id="analyzeBtn">
-            <span class="btn-icon">🧠</span>
-            <span class="btn-text">Analyze All Moves</span>
-          </button>
-        </div>
         <div id="analysisDisplay" class="analysis-display">
           Load a game and click "Analyze All Moves" to see Stockfish analysis for every move...
         </div>
@@ -103,6 +87,14 @@
     </div>
 
     <div class="board-section">
+      <div class="board-eval-section">
+        <div class="board-eval-wrapper">
+          <div id="evalScoreBoard" class="eval-score-board">+0.00</div>
+          <div id="evalBarBoard" class="evaluation-bar-board">
+            <div id="evalBarFill" class="evaluation-fill-board"></div>
+          </div>
+        </div>
+      </div>
       <div class="board-wrapper">
         <div id="board"></div>
       </div>
@@ -117,6 +109,12 @@
         <div id="moveList" class="move-list">
           No game loaded
         </div>
+      </div>
+      <div class="board-nav-controls">
+        <button class="move-btn board-nav-btn" id="firstBtn" title="First move">⏮️</button>
+        <button class="move-btn board-nav-btn" id="prevBtn" title="Previous move">⏪</button>
+        <button class="move-btn board-nav-btn" id="nextBtn" title="Next move">⏩</button>
+        <button class="move-btn board-nav-btn" id="lastBtn" title="Last move">⏭️</button>
       </div>
     </div>
   </div>

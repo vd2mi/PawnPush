@@ -20,7 +20,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Fetch games for the specified month
     const response = await fetch(
       `https://api.chess.com/pub/player/${username}/games/${year}/${month}/pgn`,
       {

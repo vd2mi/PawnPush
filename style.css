@@ -348,6 +348,26 @@ th {
   box-shadow: none !important;
 }
 
+.review-page #board table,
+.review-page #board table.board-b72b1 {
+  width: 100% !important;
+  height: 100% !important;
+  border-collapse: collapse !important;
+  border-spacing: 0 !important;
+  table-layout: fixed !important;
+}
+
+.review-page #board tr {
+  height: 12.5% !important;
+}
+
+.review-page #board td {
+  width: 12.5% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  position: relative;
+}
+
 
 div[id*="board"],
 div[class*="board"],
@@ -1405,16 +1425,16 @@ body {
 
 header {
   background: linear-gradient(135deg, #121212, #1a1a1a);
-  padding: 2rem 1rem;
+  padding: 1rem;
   text-align: center;
   color: #cccccc;
   box-shadow: 0 4px 15px rgba(0,0,0,0.2);
 }
 
 h1 {
-  font-size: 2.5rem;
+  font-size: 1.8rem;
   font-weight: bold;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.3rem;
   color: #9900ff;
 }
 
@@ -1831,6 +1851,9 @@ textarea:focus, input:focus {
   }
   
   .board-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     background: rgba(30, 36, 45, 0.8);
     border: 2px solid rgba(100, 181, 246, 0.2);
     border-radius: 16px;
@@ -1839,6 +1862,21 @@ textarea:focus, input:focus {
     order: 2; 
     flex: 1;
     min-width: 500px;
+  }
+  
+  .board-eval-section {
+    width: 100%;
+    max-width: 750px;
+    margin: 0 0 1rem 0;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    padding: 1rem;
+  }
+  
+  .board-eval-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
   
   .move-list-panel {
@@ -1852,18 +1890,68 @@ textarea:focus, input:focus {
     backdrop-filter: blur(10px);
     order: 3; 
   }
-  
+
   .board-wrapper {
     display: flex;
     justify-content: center;
+    width: 100%;
+    align-items: flex-start;
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(30, 36, 45, 0.8);
   }
   
   #board {
     width: 80vw;
     max-width: 600px;
     aspect-ratio: 1/1;
+    border-radius: 0;
+    overflow: visible;
+    background: transparent;
+  }
+  
+  .eval-score-board {
+    font-family: 'Courier New', monospace;
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #ffffff;
+    background: rgba(100, 181, 246, 0.2);
+    padding: 8px 16px;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    min-width: 100px;
+    text-align: center;
+  }
+  
+  .evaluation-bar-board {
+    flex: 1;
+    height: 24px;
+    background: #333;
     border-radius: 12px;
     overflow: hidden;
+  }
+  
+  .evaluation-fill-board {
+    height: 100%;
+    background: linear-gradient(90deg, #f44336, #666, #4CAF50);
+    transition: width 0.3s ease, background 0.3s ease;
+    width: 50%;
+  }
+  
+  .board-nav-controls {
+    display: flex;
+    justify-content: center;
+    gap: 0.8rem;
+    margin-top: 1rem;
+  }
+  
+  .board-nav-btn {
+    flex: 1;
+    max-width: 120px;
+  }
+
+  .move-list-panel .board-nav-controls {
+    margin-top: 1.5rem;
   }
   
   .input-group {
@@ -1899,23 +1987,27 @@ textarea:focus, input:focus {
   
   .button-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 0.5rem;
     margin-top: 1rem;
   }
   
   .btn {
-    padding: 0.8rem 1.5rem;
+    padding: 0.6rem 1rem;
     border: none;
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
+    gap: 0.4rem;
+  }
+  
+  #analyzeBtn {
+    margin-top: 0.5rem;
   }
   
   .btn-primary {
@@ -1938,6 +2030,10 @@ textarea:focus, input:focus {
   .btn-secondary:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(255, 152, 0, 0.4);
+  }
+  
+  .chesscom-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   }
   
   .move-controls {

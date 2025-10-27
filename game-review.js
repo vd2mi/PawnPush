@@ -37,6 +37,7 @@ let currentAnalysis = {};
 let moveAnalyses = {};
 let isDragging = false;
 let selectedSquare = null;
+let gameMetadata = { white: 'White', black: 'Black' };
 
 function initBoard() {
   board = Chessboard('board', {
@@ -929,12 +930,13 @@ function evaluateMoveQuality(moveScore, bestScore) {
 }
 
 function evaluateMoveQualityFromCPL(cpl) {
-  // New thresholds based on table
-  if (cpl <= 5) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best', score: 1.00 };
-  if (cpl <= 15) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
-  if (cpl <= 35) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
-  if (cpl <= 80) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy', score: 0.60 };
-  if (cpl <= 180) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake', score: 0.30 };
+  // Refined thresholds based on table
+  if (cpl <= 3) return { type: 'brilliant', symbol: '‼️', color: '#4CAF50', text: 'Brilliant', score: 1.00 };
+  if (cpl <= 10) return { type: 'best', symbol: '!', color: '#4CAF50', text: 'Best', score: 0.96 };
+  if (cpl <= 25) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.90 };
+  if (cpl <= 50) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.75 };
+  if (cpl <= 100) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy', score: 0.55 };
+  if (cpl <= 200) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake', score: 0.25 };
   return { type: 'blunder', symbol: '??', color: '#f44336', text: 'Blunder', score: 0.00 };
 }
 
@@ -1069,6 +1071,8 @@ function updateAnalysisDisplay(analysis, altMoves) {
 function updateEvaluationBar(centipawns) {
   const evalBar = document.getElementById('evalBar');
   const evalScore = document.getElementById('evalScore');
+  const evalBarBoard = document.getElementById('evalBarFill');
+  const evalScoreBoard = document.getElementById('evalScoreBoard');
   let percentage;
   
   if (Math.abs(centipawns) >= 1000) {
@@ -1079,28 +1083,51 @@ function updateEvaluationBar(centipawns) {
   }
   
   evalBar.style.width = percentage + '%';
+  if (evalBarBoard) {
+    evalBarBoard.style.width = percentage + '%';
+  }
   
   const score = (centipawns / 100).toFixed(2);
   const sideIndicator = centipawns > 0 ? 'White' : centipawns < 0 ? 'Black' : 'Equal';
-  evalScore.textContent = `${sideIndicator} ${centipawns >= 0 ? '+' : ''}${score}`;
+  const scoreText = `${centipawns >= 0 ? '+' : ''}${score}`;
+  
+  evalScore.textContent = `${sideIndicator} ${scoreText}`;
+  if (evalScoreBoard) {
+    evalScoreBoard.textContent = scoreText;
+  }
   
   if (centipawns > 100) {
     evalScore.style.color = '#FFFFFF';
     evalScore.style.backgroundColor = '#4CAF50';
+    if (evalScoreBoard) {
+      evalScoreBoard.style.color = '#FFFFFF';
+      evalScoreBoard.style.backgroundColor = '#4CAF50';
+    }
   } else if (centipawns < -100) {
     evalScore.style.color = '#FFFFFF';
     evalScore.style.backgroundColor = '#000000';
+    if (evalScoreBoard) {
+      evalScoreBoard.style.color = '#FFFFFF';
+      evalScoreBoard.style.backgroundColor = '#000000';
+    }
   } else {
     evalScore.style.color = '#a2c5bf';
     evalScore.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+    if (evalScoreBoard) {
+      evalScoreBoard.style.color = '#ffffff';
+      evalScoreBoard.style.backgroundColor = 'rgba(100, 181, 246, 0.2)';
+    }
   }
   
   if (percentage > 70) {
     evalBar.style.background = '#FFFFFF';
+    if (evalBarBoard) evalBarBoard.style.background = '#4CAF50';
   } else if (percentage < 30) {
     evalBar.style.background = '#000000';
+    if (evalBarBoard) evalBarBoard.style.background = '#f44336';
   } else {
     evalBar.style.background = '#666666';
+    if (evalBarBoard) evalBarBoard.style.background = 'linear-gradient(90deg, #f44336, #666, #4CAF50)';
   }
 }
 
@@ -1205,6 +1232,11 @@ function loadGame() {
       updateMoveList();
       document.getElementById('analysisDisplay').textContent = 'Position loaded! This is a specific position - use navigation buttons to move through the game.';
     } else if (pgnInput) {
+      const whiteMatch = pgnInput.match(/\[White\s+"([^"]+)"\]/);
+      const blackMatch = pgnInput.match(/\[Black\s+"([^"]+)"\]/);
+      gameMetadata.white = whiteMatch ? whiteMatch[1] : 'White';
+      gameMetadata.black = blackMatch ? blackMatch[1] : 'Black';
+      
       if (chess.load_pgn(pgnInput)) {
         const history = chess.history();
         chess = new Chess();
@@ -1248,7 +1280,6 @@ function loadGame() {
     evalBar.style.width = '50%';
     evalBar.style.background = 'linear-gradient(90deg, #f44336, #4CAF50)';
     
-    // Automatically start analysis with loading screen
     if (gameHistory.length > 1) {
       showToast('Game loaded successfully! Starting analysis...', 'success');
       analyzeAllMoves();
@@ -1272,7 +1303,6 @@ function showLoadingOverlay() {
   `;
   document.body.appendChild(overlay);
   
-  // Add CSS if not already added
   if (!document.querySelector('#loading-overlay-style')) {
     const style = document.createElement('style');
     style.id = 'loading-overlay-style';
@@ -1348,26 +1378,22 @@ function analyzeAllMoves() {
   showLoadingOverlay();
   updateLoadingProgress('Starting analysis...');
   
-  // Track analysis progress
   let completedMoves = 0;
   const totalMoves = gameHistory.length - 1;
-  const startTime = Date.now(); // Moved to before setInterval
+  const startTime = Date.now();
   
-  // Analyze moves sequentially with 3 second delay between each to avoid API overload
   async function analyzeSequentially() {
     for (let i = 1; i < gameHistory.length; i++) {
       analyzeMoveReal(gameHistory[i-1], gameHistory[i], i-1);
       
-      // Wait 3 seconds before starting the next move analysis
       if (i < gameHistory.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
     }
   }
   
   analyzeSequentially();
   
-  // Wait for all moves to complete, then show results
   const checkComplete = setInterval(() => {
     completedMoves = Object.keys(moveAnalyses).length;
     
@@ -1375,26 +1401,44 @@ function analyzeAllMoves() {
       updateLoadingProgress(`Analyzing... ${completedMoves}/${totalMoves} moves completed`);
     }
     
-    // Check if all moves are done (with a reasonable timeout)
     if (completedMoves >= totalMoves || (completedMoves > 0 && Date.now() - startTime > totalMoves * 5500)) {
       clearInterval(checkComplete);
       
       if (!isAnalyzing) return;
       
-      const performanceElo = calculatePerformanceRating();
-      const performanceText = performanceElo ? ` Performance this game: ${Math.round(performanceElo)}` : '';
+      const performanceRatings = calculatePerformanceRating();
       
       updateLoadingProgress('Finalizing analysis...');
       
       setTimeout(() => {
         hideLoadingOverlay();
-        showToast(`Analysis complete! Analyzed ${completedMoves} moves.${performanceText}`, 'success');
+        
+        let performanceText = '';
+        if (performanceRatings && (performanceRatings.white !== null || performanceRatings.black !== null)) {
+          const parts = [];
+          if (performanceRatings.white !== null) {
+            parts.push(`${gameMetadata.white}: ${Math.round(performanceRatings.white)}`);
+          }
+          if (performanceRatings.black !== null) {
+            parts.push(`${gameMetadata.black}: ${Math.round(performanceRatings.black)}`);
+          }
+          performanceText = parts.join(' | ');
+        }
+        
+        showToast(`Analysis complete! Analyzed ${completedMoves} moves.`, 'success');
         isAnalyzing = false;
         document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
         
-        const performanceDisplay = performanceElo 
-          ? `\n\n${'='.repeat(40)}\nPerformance this game: ${Math.round(performanceElo)}`
-          : '';
+        let performanceDisplay = '';
+        if (performanceRatings && (performanceRatings.white !== null || performanceRatings.black !== null)) {
+          performanceDisplay = '\n\n' + '='.repeat(40) + '\n';
+          if (performanceRatings.white !== null) {
+            performanceDisplay += `${gameMetadata.white}: ${Math.round(performanceRatings.white)}\n`;
+          }
+          if (performanceRatings.black !== null) {
+            performanceDisplay += `${gameMetadata.black}: ${Math.round(performanceRatings.black)}\n`;
+          }
+        }
         
         document.getElementById('analysisDisplay').textContent = `Analysis complete! Click on any move to see detailed evaluation.${performanceDisplay}`;
       }, 500);
@@ -1643,27 +1687,44 @@ function calculatePerformanceRating() {
     return null;
   }
   
-  const moveScores = [];
+  const whiteMoves = [];
+  const blackMoves = [];
+  
   Object.keys(moveAnalyses).forEach(key => {
-    const analysis = moveAnalyses[key];
-    if (analysis && analysis.evaluation && typeof analysis.evaluation.score === 'number') {
-      moveScores.push(analysis.evaluation.score);
+          const analysis = moveAnalyses[key];
+      if (analysis && analysis.evaluation && typeof analysis.evaluation.score === 'number') {
+        const moveIndex = parseInt(key);
+      if (moveIndex % 2 === 0) {
+        whiteMoves.push({
+          score: analysis.evaluation.score,
+          index: moveIndex
+        });
+      } else {
+        blackMoves.push({
+          score: analysis.evaluation.score,
+          index: moveIndex
+        });
+      }
     }
   });
   
-  if (moveScores.length === 0) {
-    return null;
+  function calculateWeightedElo(moves) {
+    if (moves.length === 0) return null;
+    
+    const weights = moves.map((m, i) => (i / moves.length) < 0.8 ? 1 : 0.6);
+    const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+    const weightedSum = moves.reduce((sum, m, i) => sum + m.score * weights[i], 0);
+    const avgQuality = weightedSum / totalWeight;
+    
+    const perfElo = 400 + 2200 * Math.pow(avgQuality, 1.5);
+    
+    return Math.max(400, Math.min(2600, perfElo));
   }
   
-  // Calculate average move quality (0.0 to 1.0 scale)
-  const avgQuality = moveScores.reduce((sum, score) => sum + score, 0) / moveScores.length;
-  
-  let perfElo = 400 + (avgQuality * 2200);
-  
-  // Clamp between 400 and 2600
-  perfElo = Math.max(400, Math.min(2600, perfElo));
-  
-  return perfElo;
+  return {
+    white: calculateWeightedElo(whiteMoves),
+    black: calculateWeightedElo(blackMoves)
+  };
 }
 
 async function loadChessComGames() {
@@ -1684,7 +1745,6 @@ async function loadChessComGames() {
         allGames.push(...data.games);
       }
       
-      // Small delay to be respectful to the API
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     
@@ -1693,7 +1753,6 @@ async function loadChessComGames() {
       return;
     }
     
-    // Display game selection dialog
     showGameSelectionDialog(allGames);
     
   } catch (error) {
@@ -1728,7 +1787,6 @@ function showGameSelectionDialog(games) {
   
   document.body.appendChild(dialog);
   
-  // Add click handlers
   dialog.querySelectorAll('.chesscom-game-item').forEach(item => {
     item.addEventListener('click', () => {
       const idx = parseInt(item.dataset.index);
@@ -1741,7 +1799,6 @@ function showGameSelectionDialog(games) {
     dialog.remove();
   });
   
-  // Add CSS for the dialog
   if (!document.querySelector('#chesscom-dialog-style')) {
     const style = document.createElement('style');
     style.id = 'chesscom-dialog-style';
