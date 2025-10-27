@@ -837,12 +837,13 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
 }
 
 function fallbackAnalysis(playedMove, moveIndex) {
-  const evaluation = { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good Move' };
+  const evaluation = { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good Move', score: 0.85 };
   moveAnalyses[moveIndex] = {
     played: playedMove,
     evaluation: evaluation,
     score: 0,
     bestScore: 0,
+    cpl: 0,
     alternatives: []
   };
   
@@ -884,31 +885,52 @@ function findPlayedMove(beforeFen, afterFen) {
       const testChess = new Chess(beforeFen);
       testChess.move(move);
       if (testChess.fen() === afterFen) {
-          return move.san;
+          // Return in format: from+to+promotion (e.g., "e2e4")
+          return move.from + move.to + (move.promotion || '');
       }
   }
   return '??';
 }
 
+function convertUciToSan(uciMove, fen) {
+  try {
+    const tempChess = new Chess(fen);
+    const from = uciMove.substring(0, 2);
+    const to = uciMove.substring(2, 4);
+    const promotion = uciMove.length > 4 ? uciMove[4] : null;
+    
+    const moves = tempChess.moves({verbose: true});
+    for (const move of moves) {
+      if (move.from === from && move.to === to && 
+          ((!promotion && !move.promotion) || move.promotion === promotion)) {
+        return move.san;
+      }
+    }
+    return uciMove;
+  } catch (e) {
+    return uciMove;
+  }
+}
+
 function evaluateMoveQuality(moveScore, bestScore) {
   const diff = Math.abs(moveScore - bestScore);
   
-  // Harsher thresholds
-  if (diff <= 10) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best / Brilliant', score: 1.00 };
-  if (diff <= 20) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
-  if (diff <= 50) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
-  if (diff <= 100) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy', score: 0.60 };
-  if (diff <= 200) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake', score: 0.30 };
+  // Even harsher thresholds
+  if (diff <= 5) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best / Brilliant', score: 1.00 };
+  if (diff <= 15) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
+  if (diff <= 35) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
+  if (diff <= 75) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy', score: 0.60 };
+  if (diff <= 150) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake', score: 0.30 };
   return { type: 'blunder', symbol: '??', color: '#f44336', text: 'Blunder', score: 0.00 };
 }
 
 function evaluateMoveQualityFromCPL(cpl) {
-  // Harsher thresholds based on CPL
-  if (cpl <= 10) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best / Brilliant', score: 1.00 };
-  if (cpl <= 20) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
-  if (cpl <= 50) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
-  if (cpl <= 100) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy', score: 0.60 };
-  if (cpl <= 200) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake', score: 0.30 };
+  // Even harsher thresholds based on CPL
+  if (cpl <= 5) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best / Brilliant', score: 1.00 };
+  if (cpl <= 15) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
+  if (cpl <= 35) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
+  if (cpl <= 75) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy', score: 0.60 };
+  if (cpl <= 150) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake', score: 0.30 };
   return { type: 'blunder', symbol: '??', color: '#f44336', text: 'Blunder', score: 0.00 };
 }
 
@@ -1222,12 +1244,94 @@ function loadGame() {
     evalBar.style.width = '50%';
     evalBar.style.background = 'linear-gradient(90deg, #f44336, #4CAF50)';
     
-    document.getElementById('analysisDisplay').textContent = 'Game loaded! Starting automatic analysis...';
-    showToast('Game loaded successfully! Starting analysis...', 'success');
+    // Automatically start analysis with loading screen
+    if (gameHistory.length > 1) {
+      showToast('Game loaded successfully! Starting analysis...', 'success');
+      analyzePosition();
+    }
     
   } catch (error) {
     console.error('Error loading game:', error);
     showToast(`Error: ${error.message}`, 'error');
+  }
+}
+
+function showLoadingOverlay() {
+  const overlay = document.createElement('div');
+  overlay.id = 'loadingOverlay';
+  overlay.innerHTML = `
+    <div class="loading-content">
+      <div class="spinner"></div>
+      <h3>Analyzing Game...</h3>
+      <p id="loadingProgress">Initializing...</p>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  
+  // Add CSS if not already added
+  if (!document.querySelector('#loading-overlay-style')) {
+    const style = document.createElement('style');
+    style.id = 'loading-overlay-style';
+    style.textContent = `
+      #loadingOverlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        backdrop-filter: blur(10px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        animation: fadeIn 0.3s ease-in;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .loading-content {
+        text-align: center;
+        color: white;
+      }
+      .spinner {
+        width: 60px;
+        height: 60px;
+        border: 5px solid rgba(255, 255, 255, 0.2);
+        border-top-color: #60a5fa;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      .loading-content h3 {
+        font-size: 24px;
+        margin-bottom: 10px;
+      }
+      .loading-content p {
+        font-size: 16px;
+        color: #94a3b8;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
+
+function hideLoadingOverlay() {
+  const overlay = document.getElementById('loadingOverlay');
+  if (overlay) {
+    overlay.style.animation = 'fadeOut 0.3s ease-out';
+    setTimeout(() => overlay.remove(), 300);
+  }
+}
+
+function updateLoadingProgress(text) {
+  const progress = document.getElementById('loadingProgress');
+  if (progress) {
+    progress.textContent = text;
   }
 }
 
@@ -1237,34 +1341,42 @@ function analyzeAllMoves() {
   }
   
   isAnalyzing = true;
+  showLoadingOverlay();
   
-  document.getElementById('analysisDisplay').textContent = 'Analyzing all moves... This may take a few minutes.';
+  updateLoadingProgress('Starting analysis...');
   
   for (let i = 1; i < gameHistory.length; i++) {
       setTimeout(() => {
-          if (!isAnalyzing) return; 
+          if (!isAnalyzing) return;
+          
+          updateLoadingProgress(`Analyzing move ${i}/${gameHistory.length - 1}...`);
           document.getElementById('analysisDisplay').textContent = `Analyzing move ${i}/${gameHistory.length - 1}...`;
+          
           analyzeMoveReal(gameHistory[i-1], gameHistory[i], i-1);
-      }, i * 2500); 
+      }, i * 5000); // 5 seconds per move
   }
   
   setTimeout(() => {
     if (!isAnalyzing) return;
     
-  
     const performanceElo = calculatePerformanceRating();
     const performanceText = performanceElo ? ` Performance this game: ${Math.round(performanceElo)}` : '';
     
-    showToast(`Analysis complete! Analyzed ${gameHistory.length - 1} moves.${performanceText}`, 'success');
-    isAnalyzing = false;
-    document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
+    updateLoadingProgress('Finalizing analysis...');
     
-    const performanceDisplay = performanceElo 
-      ? `\n\n${'='.repeat(40)}\nPerformance this game: ${Math.round(performanceElo)}`
-      : '';
-    
-    document.getElementById('analysisDisplay').textContent = `Analysis complete! Click on any move to see detailed evaluation.${performanceDisplay}`;
-  }, (gameHistory.length - 1) * 2500 + 3000);
+    setTimeout(() => {
+      hideLoadingOverlay();
+      showToast(`Analysis complete! Analyzed ${gameHistory.length - 1} moves.${performanceText}`, 'success');
+      isAnalyzing = false;
+      document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
+      
+      const performanceDisplay = performanceElo 
+        ? `\n\n${'='.repeat(40)}\nPerformance this game: ${Math.round(performanceElo)}`
+        : '';
+      
+      document.getElementById('analysisDisplay').textContent = `Analysis complete! Click on any move to see detailed evaluation.${performanceDisplay}`;
+    }, 500);
+  }, (gameHistory.length - 1) * 5000 + 3000);
 }
 
 function updateBoard() {
@@ -1343,12 +1455,28 @@ function displayMoveAnalysis(moveIndex) {
       const analysis = moveAnalyses[moveIndex];
       const display = document.getElementById('analysisDisplay');
       
+      // Convert UCI move to SAN if needed
+      let playedMoveDisplay = analysis.played;
+      try {
+        if (moveIndex > 0) {
+          playedMoveDisplay = convertUciToSan(analysis.played, gameHistory[moveIndex - 1]);
+        }
+      } catch (e) {
+        playedMoveDisplay = analysis.played;
+      }
+      
       let text = `=== MOVE ${moveIndex + 1} ANALYSIS ===\n`;
-      text += `Move played: ${analysis.played}\n`;
+      text += `Move played: ${playedMoveDisplay}\n`;
       text += `Quality: ${analysis.evaluation.text} ${analysis.evaluation.symbol}\n`;
       text += `Evaluation: ${(analysis.score/100).toFixed(2)}\n`;
       text += `Best line evaluation: ${(analysis.bestScore/100).toFixed(2)}\n`;
-      text += `Difference: ${Math.abs(analysis.score - analysis.bestScore)/100} points\n\n`;
+      
+      if (analysis.cpl !== undefined) {
+        text += `Centipawn Loss (CPL): ${analysis.cpl}\n`;
+      } else {
+        text += `Difference: ${Math.abs(analysis.score - analysis.bestScore)/100} points\n`;
+      }
+      text += '\n';
       
       if (analysis.evaluation.type === 'blunder') {
           text += `❌ This was a serious mistake that gives the opponent a big advantage.\n`;
@@ -1427,6 +1555,7 @@ function analyzePosition() {
   if (isAnalyzing) {
     stockfish.postMessage('stop');
     isAnalyzing = false;
+    hideLoadingOverlay();
     showToast('Analysis stopped', 'info');
     document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
     clearHighlights();
