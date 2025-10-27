@@ -751,7 +751,8 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
       const bestMove = data.move;
       
       if (playedMove === bestMove) {
-        const evaluation = { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best Move' };
+        // Best move - CPL = 0
+        const evaluation = evaluateMoveQualityFromCPL(0);
         
         moveAnalyses[moveIndex] = {
           played: playedMove,
@@ -759,6 +760,7 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
           score: bestEval,
           bestScore: bestEval,
           bestMove: bestMove,
+          cpl: 0,
           alternatives: []
         };
         updateMoveInList(moveIndex, evaluation);
@@ -791,37 +793,25 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
           if (afterData.eval !== undefined) {
             const afterEval = afterData.eval * 100;
             
-            const evalDifference = Math.abs(afterEval - bestEval);
+            // Calculate Centipawn Loss (CPL)
+            const cpl = Math.abs(afterEval - bestEval);
             
-            // Harsher centipawn loss calculation - bigger penalties for mistakes
-            let moveEval;
-            if (evalDifference < 10) {
-              moveEval = bestEval - 10;
-            } else if (evalDifference < 30) {
-              moveEval = bestEval - 30;
-            } else if (evalDifference < 60) {
-              moveEval = bestEval - 70;
-            } else if (evalDifference < 120) {
-              moveEval = bestEval - 140;
-            } else if (evalDifference < 200) {
-              moveEval = bestEval - 220;
-            } else {
-              moveEval = bestEval - 300;
-            }
+            // Use CPL to classify move quality
+            const evaluation = evaluateMoveQualityFromCPL(cpl);
             
-            const evaluation = evaluateMoveQuality(moveEval, bestEval);
-            
+            // Store the played evaluation as the score
             moveAnalyses[moveIndex] = {
               played: playedMove,
               evaluation: evaluation,
-              score: moveEval,
+              score: afterEval,
               bestScore: bestEval,
               bestMove: bestMove,
+              cpl: cpl,
               alternatives: []
             };
             
             updateMoveInList(moveIndex, evaluation);
-            console.log(`Move ${moveIndex + 1}: ${playedMove} (played) vs ${bestMove} (best) - ${evaluation.text} (diff: ${evalDifference})`);
+            console.log(`Move ${moveIndex + 1}: ${playedMove} (played) vs ${bestMove} (best) - ${evaluation.text} (CPL: ${cpl})`);
           } else {
             fallbackAnalysis(playedMove, moveIndex);
           }
@@ -903,15 +893,34 @@ function findPlayedMove(beforeFen, afterFen) {
 function evaluateMoveQuality(moveScore, bestScore) {
   const diff = Math.abs(moveScore - bestScore);
   
-  if (diff < 5) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best Move' };
-  if (diff < 15) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent' };
-  if (diff < 35) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good Move' };
-  if (diff < 70) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy' };
-  if (diff < 150) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake' };
-  return { type: 'blunder', symbol: '??', color: '#f44336', text: 'Blunder' };
+  // Harsher thresholds
+  if (diff <= 10) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best / Brilliant', score: 1.00 };
+  if (diff <= 20) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
+  if (diff <= 50) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
+  if (diff <= 100) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy', score: 0.60 };
+  if (diff <= 200) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake', score: 0.30 };
+  return { type: 'blunder', symbol: '??', color: '#f44336', text: 'Blunder', score: 0.00 };
+}
+
+function evaluateMoveQualityFromCPL(cpl) {
+  // Harsher thresholds based on CPL
+  if (cpl <= 10) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best / Brilliant', score: 1.00 };
+  if (cpl <= 20) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
+  if (cpl <= 50) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
+  if (cpl <= 100) return { type: 'inaccuracy', symbol: '?!', color: '#FF9800', text: 'Inaccuracy', score: 0.60 };
+  if (cpl <= 200) return { type: 'mistake', symbol: '?', color: '#FF5722', text: 'Mistake', score: 0.30 };
+  return { type: 'blunder', symbol: '??', color: '#f44336', text: 'Blunder', score: 0.00 };
 }
 
 function updateMoveInList(moveIndex, evaluation) {
+  if (!moveAnalyses[moveIndex]) {
+    moveAnalyses[moveIndex] = {};
+  }
+  
+  if (moveAnalyses[moveIndex]) {
+    moveAnalyses[moveIndex].evaluation = evaluation;
+  }
+  
   const moveItems = document.querySelectorAll('.move-item');
   const actualIndex = moveIndex;
   
@@ -1240,11 +1249,21 @@ function analyzeAllMoves() {
   }
   
   setTimeout(() => {
-    if (!isAnalyzing) return; 
-    showToast(`Analysis complete! Analyzed ${gameHistory.length - 1} moves.`, 'success');
+    if (!isAnalyzing) return;
+    
+  
+    const performanceElo = calculatePerformanceRating();
+    const performanceText = performanceElo ? ` Performance this game: ${Math.round(performanceElo)}` : '';
+    
+    showToast(`Analysis complete! Analyzed ${gameHistory.length - 1} moves.${performanceText}`, 'success');
     isAnalyzing = false;
     document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
-    document.getElementById('analysisDisplay').textContent = 'Analysis complete! Click on any move to see detailed evaluation.';
+    
+    const performanceDisplay = performanceElo 
+      ? `\n\n${'='.repeat(40)}\nPerformance this game: ${Math.round(performanceElo)}`
+      : '';
+    
+    document.getElementById('analysisDisplay').textContent = `Analysis complete! Click on any move to see detailed evaluation.${performanceDisplay}`;
   }, (gameHistory.length - 1) * 2500 + 3000);
 }
 
@@ -1291,10 +1310,20 @@ function updateMoveList() {
       const displayNumber = isWhite ? `${moveNumber}.` : `${moveNumber}...`;
       if (!isWhite) moveNumber++;
       
+      const moveIdx = i - 1;
+      const hasAnalysis = moveAnalyses[moveIdx] && moveAnalyses[moveIdx].evaluation;
+      const evalSymbol = hasAnalysis ? moveAnalyses[moveIdx].evaluation.symbol : '--';
+      const evalColor = hasAnalysis ? moveAnalyses[moveIdx].evaluation.color : '#94a3b8';
+      
       moveDiv.innerHTML = `
         <span class="move-notation">${displayNumber} ${moveObj.san}</span>
-        <span class="move-evaluation">--</span>
+        <span class="move-evaluation" style="color: ${evalColor}">${evalSymbol}</span>
       `;
+      
+      if (hasAnalysis) {
+        const evalSpan = moveDiv.querySelector('.move-evaluation');
+        evalSpan.title = moveAnalyses[moveIdx].evaluation.text;
+      }
       
       moveDiv.addEventListener('click', () => {
         currentMoveIndex = i;
@@ -1457,6 +1486,172 @@ function analyzeCurrentPosition() {
   }, 3000);
 }
 
+function calculatePerformanceRating() {
+  if (!moveAnalyses || Object.keys(moveAnalyses).length === 0) {
+    return null;
+  }
+  
+  const moveScores = [];
+  Object.keys(moveAnalyses).forEach(key => {
+    const analysis = moveAnalyses[key];
+    if (analysis && analysis.evaluation && typeof analysis.evaluation.score === 'number') {
+      moveScores.push(analysis.evaluation.score);
+    }
+  });
+  
+  if (moveScores.length === 0) {
+    return null;
+  }
+  
+  // Calculate average move quality (0.0 to 1.0 scale)
+  const avgQuality = moveScores.reduce((sum, score) => sum + score, 0) / moveScores.length;
+  
+  let perfElo = 400 + (avgQuality * 2200);
+  
+  // Clamp between 400 and 2600
+  perfElo = Math.max(400, Math.min(2600, perfElo));
+  
+  return perfElo;
+}
+
+async function loadChessComGames() {
+  const username = prompt('Enter Chess.com username:');
+  if (!username) return;
+  
+  const months = ['10', '11', '12']; // October, November, December 2025
+  const allGames = [];
+  
+  showToast('Fetching games from Chess.com...', 'info');
+  
+  try {
+    for (const month of months) {
+      const response = await fetch(`/api/chesscom?username=${username}&year=2025&month=${month}`);
+      const data = await response.json();
+      
+      if (data.games && data.games.length > 0) {
+        allGames.push(...data.games);
+      }
+      
+      // Small delay to be respectful to the API
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    if (allGames.length === 0) {
+      showToast('No games found for this user', 'info');
+      return;
+    }
+    
+    // Display game selection dialog
+    showGameSelectionDialog(allGames);
+    
+  } catch (error) {
+    console.error('Error fetching Chess.com games:', error);
+    showToast('Failed to fetch games from Chess.com', 'error');
+  }
+}
+
+function showGameSelectionDialog(games) {
+  const dialog = document.createElement('div');
+  dialog.className = 'chesscom-dialog';
+  dialog.innerHTML = `
+    <div class="chesscom-dialog-content">
+      <h3>Select a Game (${games.length} games found)</h3>
+      <div class="chesscom-games-list">
+        ${games.map((game, idx) => `
+          <div class="chesscom-game-item" data-index="${idx}">
+            <div class="chesscom-game-header">
+              <strong>${game.Event || 'Game'}</strong>
+              ${game.Date ? `<span>${game.Date}</span>` : ''}
+            </div>
+            <div class="chesscom-game-players">
+              ${game.White || 'White'} vs ${game.Black || 'Black'}
+            </div>
+            ${game.Result ? `<div class="chesscom-game-result">${game.Result}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+      <button class="btn btn-secondary chesscom-close-btn">Cancel</button>
+    </div>
+  `;
+  
+  document.body.appendChild(dialog);
+  
+  // Add click handlers
+  dialog.querySelectorAll('.chesscom-game-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const idx = parseInt(item.dataset.index);
+      loadSelectedGame(games[idx]);
+      dialog.remove();
+    });
+  });
+  
+  dialog.querySelector('.chesscom-close-btn').addEventListener('click', () => {
+    dialog.remove();
+  });
+  
+  // Add CSS for the dialog
+  if (!document.querySelector('#chesscom-dialog-style')) {
+    const style = document.createElement('style');
+    style.id = 'chesscom-dialog-style';
+    style.textContent = `
+      .chesscom-dialog {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+      }
+      .chesscom-dialog-content {
+        background: #1e293b;
+        border-radius: 12px;
+        padding: 24px;
+        max-width: 600px;
+        max-height: 80vh;
+        overflow-y: auto;
+      }
+      .chesscom-games-list {
+        margin: 16px 0;
+      }
+      .chesscom-game-item {
+        background: #334155;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .chesscom-game-item:hover {
+        background: #475569;
+      }
+      .chesscom-game-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      .chesscom-game-players {
+        color: #94a3b8;
+        font-size: 14px;
+      }
+      .chesscom-game-result {
+        margin-top: 4px;
+        color: #60a5fa;
+        font-weight: bold;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
+
+function loadSelectedGame(game) {
+  document.getElementById('pgnInput').value = game.pgn;
+  loadGame();
+  showToast('Game loaded from Chess.com!', 'success');
+}
 function clearGame() {
   if (isAnalyzing) {
     stockfish.postMessage('stop');
@@ -1544,6 +1739,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('loadGameBtn').addEventListener('click', loadGame);
   document.getElementById('clearBtn').addEventListener('click', clearGame);
   document.getElementById('analyzeBtn').addEventListener('click', analyzePosition);
+  document.getElementById('chesscomBtn').addEventListener('click', loadChessComGames);
   
   
   console.log('Looking for navigation buttons...');
