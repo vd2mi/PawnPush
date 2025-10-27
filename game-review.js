@@ -1247,7 +1247,7 @@ function loadGame() {
     // Automatically start analysis with loading screen
     if (gameHistory.length > 1) {
       showToast('Game loaded successfully! Starting analysis...', 'success');
-      analyzePosition();
+      analyzeAllMoves();
     }
     
   } catch (error) {
@@ -1342,41 +1342,52 @@ function analyzeAllMoves() {
   
   isAnalyzing = true;
   showLoadingOverlay();
-  
   updateLoadingProgress('Starting analysis...');
   
+  // Track analysis progress
+  let completedMoves = 0;
+  const totalMoves = gameHistory.length - 1;
+  
+  // Analyze all moves in parallel (each takes up to 5 seconds)
   for (let i = 1; i < gameHistory.length; i++) {
-      setTimeout(() => {
-          if (!isAnalyzing) return;
-          
-          updateLoadingProgress(`Analyzing move ${i}/${gameHistory.length - 1}...`);
-          document.getElementById('analysisDisplay').textContent = `Analyzing move ${i}/${gameHistory.length - 1}...`;
-          
-          analyzeMoveReal(gameHistory[i-1], gameHistory[i], i-1);
-      }, i * 5000); // 5 seconds per move
+    analyzeMoveReal(gameHistory[i-1], gameHistory[i], i-1);
   }
   
-  setTimeout(() => {
-    if (!isAnalyzing) return;
+  // Wait for all moves to complete, then show results
+  const checkComplete = setInterval(() => {
+    completedMoves = Object.keys(moveAnalyses).length;
     
-    const performanceElo = calculatePerformanceRating();
-    const performanceText = performanceElo ? ` Performance this game: ${Math.round(performanceElo)}` : '';
+    if (completedMoves > 0) {
+      updateLoadingProgress(`Analyzing... ${completedMoves}/${totalMoves} moves completed`);
+    }
     
-    updateLoadingProgress('Finalizing analysis...');
-    
-    setTimeout(() => {
-      hideLoadingOverlay();
-      showToast(`Analysis complete! Analyzed ${gameHistory.length - 1} moves.${performanceText}`, 'success');
-      isAnalyzing = false;
-      document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
+    // Check if all moves are done (with a reasonable timeout)
+    if (completedMoves >= totalMoves || completedMoves > 0 && Date.now() - startTime > totalMoves * 5500) {
+      clearInterval(checkComplete);
       
-      const performanceDisplay = performanceElo 
-        ? `\n\n${'='.repeat(40)}\nPerformance this game: ${Math.round(performanceElo)}`
-        : '';
+      if (!isAnalyzing) return;
       
-      document.getElementById('analysisDisplay').textContent = `Analysis complete! Click on any move to see detailed evaluation.${performanceDisplay}`;
-    }, 500);
-  }, (gameHistory.length - 1) * 5000 + 3000);
+      const performanceElo = calculatePerformanceRating();
+      const performanceText = performanceElo ? ` Performance this game: ${Math.round(performanceElo)}` : '';
+      
+      updateLoadingProgress('Finalizing analysis...');
+      
+      setTimeout(() => {
+        hideLoadingOverlay();
+        showToast(`Analysis complete! Analyzed ${completedMoves} moves.${performanceText}`, 'success');
+        isAnalyzing = false;
+        document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
+        
+        const performanceDisplay = performanceElo 
+          ? `\n\n${'='.repeat(40)}\nPerformance this game: ${Math.round(performanceElo)}`
+          : '';
+        
+        document.getElementById('analysisDisplay').textContent = `Analysis complete! Click on any move to see detailed evaluation.${performanceDisplay}`;
+      }, 500);
+    }
+  }, 200);
+  
+  const startTime = Date.now();
 }
 
 function updateBoard() {
