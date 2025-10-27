@@ -25,7 +25,7 @@ export default async function handler(req, res) {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
     
     const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
       method: 'POST',
@@ -33,7 +33,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${HF_TOKEN}`
       },
-      body: JSON.stringify({ fen, depth: 17 }),
+      body: JSON.stringify({ fen, depth: 15 }), // Reduced depth for faster analysis
       signal: controller.signal
     });
     
@@ -49,6 +49,8 @@ export default async function handler(req, res) {
 
     const data = await response.json();
     
+    console.log('Stockfish API response:', JSON.stringify(data));
+    
     let evalScore = 0;
     if (data.evaluation) {
       if (data.evaluation.type === 'cp') {
@@ -57,17 +59,22 @@ export default async function handler(req, res) {
         evalScore = data.evaluation.value > 0 ? 10000 : -10000;
       }
     }
+    
+    console.log('Parsed data:', { evalScore, best_move: data.best_move });
 
     return res.status(200).json({
       fen: data.fen,
       move: data.best_move,
       eval: evalScore / 100,
-      depth: 17,
+      depth: 15,
       time: 1000
     });
 
   } catch (error) {
+    console.error('Stockfish API error:', error.name, error.message);
+    
     if (error.name === 'AbortError') {
+      console.log('Timeout after 5 seconds for FEN:', fen);
       return res.status(200).json({
         fen: fen,
         move: 'e2e4',
@@ -79,6 +86,7 @@ export default async function handler(req, res) {
       });
     }
     
+    console.log('API error for FEN:', fen, 'Error:', error.message);
     return res.status(200).json({
       fen: fen,
       move: 'e2e4',
