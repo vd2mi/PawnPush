@@ -38,6 +38,8 @@ let moveAnalyses = {};
 let isDragging = false;
 let selectedSquare = null;
 let gameMetadata = { white: 'White', black: 'Black' };
+let isQuickEvalActive = false;
+let quickEvalTimeout = null;
 
 function initBoard() {
   board = Chessboard('board', {
@@ -140,6 +142,7 @@ function onDrop(source, target) {
   currentMoveIndex = gameHistory.length - 1;
   
   updateMoveList();
+  triggerQuickEval();
   evaluateLastMove();
   analyzeCurrentPosition();
 }
@@ -685,30 +688,41 @@ function handleStockfishMessage(message) {
     return;
   }
   
-  if (messageText.includes('info depth') && isAnalyzing) {
+  if (messageText.includes('info depth') && (isAnalyzing || isQuickEvalActive)) {
     const analysis = parseAnalysisLine(messageText);
     if (analysis.depth && parseInt(analysis.depth) >= 1) {
-      currentAnalysis = { ...currentAnalysis, ...analysis };
-      updateAnalysisDisplay(analysis);
+      if (isQuickEvalActive && analysis.score !== undefined) {
+        // For quick evals, only move the eval bar like Chess.com
+        updateEvaluationBar(analysis.score);
+      } else {
+        currentAnalysis = { ...currentAnalysis, ...analysis };
+        updateAnalysisDisplay(analysis);
+      }
     }
   }
   
-  if (messageText.includes('bestmove') && isAnalyzing) {
+  if (messageText.includes('bestmove')) {
     const parts = messageText.split(' ');
     const bestMove = parts[1];
-    displayFullAnalysis(bestMove);
-    
-    if (!isContinuousAnalysis) {
-      isAnalyzing = false;
+    if (isQuickEvalActive) {
+      // End quick eval session silently
+      isQuickEvalActive = false;
+      if (quickEvalTimeout) {
+        clearTimeout(quickEvalTimeout);
+        quickEvalTimeout = null;
+      }
+    } else if (isAnalyzing) {
+      displayFullAnalysis(bestMove);
+      if (!isContinuousAnalysis) {
+        isAnalyzing = false;
+      }
+      if (analysisTimeout) {
+        clearTimeout(analysisTimeout);
+        analysisTimeout = null;
+      }
+      const analyzeBtn = document.getElementById('analyzeBtn');
+      analyzeBtn.innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze Position</span>';
     }
-    
-    if (analysisTimeout) {
-      clearTimeout(analysisTimeout);
-      analysisTimeout = null;
-    }
-    
-    const analyzeBtn = document.getElementById('analyzeBtn');
-    analyzeBtn.innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze Position</span>';
   }
 }
 
@@ -1111,6 +1125,64 @@ function updateEvaluationBar(centipawns) {
   }
 }
 
+// Quick eval: instantly move eval bar on position change, then refine briefly via engine
+function triggerQuickEval() {
+  try {
+    if (!chess) return;
+    const fen = gameHistory[currentMoveIndex] || chess.fen();
+    // Immediate heuristic update
+    const materialCp = quickMaterialEvalFromFen(fen);
+    updateEvaluationBar(materialCp);
+    
+    if (!stockfish || engineType === 'mock') return; // don't spawn engine work in mock mode
+    
+    // If a previous quick eval is active, stop it without touching full analyses
+    if (isQuickEvalActive) {
+      stockfish.postMessage('stop');
+      if (quickEvalTimeout) {
+        clearTimeout(quickEvalTimeout);
+        quickEvalTimeout = null;
+      }
+      isQuickEvalActive = false;
+    }
+    
+    // Don't interfere with full game/continuous analysis sessions
+    if (isAnalyzing && !isContinuousAnalysis) return;
+    
+    isQuickEvalActive = true;
+    stockfish.postMessage('ucinewgame');
+    stockfish.postMessage(`position fen ${fen}`);
+    stockfish.postMessage('go depth 8 movetime 500');
+    
+    quickEvalTimeout = setTimeout(() => {
+      if (isQuickEvalActive) {
+        stockfish.postMessage('stop');
+        isQuickEvalActive = false;
+      }
+    }, 750);
+  } catch (e) {
+    console.error('Quick eval error:', e);
+  }
+}
+
+function quickMaterialEvalFromFen(fen) {
+  try {
+    const pieceValues = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
+    const boardPart = fen.split(' ')[0];
+    let score = 0;
+    for (const ch of boardPart) {
+      const lower = ch.toLowerCase();
+      if (pieceValues[lower] !== undefined) {
+        const val = pieceValues[lower];
+        score += ch === ch.toUpperCase() ? val : -val;
+      }
+    }
+    return score;
+  } catch {
+    return 0;
+  }
+}
+
 function displayFullAnalysis(bestMove, altMoves, evaluation) {
   const display = document.getElementById('analysisDisplay');
   let text = display.textContent;
@@ -1439,6 +1511,7 @@ function updateBoard(skipAnalysis = false) {
     chess.load(gameHistory[currentMoveIndex]);
     board.position(chess.fen());
     if (!skipAnalysis) {
+      triggerQuickEval();
       analyzeCurrentPosition();
     }
   }
