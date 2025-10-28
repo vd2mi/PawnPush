@@ -777,7 +777,7 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
         moveAnalyses[moveIndex] = {
           played: playedMove,
           evaluation: evaluation,
-          score: bestEval,
+          score: bestEval, // mover perspective = best line before move
           bestScore: bestEval,
           bestMove: bestMove,
           cpl: 0,
@@ -812,19 +812,20 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
           
           if (afterData.eval !== undefined) {
             const afterEval = afterData.eval * 100;
-            
-            // Calculate Centipawn Loss (CPL)
-            const cpl = Math.abs(afterEval - bestEval);
-            
-            // Use CPL to classify move quality
+            // Normalize to the mover's perspective
+            // bestEval is eval before the move (side to move = mover)
+            const bestForMover = bestEval;
+            // afterEval is eval after the move (side to move = opponent), flip sign
+            const playedForMover = -afterEval;
+            // Centipawn Loss relative to best line (absolute difference)
+            const cpl = Math.abs(playedForMover - bestForMover);
             const evaluation = evaluateMoveQualityFromCPL(cpl);
             
-            // Store the played evaluation as the score
             moveAnalyses[moveIndex] = {
               played: playedMove,
               evaluation: evaluation,
-              score: afterEval,
-              bestScore: bestEval,
+              score: playedForMover,
+              bestScore: bestForMover,
               bestMove: bestMove,
               cpl: cpl,
               alternatives: []
@@ -1603,9 +1604,9 @@ function displayMoveAnalysis(moveIndex) {
       // Convert UCI move to SAN if needed
       let playedMoveDisplay = analysis.played;
       try {
-        if (moveIndex > 0) {
-          playedMoveDisplay = convertUciToSan(analysis.played, gameHistory[moveIndex - 1]);
-        }
+        // Use the position BEFORE the move (gameHistory[moveIndex])
+        const beforeFen = gameHistory[moveIndex] || gameHistory[0];
+        playedMoveDisplay = convertUciToSan(analysis.played, beforeFen);
       } catch (e) {
         playedMoveDisplay = analysis.played;
       }
