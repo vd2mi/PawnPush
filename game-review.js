@@ -1658,13 +1658,17 @@ function goToMove(index) {
     document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
   }
   
-  const evalBar = document.getElementById('evalBar');
-  const evalScore = document.getElementById('evalScore');
-  evalBar.style.width = '50%';
-  evalBar.style.background = '#666666';
-  evalScore.textContent = 'Equal +0.00';
-  evalScore.style.color = '#a2c5bf';
-  evalScore.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+  const evalBarBoard = document.getElementById('evalBarFill');
+  const evalScoreBoard = document.getElementById('evalScoreBoard');
+  if (evalBarBoard) {
+    evalBarBoard.style.width = '50%';
+    evalBarBoard.style.background = 'linear-gradient(90deg, #f44336, #666, #4CAF50)';
+  }
+  if (evalScoreBoard) {
+    evalScoreBoard.textContent = '+0.00';
+    evalScoreBoard.style.color = '#ffffff';
+    evalScoreBoard.style.backgroundColor = 'rgba(100, 181, 246, 0.2)';
+  }
   
   if (currentMoveIndex === 0) {
     document.getElementById('analysisDisplay').textContent = 'Starting position. Click "Analyze All Moves" to analyze the entire game.';
