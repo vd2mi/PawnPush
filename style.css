@@ -45,7 +45,7 @@ h2 { margin-bottom: 0.5rem; }
 
 .daily-rating-small {
   font-size: 1rem;
-  color: #9900ff;
+  color: #ff8c00;
   font-weight: bold;
 }
 
@@ -268,7 +268,7 @@ h2 { margin-bottom: 0.5rem; }
 .survival-mode:hover {
   background: linear-gradient(135deg, rgba(255, 60, 0, 0.25), rgba(26, 26, 26, 0.95));
   border-color: #FF3C00;
-  box-shadow: 0 12px 32px rgba(255, 60, 0, 0.3);
+  box-shadow: 0 12px 32px #FF3C00;
 }
 
 .survival-mode .mode-title {
@@ -283,7 +283,7 @@ h2 { margin-bottom: 0.5rem; }
 .pvp-mode:hover {
   background: linear-gradient(135deg, rgba(255, 51, 102, 0.25), rgba(26, 26, 26, 0.95));
   border-color: #FF3366;
-  box-shadow: 0 12px 32px rgba(255, 51, 102, 0.3);
+  box-shadow: 0 12px 32px #FF3366;
 }
 
 .pvp-mode .mode-title {
@@ -298,7 +298,7 @@ h2 { margin-bottom: 0.5rem; }
 .review-mode:hover {
   background: linear-gradient(135deg, rgba(0, 255, 195, 0.2), rgba(26, 26, 26, 0.95));
   border-color: #00FFC3;
-  box-shadow: 0 12px 32px rgba(0, 255, 195, 0.3);
+  box-shadow: 0 12px 32px #00FFC3;
 }
 
 .review-mode .mode-title {
@@ -418,20 +418,32 @@ button {
   border-radius: 8px;
   cursor: pointer;
   font-weight: bold;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  transition: left 0.5s;
+}
+
+button:hover::before {
+  left: 100%;
 }
 
 button:hover {
-  background-color: #9900ff;
+  background-color: #2a2a2a;
   color: #ffffff;
-  box-shadow: 0 0 15px rgba(153, 0, 255, 0.4);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
 }
 
-#diff-beginner:hover, #diff-intermediate:hover, #diff-advanced:hover, #diff-grandmaster:hover,
-#pos-opening:hover, #pos-middlegame:hover, #pos-endgame:hover, #pos-checkmate:hover {
-  background-color: #9900ff !important;
-  color: #ffffff !important;
-  box-shadow: 0 0 15px rgba(153, 0, 255, 0.4) !important;
-}
 
 img {
   user-select: none;
@@ -445,8 +457,11 @@ img {
 }
 
 .selected {
-  background-color: #00FFC3;
-  color: #121212;
+  background-color: #ff8c00 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 20px rgba(255, 140, 0, 0.6) !important;
+  border-color: #ff8c00 !important;
+  font-weight: 700 !important;
 }
 
 .puzzle-container {
@@ -709,7 +724,8 @@ img {
 
 header{background:linear-gradient(135deg,#121212,#1a1a1a);padding:2rem 1rem;box-shadow:0 4px 15px rgba(0,0,0,0.2)}
 
-h1{font-size:2.5rem;font-weight:bold;margin-bottom:0.5rem;color:#00FFC3}
+h1{font-size:2.5rem;font-weight:bold;margin-bottom:0.5rem;color:#ff8c00 !important}
+header h1{color:#ff8c00 !important}
 
 .tagline{font-size:1rem;color:#cccccc;margin:0 0 2rem 0}
 
@@ -717,9 +733,9 @@ h1{font-size:2.5rem;font-weight:bold;margin-bottom:0.5rem;color:#00FFC3}
 
 .stat-item{text-align:center}
 
-.stat-number{display:block;font-size:2rem;font-weight:bold;color:#9900ff;line-height:1}
+.stat-number{display:block;font-size:2rem;font-weight:bold;color:#ff8c00;line-height:1}
 
-.stat-label{font-size:0.9rem;color:#cccccc;text-transform:uppercase;letter-spacing:1px}
+.stat-label{font-size:0.9rem;color:#ffffff;text-transform:uppercase;letter-spacing:1px}
 
 
 section {
@@ -740,61 +756,61 @@ section:hover {
   box-shadow: 0 8px 25px rgba(153, 0, 255, 0.3);
 }
 
-/* Difficulty Section - Bright Purple Theme */
+/* Difficulty Section - Grey Orange Theme */
 #difficulty-section {
-  background: rgba(40, 20, 50, 0.7);
-  border: 1px solid rgba(138, 43, 226, 0.3);
+  background: rgba(40, 40, 40, 0.7);
+  border: 1px solid rgba(255, 140, 0, 0.3);
 }
 
 #difficulty-section:hover {
-  border-color: #8a2be2;
-  box-shadow: 0 8px 25px rgba(138, 43, 226, 0.4);
+  border-color: #ff8c00;
+  box-shadow: 0 8px 25px rgba(255, 140, 0, 0.4);
 }
 
 #difficulty-section h2 {
-  color: #8a2be2;
-  text-shadow: 0 0 10px rgba(138, 43, 226, 0.5);
+  color: #ff8c00;
+  text-shadow: 0 0 10px rgba(255, 140, 0, 0.5);
 }
 
-/* Position Section - Same Bright Purple Theme */
+/* Position Section - Grey Orange Theme */
 #position-section {
-  background: rgba(40, 20, 50, 0.7);
-  border: 1px solid rgba(138, 43, 226, 0.3);
+  background: rgba(40, 40, 40, 0.7);
+  border: 1px solid rgba(255, 140, 0, 0.3);
 }
 
 #position-section:hover {
-  border-color: #8a2be2;
-  box-shadow: 0 8px 25px rgba(138, 43, 226, 0.4);
+  border-color: #ff8c00;
+  box-shadow: 0 8px 25px rgba(255, 140, 0, 0.4);
 }
 
 #position-section h2 {
-  color: #8a2be2;
-  text-shadow: 0 0 10px rgba(138, 43, 226, 0.5);
+  color: #ff8c00;
+  text-shadow: 0 0 10px rgba(255, 140, 0, 0.5);
 }
 
 #difficulty-section button {
-  background: linear-gradient(135deg, rgba(138, 43, 226, 0.2), rgba(138, 43, 226, 0.1));
-  border: 1px solid rgba(138, 43, 226, 0.4);
-  color: #8a2be2;
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.2), rgba(255, 140, 0, 0.1));
+  border: 1px solid rgba(255, 140, 0, 0.4);
+  color: #ff8c00;
 }
 
 #difficulty-section button:hover {
-  background: linear-gradient(135deg, rgba(138, 43, 226, 0.3), rgba(138, 43, 226, 0.2));
-  border-color: #8a2be2;
-  box-shadow: 0 4px 15px rgba(138, 43, 226, 0.3);
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.3), rgba(255, 140, 0, 0.2));
+  border-color: #ff8c00;
+  box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3);
   transform: translateY(-2px);
 }
 
 #position-section button {
-  background: linear-gradient(135deg, rgba(138, 43, 226, 0.2), rgba(138, 43, 226, 0.1));
-  border: 1px solid rgba(138, 43, 226, 0.4);
-  color: #8a2be2;
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.2), rgba(255, 140, 0, 0.1));
+  border: 1px solid rgba(255, 140, 0, 0.4);
+  color: #ff8c00;
 }
 
 #position-section button:hover {
-  background: linear-gradient(135deg, rgba(138, 43, 226, 0.3), rgba(138, 43, 226, 0.2));
-  border-color: #8a2be2;
-  box-shadow: 0 4px 15px rgba(138, 43, 226, 0.3);
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.3), rgba(255, 140, 0, 0.2));
+  border-color: #ff8c00;
+  box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3);
   transform: translateY(-2px);
 }
 
@@ -825,38 +841,54 @@ button:hover {
 
 
 #diff-beginner.selected { 
-  background-color: #00d4ff; 
-  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  background-color: #ff8c00 !important; 
+  color: #ffffff !important;
+  box-shadow: 0 0 20px rgba(255, 140, 0, 0.6) !important;
+  border-color: #ff8c00 !important;
 }
 #diff-intermediate.selected { 
-  background-color: #0066ff; 
-  box-shadow: 0 0 10px rgba(0, 102, 255, 0.5);
+  background-color: #ff9500 !important; 
+  color: #ffffff !important;
+  box-shadow: 0 0 20px rgba(255, 149, 0, 0.6) !important;
+  border-color: #ff9500 !important;
 }
 #diff-advanced.selected { 
-  background-color: #ffeb3b; 
-  box-shadow: 0 0 10px rgba(255, 235, 59, 0.5);
+  background-color: #ffa500 !important; 
+  color: #ffffff !important;
+  box-shadow: 0 0 20px rgba(255, 165, 0, 0.6) !important;
+  border-color: #ffa500 !important;
 }
 #diff-grandmaster.selected { 
-  background-color: #ff1744; 
-  box-shadow: 0 0 10px rgba(255, 23, 68, 0.5);
+  background-color: #ff8800 !important; 
+  color: #ffffff !important;
+  box-shadow: 0 0 20px rgba(255, 136, 0, 0.6) !important;
+  border-color: #ff8800 !important;
 }
 
 
 #pos-opening.selected { 
-  background-color: #00d4ff; 
-  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  background-color: #ff8c00 !important; 
+  color: #ffffff !important;
+  box-shadow: 0 0 20px rgba(255, 140, 0, 0.6) !important;
+  border-color: #ff8c00 !important;
 }
 #pos-middlegame.selected { 
-  background-color: #0066ff; 
-  box-shadow: 0 0 10px rgba(0, 102, 255, 0.5);
+  background-color: #ff9500 !important; 
+  color: #ffffff !important;
+  box-shadow: 0 0 20px rgba(255, 149, 0, 0.6) !important;
+  border-color: #ff9500 !important;
 }
 #pos-endgame.selected { 
-  background-color: #ffeb3b; 
-  box-shadow: 0 0 10px rgba(255, 235, 59, 0.5);
+  background-color: #ffa500 !important; 
+  color: #ffffff !important;
+  box-shadow: 0 0 20px rgba(255, 165, 0, 0.6) !important;
+  border-color: #ffa500 !important;
 }
 #pos-checkmate.selected { 
-  background-color: #ff1744; 
-  box-shadow: 0 0 10px rgba(255, 23, 68, 0.5);
+  background-color: #ff8800 !important; 
+  color: #ffffff !important;
+  box-shadow: 0 0 20px rgba(255, 136, 0, 0.6) !important;
+  border-color: #ff8800 !important;
 }
 
 

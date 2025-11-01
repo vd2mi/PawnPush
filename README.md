@@ -1,14 +1,15 @@
 # PawnPush ♟️
 
-PawnPush is a modern, interactive chess puzzle platform designed to help players improve their skills through a vast collection of puzzles. Featuring a sleek dark theme with vibrant purple accents, accessible online at [https://pawn-push.vercel.app](https://pawn-push.vercel.app), it offers categorized puzzles, AI-powered hints, and a coaching chat for personalized guidance.
+PawnPush is a modern, interactive chess puzzle platform designed to help players improve their skills through a vast collection of puzzles. Featuring a sleek dark theme with vibrant orange accents, accessible online at [https://pawn-push.vercel.app](https://pawn-push.vercel.app), it offers categorized puzzles, AI-powered hints, and a coaching chat for personalized guidance.
 
-*Experience the modern dark theme with vibrant purple accents, yellow glow hints, and immersive audio feedback*
+*Experience the modern dark theme with vibrant orange accents, yellow glow hints, and immersive audio feedback*
 
 ## 🔥 **Custom API Integration**
 
 **Built and deployed my own custom API from scratch!** The entire hint system, AI coaching, and Stockfish integration runs through a custom-built serverless API that's live on the website. This includes:
 - **Custom GPT-4 hint API** - intelligently analyzes positions and provides contextual coaching
-- **Stockfish integration API** - powerful chess engine analysis on-demand
+- **Stockfish integration API** - powerful chess engine analysis via HuggingFace API
+- **Chess.com API integration** - fetch and analyze games directly from Chess.com
 - **Firebase real-time API** - seamless multiplayer synchronization
 - **Fully deployed and production-ready** - handling real users on [pawn-push.vercel.app](https://pawn-push.vercel.app)
 
@@ -41,11 +42,13 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 
 ### 🎨 **Enhanced User Experience**
 - **Modern dark theme** with deep `#121212` background for premium gaming feel
-- **Vibrant purple accents** (`#9900ff`) throughout the interface
+- **Vibrant orange accents** (`#ff8c00`) throughout the interface with grey-orange banners
+- **Animated homepage stats** - numbers count up on page load with smooth animations
+- **Interactive infinity symbol** - morphs from counting numbers to ∞ symbol
 - **Chess.com piece theme** for professional, familiar appearance
 - **Yellow glow hints** - beautiful visual cues for puzzle assistance
-- **Audio feedback** - satisfying sound effects for moves, captures, and completions
-- **Smooth animations** for puzzle transitions
+- **Audio feedback** - centralized audio management system with satisfying sound effects
+- **Smooth animations** for puzzle transitions and UI interactions
 - **Instant move feedback** for responsive gameplay
 - **Mobile-responsive design** that works on all devices
 - **Direct puzzle access** - no account required
@@ -55,12 +58,15 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 - **Survival Mode** - Test your skills with lives system and progressive difficulty  
 - **⚔️ 1v1 Private Battle** - Challenge friends in real-time puzzle races with private room codes
 - **🏆 Global Leaderboard** - Compete worldwide with Firebase-powered cross-device rankings
-- **Daily Puzzle** - Fresh challenge from Lichess every day with purple theme
+- **Daily Puzzle** - Fresh challenge from Lichess every day with animated rating
 - **Game Review** - Analyze your games position by position with Stockfish engine analysis
-  - Load games via PGN, FEN, or directly from Chess.com
-  - Real-time Stockfish evaluation for every move
-  - Move-by-move analysis with automatic evaluation updates
-  - AI-powered insights into move quality and alternatives
+  - Load games via PGN, FEN, or directly from Chess.com API
+  - Real-time Stockfish evaluation via HuggingFace API integration
+  - Dynamic evaluation bar that updates instantly on position changes
+  - Move-by-move analysis with Centipawn Loss (CPL) calculations
+  - Automatic move quality ratings (Brilliant, Best, Good, Inaccuracy, Mistake, Blunder)
+  - Performance rating calculations for both players
+  - Batch analysis of entire games with progress tracking
 - **Automatic Opponent Responses** - Computer plays opponent moves seamlessly
 - **Color-coded difficulty** - Cyan (Beginner) → Blue (Intermediate) → Yellow (Advanced) → Red (Expert)
 
@@ -77,7 +83,7 @@ graph TB
     C --> H[Daily Puzzles]
     D --> I[50,000+ Pre-evaluated Puzzles]
     
-    style A fill:#9900ff,stroke:#fff,color:#fff
+    style A fill:#ff8c00,stroke:#fff,color:#fff
     style B fill:#ff6600,stroke:#fff,color:#fff
     style E fill:#00d4ff,stroke:#fff,color:#fff
     style F fill:#00d4ff,stroke:#fff,color:#fff
@@ -94,12 +100,12 @@ graph TB
 - **Chess Logic:** [chess.js](https://github.com/jhlywa/chess.js) for move validation
 - **Backend:** Firebase Firestore for real-time multiplayer rooms and global leaderboard
 - **AI Integration:** GPT-4 via custom-built serverless API for intelligent hints
-- **Engine Integration:** Stockfish chess engine via custom API wrapper
+- **Engine Integration:** Stockfish chess engine via HuggingFace API wrapper
 - **External APIs:** Lichess API for daily puzzles
 - **Piece Graphics:** Chess.com piece theme for professional appearance
 - **Styling:** Custom CSS with modern dark theme and vibrant color system
 - **Audio:** HTML5 Audio API for immersive sound effects
-- **Color Scheme:** Deep dark backgrounds with purple, cyan, and red accents
+- **Color Scheme:** Deep dark backgrounds with orange (`#ff8c00`), grey-orange banners, and vibrant mode-specific colors
 
 ## 📁 File Structure
 
@@ -108,7 +114,8 @@ PawnPush/
 │
 ├── api/                       # 🔥 Custom-built API layer
 │   ├── getHint.js            # Custom GPT-4 hint API (serverless)
-│   ├── stockfish.js          # Custom Stockfish engine integration API
+│   ├── stockfish.js          # Custom Stockfish engine via HuggingFace API
+│   ├── chesscom.js           # Chess.com game fetching API
 │   └── firebase.js           # Firebase API configuration
 │
 │
@@ -119,14 +126,15 @@ PawnPush/
 ├── pvp.html                   # 1v1 Private Battle interface
 ├── survival.html              # Survival mode page
 │
-├── IndexScript.js             # Main site logic & daily puzzle loading
+├── IndexScript.js             # Main site logic, animated stats, daily puzzle loading
+├── audio-manager.js           # Centralized audio management system
 ├── PuzzleScript.js            # Regular puzzle logic with audio integration
 ├── dailyPuzzle.js             # Daily puzzle functionality with audio
-├── game-review.js             # Game analysis features with audio
+├── game-review.js             # Game analysis with Stockfish, CPL calculations, Chess.com integration
 ├── survival.js                # Survival mode with lives system and global leaderboard
 ├── pvp.js                     # 1v1 multiplayer with Firebase real-time rooms
 │
-├── style.css                  # Modern dark theme with purple accents
+├── style.css                  # Modern dark theme with orange accents
 ├── audio/                     # Sound effects directory
 │   ├── move.mp3              # Move sound effect
 │   ├── capture.mp3           # Capture sound effect
@@ -199,13 +207,13 @@ Visit [https://pawn-push.vercel.app](https://pawn-push.vercel.app) to start solv
 4. **Win**: Player with the highest score wins the match!
 
 ### **Features to Try**
-- 🎯 **Daily Puzzle**: Fresh puzzle every day from Lichess with purple theme
+- 🎯 **Daily Puzzle**: Fresh puzzle every day from Lichess with animated rating display
 - ⚔️ **1v1 Battle**: Challenge friends with private room codes in 5-minute puzzle races
 - 🤖 **AI Coach**: Ask questions about positions and moves
 - 💡 **Smart Hints**: Progressive hints with beautiful yellow glow effects
 - 🏆 **Global Leaderboard**: Compete worldwide with cross-device Firebase rankings
 - 🔊 **Audio Feedback**: Satisfying sound effects for every move and action
-- 🎨 **Modern UI**: Sleek dark theme with vibrant purple accents
+- 🎨 **Modern UI**: Sleek dark theme with vibrant orange accents and animated homepage stats
 - 📱 **Mobile Friendly**: Works perfectly on phones and tablets
 
 ## 🔧 How It Works
@@ -233,11 +241,14 @@ Visit [https://pawn-push.vercel.app](https://pawn-push.vercel.app) to start solv
 
 ### **User Experience**
 - **Modern Dark Theme**: Deep `#121212` background with premium gaming aesthetic
-- **Vibrant Color System**: Purple (`#9900ff`) for main actions, cyan (`#00d4ff`) for secondary, red (`#ff1744`) for intense moments
+- **Vibrant Color System**: Orange (`#ff8c00`) for main actions and stats, grey-orange banners for selection sections
+- **Animated Homepage**: Numbers count up smoothly on load, infinity symbol morphs from counting numbers
+- **Centralized Audio System**: AudioManager class handles all sound effects with mobile optimization
 - **Chess.com Pieces**: Professional, familiar piece graphics
 - **Audio Integration**: Sound effects for moves, captures, castling, checks, and puzzle completion
-- **Visual Feedback**: Color-coded move validation and beautiful glow effects
-- **Smooth Animations**: Beautiful transitions between puzzles
+- **Visual Feedback**: Color-coded move validation and beautiful orange glow effects
+- **Smooth Animations**: Beautiful transitions between puzzles with shine effects on buttons
+- **Game Review Features**: Real-time eval bar updates, CPL calculations, performance ratings
 - **Responsive Design**: Optimized for desktop, tablet, and mobile
 - **No Registration**: Start playing immediately without creating an account
 
