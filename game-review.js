@@ -1,4 +1,3 @@
-// Audio is now managed by  AudioManagerfile
 function playSound(soundName) {
   if (window.audioManager) {
     window.audioManager.playSound(soundName);
@@ -67,7 +66,6 @@ function initBoard() {
   });
   
   boardElement.addEventListener('click', function(e) {
-    // Find the square element (works for both empty squares and pieces)
     let target = e.target;
     if (target.tagName === 'IMG') {
       target = target.parentElement;
@@ -79,7 +77,6 @@ function initBoard() {
     if (!cls) return;
     const square = cls.split('-')[1];
     
-    // Clear previous selection
     document.querySelectorAll('.square-selected').forEach(el => {
       el.classList.remove('square-selected');
     });
@@ -240,9 +237,8 @@ async function loadLocalStockfish() {
                     
                     const cleanedFen = this.cleanFenForApi(fen);
                     
-                    // Create AbortController for timeout
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 55000); // 55 second timeout
+                    const timeoutId = setTimeout(() => controller.abort(), 55000);
                     
                     fetch('/api/stockfish', {
                       method: 'POST',
@@ -293,8 +289,7 @@ async function loadLocalStockfish() {
                       console.error('Stockfish API error (attempt ' + (retryCount + 1) + '):', error);
                       
                       if (retryCount < maxRetries) {
-                        // Use exponential backoff for retries
-                        const delay = Math.min(2000 * Math.pow(2, retryCount), 10000); // Max 10 seconds
+                        const delay = Math.min(2000 * Math.pow(2, retryCount), 10000);
                         setTimeout(() => {
                           this.makeApiCall(fen, retryCount + 1);
                         }, delay);
@@ -692,7 +687,6 @@ function handleStockfishMessage(message) {
     const analysis = parseAnalysisLine(messageText);
     if (analysis.depth && parseInt(analysis.depth) >= 1) {
       if (isQuickEvalActive && analysis.score !== undefined) {
-        // For quick evals, only move the eval bar like Chess.com
         updateEvaluationBar(analysis.score);
       } else {
         currentAnalysis = { ...currentAnalysis, ...analysis };
@@ -705,7 +699,6 @@ function handleStockfishMessage(message) {
     const parts = messageText.split(' ');
     const bestMove = parts[1];
     if (isQuickEvalActive) {
-      // End quick eval session silently
       isQuickEvalActive = false;
       if (quickEvalTimeout) {
         clearTimeout(quickEvalTimeout);
@@ -771,13 +764,12 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
       console.log(`Move ${moveIndex + 1}: Comparing '${playedMove}' (played) vs '${bestMove}' (best)`);
       
       if (playedMove === bestMove) {
-        // Best move - CPL = 0
         const evaluation = evaluateMoveQualityFromCPL(0);
         
         moveAnalyses[moveIndex] = {
           played: playedMove,
           evaluation: evaluation,
-          score: bestEval, // mover perspective = best line before move
+          score: bestEval,
           bestScore: bestEval,
           bestMove: bestMove,
           cpl: 0,
@@ -812,12 +804,8 @@ function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
           
           if (afterData.eval !== undefined) {
             const afterEval = afterData.eval * 100;
-            // Normalize to the mover's perspective
-            // bestEval is eval before the move (side to move = mover)
             const bestForMover = bestEval;
-            // afterEval is eval after the move (side to move = opponent), flip sign
             const playedForMover = -afterEval;
-            // Centipawn Loss relative to best line (absolute difference)
             const cpl = Math.abs(playedForMover - bestForMover);
             const evaluation = evaluateMoveQualityFromCPL(cpl);
             
@@ -906,7 +894,6 @@ function findPlayedMove(beforeFen, afterFen) {
       const testChess = new Chess(beforeFen);
       testChess.move(move);
       if (testChess.fen() === afterFen) {
-          // Return in format: from+to+promotion (e.g., "e2e4")
           return move.from + move.to + (move.promotion || '');
       }
   }
@@ -936,7 +923,6 @@ function convertUciToSan(uciMove, fen) {
 function evaluateMoveQuality(moveScore, bestScore) {
   const diff = Math.abs(moveScore - bestScore);
   
-  // Even harsher thresholds
   if (diff <= 10) return { type: 'best', symbol: '‼️', color: '#4CAF50', text: 'Best / Brilliant', score: 1.00 };
   if (diff <= 25) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.95 };
   if (diff <= 50) return { type: 'good', symbol: '✓', color: '#2196F3', text: 'Good', score: 0.85 };
@@ -946,7 +932,6 @@ function evaluateMoveQuality(moveScore, bestScore) {
 }
 
 function evaluateMoveQualityFromCPL(cpl) {
-  // Refined thresholds based on table
   if (cpl <= 3) return { type: 'brilliant', symbol: '‼️', color: '#4CAF50', text: 'Brilliant', score: 1.00 };
   if (cpl <= 10) return { type: 'best', symbol: '!', color: '#4CAF50', text: 'Best', score: 0.96 };
   if (cpl <= 25) return { type: 'excellent', symbol: '!', color: '#8BC34A', text: 'Excellent', score: 0.90 };
@@ -1126,18 +1111,15 @@ function updateEvaluationBar(centipawns) {
   }
 }
 
-// Quick eval: instantly move eval bar on position change, then refine briefly via engine
 function triggerQuickEval() {
   try {
     if (!chess) return;
     const fen = gameHistory[currentMoveIndex] || chess.fen();
-    // Immediate heuristic update
     const materialCp = quickMaterialEvalFromFen(fen);
     updateEvaluationBar(materialCp);
     
-    if (!stockfish || engineType === 'mock') return; // don't spawn engine work in mock mode
+    if (!stockfish || engineType === 'mock') return;
     
-    // If a previous quick eval is active, stop it without touching full analyses
     if (isQuickEvalActive) {
       stockfish.postMessage('stop');
       if (quickEvalTimeout) {
@@ -1147,7 +1129,6 @@ function triggerQuickEval() {
       isQuickEvalActive = false;
     }
     
-    // Don't interfere with full game/continuous analysis sessions
     if (isAnalyzing && !isContinuousAnalysis) return;
     
     isQuickEvalActive = true;
@@ -1601,10 +1582,8 @@ function displayMoveAnalysis(moveIndex) {
       const analysis = moveAnalyses[moveIndex];
       const display = document.getElementById('analysisDisplay');
       
-      // Convert UCI move to SAN if needed
       let playedMoveDisplay = analysis.played;
       try {
-        // Use the position BEFORE the move (gameHistory[moveIndex])
         const beforeFen = gameHistory[moveIndex] || gameHistory[0];
         playedMoveDisplay = convertUciToSan(analysis.played, beforeFen);
       } catch (e) {
@@ -1814,7 +1793,7 @@ async function loadChessComGames() {
   const username = prompt('Enter Chess.com username:');
   if (!username) return;
   
-  const months = ['10', '11', '12']; // October, November, December 2025
+  const months = ['10', '11', '12'];
   const allGames = [];
   
   showToast('Fetching games from Chess.com...', 'info');

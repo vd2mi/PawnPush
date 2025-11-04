@@ -444,7 +444,6 @@ function initBoard() {
     });
 
     boardElement.addEventListener('click', function(e) {
-      // Find the square element (works for both empty squares and pieces)
       let target = e.target;
       if (target.tagName === 'IMG') {
         target = target.parentElement;
@@ -456,7 +455,6 @@ function initBoard() {
       if (!cls) return;
       const square = cls.split('-')[1];
       
-      // Clear previous selection
       document.querySelectorAll('.square-selected').forEach(el => {
         el.classList.remove('square-selected');
       });
@@ -529,7 +527,6 @@ function handleCorrectMove(move, userMove) {
             puzzleSolved();
           }, 800);
         } else {
-          // Ensure board remains draggable for next move
           setTimeout(() => {
             board.position(chess.fen(), false);
           }, 100);
@@ -548,7 +545,6 @@ function handleWrongMove(move, userMove) {
   addMoveToHistory(userMove, false);
   chess.undo();
   
-  // Ensure board is properly reset and remains draggable
   setTimeout(() => {
     board.position(chess.fen(), false);
   }, 50);

@@ -1,4 +1,3 @@
-// Audio is now managed by  AudioManagerfile
 function playSound(soundName) {
   if (window.audioManager) {
     window.audioManager.playSound(soundName);
@@ -242,7 +241,6 @@ async function getRandomPuzzleFromDatabase() {
     });
 
     boardElement.addEventListener('click', function(e) {
-      // Find the square element (works for both empty squares and pieces)
       let target = e.target;
       if (target.tagName === 'IMG') {
         target = target.parentElement;
@@ -254,7 +252,6 @@ async function getRandomPuzzleFromDatabase() {
       if (!cls) return;
       const square = cls.split('-')[1];
       
-      // Clear previous selection
       document.querySelectorAll('.square-selected').forEach(el => {
         el.classList.remove('square-selected');
       });

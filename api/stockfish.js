@@ -41,7 +41,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${HF_TOKEN}`
       },
-      body: JSON.stringify({ fen, depth: 20 }), // Depth 20 for deeper analysis
+      body: JSON.stringify({ fen, depth: 20 }),
       signal: controller.signal
     });
     
@@ -62,7 +62,6 @@ export default async function handler(req, res) {
     console.log('Successfully received data from HuggingFace API for FEN:', fen.substring(0, 30) + '...');
     console.log('Best move:', data.best_move, 'Eval:', data.evaluation);
     
-    // Validate that we got a valid response
     if (!data.best_move) {
       console.error('No best_move in response:', data);
       throw new Error('Invalid API response: no best_move');
@@ -91,7 +90,6 @@ export default async function handler(req, res) {
     console.error('Stockfish API error:', error.name, error.message);
     console.error('Error stack:', error.stack);
     
-    // Check if it's an abort (timeout)
     if (error.name === 'AbortError') {
       console.error('Request timed out after 30 seconds');
       return res.status(504).json({
@@ -101,7 +99,6 @@ export default async function handler(req, res) {
       });
     }
     
-    // Return error response for other errors
     return res.status(500).json({
       error: 'Stockfish API call failed',
       details: error.message,

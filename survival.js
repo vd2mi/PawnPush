@@ -3,7 +3,6 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/10.4.0/firebase
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-analytics.js";
 import { collection, addDoc, getDocs, doc, updateDoc, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
 
-// Initialize Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyBz6YA8veeDSY-naBqYdafJbcnfsnDi3EY",
   authDomain: "pawnpush-leaderboard.firebaseapp.com",
@@ -336,8 +335,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         target.classList.toggle('square-red-mark');
       }
     });
-
-    // click-to-move removed per request
   }
 
   async function loadPuzzle(){

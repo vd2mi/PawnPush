@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-    
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -22,7 +21,6 @@ export default async function handler(req, res) {
       console.log('Getting hint for FEN:', fen);
       console.log('Solution move:', solutionMove);
       console.log('Puzzle type:', puzzleType);
-  
       
       if (!process.env.OPENAI_API_KEY) {
         console.log('No OpenAI API key');

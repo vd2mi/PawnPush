@@ -1,4 +1,3 @@
-// Audio is now managed by  AudioManagerfile
 function playSound(soundName) {
   if (window.audioManager) {
     window.audioManager.playSound(soundName);
@@ -84,12 +83,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       let dailyData = null;
       
-      // First try to get from sessionStorage
       const dailyPuzzleJson = sessionStorage.getItem('dailyPuzzle');
       if (dailyPuzzleJson) {
         dailyData = JSON.parse(dailyPuzzleJson);
       } else {
-        // Fallback: fetch directly from API
         dailyData = await fetchDailyPuzzle();
         if (!dailyData) {
           throw new Error('Failed to fetch daily puzzle from API');
@@ -215,7 +212,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     boardElement.addEventListener('click', function(e) {
       if (puzzleSolved) return;
       
-      // Find the square element (works for both empty squares and pieces)
       let target = e.target;
       if (target.tagName === 'IMG') {
         target = target.parentElement;
@@ -227,7 +223,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!cls) return;
       const square = cls.split('-')[1];
       
-      // Clear previous selection
       document.querySelectorAll('.square-selected').forEach(el => {
         el.classList.remove('square-selected');
       });
