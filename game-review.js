@@ -3,6 +3,9 @@ const QUICK_EVAL_TIME = 900;
 const MAX_RETRIES = 3;
 const API_TIMEOUT = 55000;
 const CACHE_LIMIT = 50;
+const MATE_SENTINEL_CP = 1000;
+const CPL_CAP = 400;
+const CPL_TRIM_RATIO = 0.1;
 
 let chess;
 let board;
@@ -112,7 +115,27 @@ const toWhitePerspective = (centipawns, fallback, fen) => {
   return centipawns;
 };
 
-const cachePositionEvaluation = (index, { score, mate, depth, fen }) => {
+const cplBetween = (beforeWhite, afterWhite) => {
+  if (typeof beforeWhite !== 'number' || typeof afterWhite !== 'number') return 0;
+  if (Math.abs(beforeWhite) >= MATE_SENTINEL_CP || Math.abs(afterWhite) >= MATE_SENTINEL_CP) {
+    return CPL_CAP;
+  }
+  return Math.min(Math.abs(afterWhite - beforeWhite), CPL_CAP);
+};
+
+const trimmedMean = (values, trimRatio = CPL_TRIM_RATIO) => {
+  if (!values.length) return null;
+  if (values.length <= 2) {
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const trimCount = Math.min(Math.floor(sorted.length * trimRatio), Math.floor((sorted.length - 1) / 2));
+  const trimmed = sorted.slice(trimCount, sorted.length - trimCount);
+  if (!trimmed.length) return sorted.reduce((sum, value) => sum + value, 0) / sorted.length;
+  return trimmed.reduce((sum, value) => sum + value, 0) / trimmed.length;
+};
+
+const cachePositionEvaluation = (index, { score, mate, depth, fen, normalized = false }) => {
   const numericIndex = Number(index);
   if (Number.isNaN(numericIndex) || (typeof score !== 'number' && typeof mate !== 'number')) return;
 
@@ -125,17 +148,17 @@ const cachePositionEvaluation = (index, { score, mate, depth, fen }) => {
 
   const sideToMove = fen ? fen.split(' ')[1] : null;
   const scoreWhite = typeof score === 'number'
-    ? (sideToMove === 'b' ? -score : score)
+    ? (normalized ? score : (sideToMove === 'b' ? -score : score))
     : (existing ? existing.score : undefined);
   const mateWhite = typeof mate === 'number'
-    ? (sideToMove === 'b' ? -mate : mate)
+    ? (normalized ? mate : (sideToMove === 'b' ? -mate : mate))
     : (existing ? existing.mate : undefined);
 
   let centipawns;
   let displayText;
 
   if (typeof mateWhite === 'number') {
-    centipawns = mateWhite > 0 ? 1000 : -1000;
+    centipawns = mateWhite > 0 ? MATE_SENTINEL_CP : -MATE_SENTINEL_CP;
     displayText = formatMateText(mateWhite);
   } else if (typeof scoreWhite === 'number') {
     centipawns = scoreWhite;
@@ -420,7 +443,8 @@ const updateAnalysisDisplay = (analysis, altMoves) => {
       cachePositionEvaluation(contextIndex, {
         score: whiteScore,
         depth: depthNumber,
-        fen: contextFen
+        fen: contextFen,
+        normalized: true
       });
     }
 
@@ -632,7 +656,7 @@ const analyzeMoveReal = async (beforeFen, afterFen, moveIndex) => {
       fen: cleanAfterFen
     });
 
-    const cpl = Math.abs(afterWhiteEval - beforeWhiteEval);
+    const cpl = cplBetween(beforeWhiteEval, afterWhiteEval);
     const evaluation = evaluateMoveQualityFromCPL(cpl);
 
     moveAnalyses[moveIndex] = {
@@ -1016,7 +1040,8 @@ const handleStockfishMessage = (message) => {
         cachePositionEvaluation(currentMoveIndex, {
           score: normalizedScore,
           depth: normalizeDepth(analysis.depth),
-          fen: cleanFenForAnalysis(currentFen)
+          fen: cleanFenForAnalysis(currentFen),
+          normalized: true
         });
       } else {
         currentAnalysis = { ...currentAnalysis, ...analysis };
@@ -1336,19 +1361,16 @@ const calculatePerformanceRating = () => {
     const scoreValues = entries.map((entry) => entry.score).filter((value) => typeof value === 'number');
     const cplValues = entries.map((entry) => entry.cpl).filter((value) => typeof value === 'number');
 
-    const accuracy = cplValues.length
+    const trimmedAcpl = cplValues.length ? trimmedMean(cplValues) : null;
+
+    const accuracy = trimmedAcpl !== null
       ? Math.min(
           100,
-          Math.max(
-            0,
-            100 * Math.exp(-0.07 * (cplValues.reduce((sum, value) => sum + value, 0) / cplValues.length) / 100)
-          )
+          Math.max(0, 100 * Math.exp(-0.07 * trimmedAcpl / 100))
         )
       : null;
 
-    const acpl = cplValues.length
-      ? cplValues.reduce((sum, value) => sum + value, 0) / cplValues.length
-      : null;
+    const acpl = trimmedAcpl;
 
     const rating = scoreValues.length ? mapScoresToElo(scoreValues) : null;
 
