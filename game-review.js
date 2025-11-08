@@ -34,6 +34,8 @@ let stockfishInitReject = null;
 let analysisTimeout = null;
 let currentAnalysis = {};
 let moveAnalyses = {};
+let positionEvalCache = {};
+let currentAnalysisContext = { index: null, fen: null, requestId: 0 };
 let isDragging = false;
 let selectedSquare = null;
 let gameMetadata = { white: 'White', black: 'Black' };
@@ -135,6 +137,7 @@ function onDrop(source, target) {
   }
 
   gameHistory = gameHistory.slice(0, currentMoveIndex + 1);
+  prunePositionEvalCache(currentMoveIndex);
   gameHistory.push(chess.fen());
   currentMoveIndex = gameHistory.length - 1;
   
@@ -154,6 +157,98 @@ function cleanFenForAnalysis(fen) {
     parts[3] = '-';
   }
   return parts.join(' ');
+}
+
+function resetPositionEvalCache() {
+  positionEvalCache = {};
+  currentAnalysisContext = { index: null, fen: null, requestId: 0 };
+}
+
+function prunePositionEvalCache(maxIndexToKeep) {
+  Object.keys(positionEvalCache).forEach(key => {
+    const numericKey = parseInt(key, 10);
+    if (!Number.isNaN(numericKey) && numericKey > maxIndexToKeep) {
+      delete positionEvalCache[key];
+    }
+  });
+}
+
+function formatEvaluationText(centipawns) {
+  if (typeof centipawns !== 'number' || Number.isNaN(centipawns)) {
+    return '+0.00';
+  }
+  const pawns = (centipawns / 100).toFixed(2);
+  const prefix = centipawns >= 0 ? '+' : '';
+  return `${prefix}${pawns}`;
+}
+
+function formatMateText(mate) {
+  if (typeof mate !== 'number' || Number.isNaN(mate)) {
+    return '#?';
+  }
+  const abs = Math.abs(mate);
+  return mate > 0 ? `#${abs}` : `-#${abs}`;
+}
+
+function toCentipawnsFromApi(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return Math.round(numeric * 100);
+}
+
+function normalizeDepth(value) {
+  const depthNumber = Number(value);
+  return Number.isFinite(depthNumber) ? depthNumber : undefined;
+}
+
+function cachePositionEvaluation(index, { score, mate, depth, fen }) {
+  const numericIndex = Number(index);
+  if (Number.isNaN(numericIndex) || (typeof score !== 'number' && typeof mate !== 'number')) {
+    return;
+  }
+
+  const existing = positionEvalCache[numericIndex];
+  const normalizedDepth = typeof depth === 'number' && !Number.isNaN(depth)
+    ? depth
+    : (existing && typeof existing.depth === 'number' ? existing.depth : undefined);
+
+  if (existing && typeof normalizedDepth === 'number' && typeof existing.depth === 'number' && normalizedDepth < existing.depth) {
+    return;
+  }
+
+  let centipawns;
+  let displayText;
+
+  if (typeof mate === 'number') {
+    centipawns = mate > 0 ? 1000 : -1000;
+    displayText = formatMateText(mate);
+  } else {
+    centipawns = score;
+    displayText = formatEvaluationText(score);
+  }
+
+  positionEvalCache[numericIndex] = {
+    centipawns,
+    score: typeof score === 'number' ? score : undefined,
+    mate: typeof mate === 'number' ? mate : undefined,
+    depth: normalizedDepth,
+    fen: fen || (existing ? existing.fen : undefined),
+    text: displayText,
+    updatedAt: Date.now()
+  };
+}
+
+function applyCachedEvaluationForMove(index) {
+  const numericIndex = Number(index);
+  if (Number.isNaN(numericIndex)) return false;
+
+  const cached = positionEvalCache[numericIndex];
+  if (!cached) return false;
+
+  updateEvaluationBar(cached.centipawns, { textOverride: cached.text });
+  return true;
 }
 
 function checkWasmSupport() {
@@ -730,119 +825,151 @@ function evaluateLastMove() {
   }, 500);
 }
 
-function analyzeMoveReal(beforeFen, afterFen, moveIndex) {
-  const playedMove = findPlayedMove(beforeFen, afterFen);
+async function requestStockfishEvaluation(fen) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
   
-  const cleanBeforeFen = cleanFenForAnalysis(beforeFen);
-  
-  fetch('/api/stockfish', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      fen: cleanBeforeFen
-    })
-  })
-  .then(response => {
+  try {
+    const response = await fetch('/api/stockfish', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ fen }),
+      signal: controller.signal
+    });
+    
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    return response.json();
-  })
-  .then(data => {
-    if (data.error) {
-      console.warn(`Stockfish API error for move ${moveIndex + 1}:`, data.error);
+    
+    return await response.json();
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function analyzeMoveReal(beforeFen, afterFen, moveIndex, attempt = 1, maxAttempts = 3) {
+  const playedMove = findPlayedMove(beforeFen, afterFen);
+  const cleanBeforeFen = cleanFenForAnalysis(beforeFen);
+  const cleanAfterFen = cleanFenForAnalysis(afterFen);
+  
+  try {
+    const beforeData = await requestStockfishEvaluation(cleanBeforeFen);
+    
+    if (!beforeData || beforeData.error || beforeData.fallback || beforeData.eval === undefined || !beforeData.move) {
+      console.warn(`Stockfish API fallback for move ${moveIndex + 1} (attempt ${attempt})`);
+      if (attempt < maxAttempts) {
+        return { success: false, retryable: true };
+      }
       fallbackAnalysis(playedMove, moveIndex);
-      return;
+      cachePositionEvaluation(moveIndex, { score: 0, depth: 0, fen: cleanBeforeFen });
+      cachePositionEvaluation(moveIndex + 1, { score: 0, depth: 0, fen: cleanAfterFen });
+      return { success: false, retryable: false };
     }
     
-    if (data.eval !== undefined && data.move) {
-      const bestEval = data.eval * 100; 
-      const bestMove = data.move;
-      
-      console.log(`Move ${moveIndex + 1}: Comparing '${playedMove}' (played) vs '${bestMove}' (best)`);
-      
-      if (playedMove === bestMove) {
-        const evaluation = evaluateMoveQualityFromCPL(0);
-        
-        moveAnalyses[moveIndex] = {
-          played: playedMove,
-          evaluation: evaluation,
-          score: bestEval,
-          bestScore: bestEval,
-          bestMove: bestMove,
-          cpl: 0,
-          alternatives: []
-        };
-        updateMoveInList(moveIndex, evaluation);
-        console.log(`Move ${moveIndex + 1}: ${playedMove} - BEST MOVE!`);
-      } else {
-        const cleanAfterFen = cleanFenForAnalysis(afterFen);
-        
-        fetch('/api/stockfish', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            fen: cleanAfterFen
-          })
-        })
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-          return response.json();
-        })
-        .then(afterData => {
-          if (afterData.error) {
-            console.warn(`Stockfish API error for move ${moveIndex + 1} (after position):`, afterData.error);
-            fallbackAnalysis(playedMove, moveIndex);
-            return;
-          }
-          
-          if (afterData.eval !== undefined) {
-            const afterEval = afterData.eval * 100;
-            const bestForMover = bestEval;
-            const playedForMover = -afterEval;
-            const cpl = Math.abs(playedForMover - bestForMover);
-            const evaluation = evaluateMoveQualityFromCPL(cpl);
-            
-            moveAnalyses[moveIndex] = {
-              played: playedMove,
-              evaluation: evaluation,
-              score: playedForMover,
-              bestScore: bestForMover,
-              bestMove: bestMove,
-              cpl: cpl,
-              alternatives: []
-            };
-            
-            updateMoveInList(moveIndex, evaluation);
-            console.log(`Move ${moveIndex + 1}: ${playedMove} (played) vs ${bestMove} (best) - ${evaluation.text} (CPL: ${cpl})`);
-          } else {
-            fallbackAnalysis(playedMove, moveIndex);
-          }
-        })
-        .catch(error => {
-          console.error('After position analysis error for move', moveIndex + 1, ':', error);
-
-          setTimeout(() => {
-            fallbackAnalysis(playedMove, moveIndex);
-          }, 500);
-        });
+    const bestEval = toCentipawnsFromApi(beforeData.eval);
+    if (bestEval === null) {
+      console.warn(`Invalid evaluation data for move ${moveIndex + 1}`);
+      if (attempt < maxAttempts) {
+        return { success: false, retryable: true };
       }
-    } else {
       fallbackAnalysis(playedMove, moveIndex);
+      cachePositionEvaluation(moveIndex, { score: 0, depth: 0, fen: cleanBeforeFen });
+      cachePositionEvaluation(moveIndex + 1, { score: 0, depth: 0, fen: cleanAfterFen });
+      return { success: false, retryable: false };
     }
-  })
-  .catch(error => {
-    console.error('Before position analysis error for move', moveIndex + 1, ':', error);
-    setTimeout(() => {
+    
+    const bestMove = beforeData.move;
+    const beforeDepth = normalizeDepth(beforeData.depth);
+    
+    cachePositionEvaluation(moveIndex, {
+      score: bestEval,
+      depth: beforeDepth,
+      fen: cleanBeforeFen
+    });
+    
+    console.log(`Move ${moveIndex + 1}: Comparing '${playedMove}' (played) vs '${bestMove}' (best)`);
+    
+    if (playedMove === bestMove) {
+      const evaluation = evaluateMoveQualityFromCPL(0);
+      
+      moveAnalyses[moveIndex] = {
+        played: playedMove,
+        evaluation: evaluation,
+        score: bestEval,
+        bestScore: bestEval,
+        bestMove: bestMove,
+        cpl: 0,
+        alternatives: []
+      };
+      cachePositionEvaluation(moveIndex + 1, {
+        score: bestEval,
+        depth: beforeDepth,
+        fen: cleanAfterFen
+      });
+      updateMoveInList(moveIndex, evaluation);
+      console.log(`Move ${moveIndex + 1}: ${playedMove} - BEST MOVE!`);
+      return { success: true, retryable: false };
+    }
+    
+    const afterData = await requestStockfishEvaluation(cleanAfterFen);
+    if (!afterData || afterData.error || afterData.fallback || afterData.eval === undefined) {
+      console.warn(`Stockfish API fallback for move ${moveIndex + 1} after position (attempt ${attempt})`);
+      if (attempt < maxAttempts) {
+        return { success: false, retryable: true };
+      }
       fallbackAnalysis(playedMove, moveIndex);
-    }, 500);
-  });
+      cachePositionEvaluation(moveIndex + 1, { score: 0, depth: 0, fen: cleanAfterFen });
+      return { success: false, retryable: false };
+    }
+    
+    const afterEval = toCentipawnsFromApi(afterData.eval);
+    if (afterEval === null) {
+      console.warn(`Invalid after-eval data for move ${moveIndex + 1}`);
+      if (attempt < maxAttempts) {
+        return { success: false, retryable: true };
+      }
+      fallbackAnalysis(playedMove, moveIndex);
+      cachePositionEvaluation(moveIndex + 1, { score: 0, depth: 0, fen: cleanAfterFen });
+      return { success: false, retryable: false };
+    }
+    
+    const afterDepth = normalizeDepth(afterData.depth);
+    cachePositionEvaluation(moveIndex + 1, {
+      score: afterEval,
+      depth: afterDepth,
+      fen: cleanAfterFen
+    });
+    
+    const bestForMover = bestEval;
+    const playedForMover = -afterEval;
+    const cpl = Math.abs(playedForMover - bestForMover);
+    const evaluation = evaluateMoveQualityFromCPL(cpl);
+    
+    moveAnalyses[moveIndex] = {
+      played: playedMove,
+      evaluation: evaluation,
+      score: playedForMover,
+      bestScore: bestForMover,
+      bestMove: bestMove,
+      cpl: cpl,
+      alternatives: []
+    };
+    
+    updateMoveInList(moveIndex, evaluation);
+    console.log(`Move ${moveIndex + 1}: ${playedMove} (played) vs ${bestMove} (best) - ${evaluation.text} (CPL: ${cpl})`);
+    return { success: true, retryable: false };
+  } catch (error) {
+    console.error(`Analysis error for move ${moveIndex + 1} (attempt ${attempt}):`, error);
+    if (attempt < maxAttempts) {
+      return { success: false, retryable: true };
+    }
+    fallbackAnalysis(playedMove, moveIndex);
+    cachePositionEvaluation(moveIndex, { score: 0, depth: 0, fen: cleanBeforeFen });
+    cachePositionEvaluation(moveIndex + 1, { score: 0, depth: 0, fen: cleanAfterFen });
+    return { success: false, retryable: false };
+  }
 }
 
 function fallbackAnalysis(playedMove, moveIndex) {
@@ -855,6 +982,15 @@ function fallbackAnalysis(playedMove, moveIndex) {
     cpl: 0,
     alternatives: []
   };
+  
+  const beforeFen = gameHistory[moveIndex];
+  const afterFen = gameHistory[moveIndex + 1];
+  if (beforeFen) {
+    cachePositionEvaluation(moveIndex, { score: 0, depth: 0, fen: cleanFenForAnalysis(beforeFen) });
+  }
+  if (afterFen) {
+    cachePositionEvaluation(moveIndex + 1, { score: 0, depth: 0, fen: cleanFenForAnalysis(afterFen) });
+  }
   
   updateMoveInList(moveIndex, evaluation);
   console.log(`Move ${moveIndex + 1}: ${playedMove} - Good Move (fallback)`);
@@ -1007,10 +1143,24 @@ function updateAnalysisDisplay(analysis, altMoves) {
   
   text += '\n';
   
+  const depthNumber = analysis.depth ? parseInt(analysis.depth, 10) : undefined;
+  const contextIndex = currentAnalysisContext && typeof currentAnalysisContext.index === 'number'
+    ? currentAnalysisContext.index
+    : null;
+  const contextFen = currentAnalysisContext ? currentAnalysisContext.fen : undefined;
+
   if (analysis.score !== undefined) {
     const score = (analysis.score / 100).toFixed(2);
     text += `Evaluation: ${score > 0 ? '+' : ''}${score}`;
     updateEvaluationBar(analysis.score);
+    
+    if (contextIndex !== null) {
+      cachePositionEvaluation(contextIndex, {
+        score: analysis.score,
+        depth: depthNumber,
+        fen: contextFen
+      });
+    }
     
     if (Math.abs(analysis.score) > 200) {
       if (analysis.score > 0) {
@@ -1030,7 +1180,16 @@ function updateAnalysisDisplay(analysis, altMoves) {
     } else {
       text += ' (Black to mate)';
     }
-    updateEvaluationBar(analysis.mate > 0 ? 1000 : -1000);
+    const mateCentipawns = analysis.mate > 0 ? 1000 : -1000;
+    updateEvaluationBar(mateCentipawns, { textOverride: formatMateText(analysis.mate) });
+    
+    if (contextIndex !== null) {
+      cachePositionEvaluation(contextIndex, {
+        mate: analysis.mate,
+        depth: depthNumber,
+        fen: contextFen
+      });
+    }
   }
   
   if (analysis.nodes) {
@@ -1069,7 +1228,7 @@ function updateAnalysisDisplay(analysis, altMoves) {
   display.textContent = text;
 }
 
-function updateEvaluationBar(centipawns) {
+function updateEvaluationBar(centipawns, options = {}) {
   const evalBarBoard = document.getElementById('evalBarFill');
   const evalScoreBoard = document.getElementById('evalScoreBoard');
   
@@ -1087,7 +1246,7 @@ function updateEvaluationBar(centipawns) {
   evalBarBoard.style.width = percentage + '%';
   
   const score = (centipawns / 100).toFixed(2);
-  const scoreText = `${centipawns >= 0 ? '+' : ''}${score}`;
+  const scoreText = options.textOverride || `${centipawns >= 0 ? '+' : ''}${score}`;
   
   evalScoreBoard.textContent = scoreText;
   
@@ -1115,8 +1274,11 @@ function triggerQuickEval() {
   try {
     if (!chess) return;
     const fen = gameHistory[currentMoveIndex] || chess.fen();
-    const materialCp = quickMaterialEvalFromFen(fen);
-    updateEvaluationBar(materialCp);
+    const hasCachedEval = applyCachedEvaluationForMove(currentMoveIndex);
+    if (!hasCachedEval) {
+      const materialCp = quickMaterialEvalFromFen(fen);
+      updateEvaluationBar(materialCp);
+    }
     
     if (!stockfish || engineType === 'mock') return;
     
@@ -1134,7 +1296,7 @@ function triggerQuickEval() {
     isQuickEvalActive = true;
     stockfish.postMessage('ucinewgame');
     stockfish.postMessage(`position fen ${fen}`);
-    stockfish.postMessage('go depth 8 movetime 500');
+    stockfish.postMessage('go depth 15 movetime 900');
     
     quickEvalTimeout = setTimeout(() => {
       if (isQuickEvalActive) {
@@ -1257,6 +1419,7 @@ function loadGame() {
   try {
     chess = new Chess();
     moveAnalyses = {};
+    resetPositionEvalCache();
     
     if (fenInput) {
       chess.load(fenInput);
@@ -1411,7 +1574,7 @@ function updateLoadingProgress(text) {
   }
 }
 
-function analyzeAllMoves() {
+async function analyzeAllMoves() {
   if (isAnalyzing) {
     return;
   }
@@ -1420,96 +1583,97 @@ function analyzeAllMoves() {
   showLoadingOverlay();
   updateLoadingProgress('Starting analysis...');
   
-  let completedMoves = 0;
-  const totalMoves = gameHistory.length - 1;
-  const startTime = Date.now();
+  const totalMoves = Math.max(gameHistory.length - 1, 0);
+  const maxAttempts = 3;
+  const attempts = new Array(totalMoves).fill(0);
+  let processedMoves = 0;
   
-  async function analyzeSequentially() {
-    for (let i = 1; i < gameHistory.length; i++) {
-      analyzeMoveReal(gameHistory[i-1], gameHistory[i], i-1);
+  try {
+    for (let i = 1; i < gameHistory.length; ) {
+      const moveIndex = i - 1;
+      attempts[moveIndex] += 1;
+      const attempt = attempts[moveIndex];
       
-      if (i < gameHistory.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
+      const result = await analyzeMoveReal(
+        gameHistory[i - 1],
+        gameHistory[i],
+        moveIndex,
+        attempt,
+        maxAttempts
+      );
+      
+      if (result.success) {
+        processedMoves++;
+        updateLoadingProgress(`Analyzing... ${processedMoves}/${totalMoves} moves completed`);
+        i++;
+        continue;
       }
+      
+      if (result.retryable && attempt < maxAttempts) {
+        updateLoadingProgress(`API busy, retrying move ${moveIndex + 1} in 1.5s...`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        continue;
+      }
+      
+      processedMoves++;
+      updateLoadingProgress(`Analyzing... ${processedMoves}/${totalMoves} moves completed`);
+      i++;
     }
+    
+    const performanceRatings = calculatePerformanceRating();
+    updateLoadingProgress('Finalizing analysis...');
+    
+    setTimeout(() => {
+      hideLoadingOverlay();
+      
+      const completedMoves = Object.keys(moveAnalyses).length;
+      let performanceText = '';
+      if (performanceRatings && (performanceRatings.white !== null || performanceRatings.black !== null)) {
+        const parts = [];
+        if (performanceRatings.white !== null) {
+          parts.push(`${gameMetadata.white}: ${Math.round(performanceRatings.white)}`);
+        }
+        if (performanceRatings.black !== null) {
+          parts.push(`${gameMetadata.black}: ${Math.round(performanceRatings.black)}`);
+        }
+        performanceText = parts.join(' | ');
+      }
+      
+      showToast(`Analysis complete! Analyzed ${completedMoves} moves.`, 'success');
+      isAnalyzing = false;
+      document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
+      
+      let performanceDisplay = '';
+      if (performanceRatings && (performanceRatings.white !== null || performanceRatings.black !== null)) {
+        performanceDisplay = '\n\n' + '='.repeat(40) + '\n';
+        if (performanceRatings.white !== null) {
+          performanceDisplay += `${gameMetadata.white}: ${Math.round(performanceRatings.white)}\n`;
+        }
+        if (performanceRatings.black !== null) {
+          performanceDisplay += `${gameMetadata.black}: ${Math.round(performanceRatings.black)}\n`;
+        }
+      }
+      
+      document.getElementById('analysisDisplay').textContent = `Analysis complete! Click on any move to see detailed evaluation.${performanceDisplay}`;
+    }, 500);
+  } catch (error) {
+    console.error('Analyze all moves failed:', error);
+    hideLoadingOverlay();
+    showToast('Analysis failed. Please try again.', 'error');
+    isAnalyzing = false;
+    document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
   }
-  
-  analyzeSequentially();
-  
-  const checkComplete = setInterval(() => {
-    completedMoves = Object.keys(moveAnalyses).length;
-    
-    if (completedMoves > 0) {
-      updateLoadingProgress(`Analyzing... ${completedMoves}/${totalMoves} moves completed`);
-    }
-    
-    if (completedMoves >= totalMoves || (completedMoves > 0 && Date.now() - startTime > totalMoves * 5500)) {
-      clearInterval(checkComplete);
-      
-      if (!isAnalyzing) return;
-      
-      const performanceRatings = calculatePerformanceRating();
-      
-      updateLoadingProgress('Finalizing analysis...');
-      
-      setTimeout(() => {
-        hideLoadingOverlay();
-        
-        let performanceText = '';
-        if (performanceRatings && (performanceRatings.white !== null || performanceRatings.black !== null)) {
-          const parts = [];
-          if (performanceRatings.white !== null) {
-            parts.push(`${gameMetadata.white}: ${Math.round(performanceRatings.white)}`);
-          }
-          if (performanceRatings.black !== null) {
-            parts.push(`${gameMetadata.black}: ${Math.round(performanceRatings.black)}`);
-          }
-          performanceText = parts.join(' | ');
-        }
-        
-        showToast(`Analysis complete! Analyzed ${completedMoves} moves.`, 'success');
-        isAnalyzing = false;
-        document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
-        
-        let performanceDisplay = '';
-        if (performanceRatings && (performanceRatings.white !== null || performanceRatings.black !== null)) {
-          performanceDisplay = '\n\n' + '='.repeat(40) + '\n';
-          if (performanceRatings.white !== null) {
-            performanceDisplay += `${gameMetadata.white}: ${Math.round(performanceRatings.white)}\n`;
-          }
-          if (performanceRatings.black !== null) {
-            performanceDisplay += `${gameMetadata.black}: ${Math.round(performanceRatings.black)}\n`;
-          }
-        }
-        
-        document.getElementById('analysisDisplay').textContent = `Analysis complete! Click on any move to see detailed evaluation.${performanceDisplay}`;
-      }, 500);
-    }
-  }, 200);
 }
 
 function updateBoard(skipAnalysis = false) {
   if (board && gameHistory[currentMoveIndex]) {
     chess.load(gameHistory[currentMoveIndex]);
     board.position(chess.fen());
+    applyCachedEvaluationForMove(currentMoveIndex);
     if (!skipAnalysis) {
       triggerQuickEval();
       analyzeCurrentPosition();
     }
-  }
-}
-
-function analyzeCurrentPosition() {
-  if (!stockfish || !chess || chess.game_over()) return;
-  
-  try {
-    stockfish.postMessage('ucinewgame');
-    stockfish.postMessage(`position fen ${chess.fen()}`);
-    stockfish.postMessage('go depth 8 movetime 800');
-    
-    isAnalyzing = true;
-  } catch (e) {
-    console.error('Error analyzing position:', e);
   }
 }
 
@@ -1638,16 +1802,18 @@ function goToMove(index) {
     document.getElementById('analyzeBtn').innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Analyze All Moves</span>';
   }
   
-  const evalBarBoard = document.getElementById('evalBarFill');
-  const evalScoreBoard = document.getElementById('evalScoreBoard');
-  if (evalBarBoard) {
-    evalBarBoard.style.width = '50%';
-    evalBarBoard.style.background = 'linear-gradient(90deg, #f44336, #666, #4CAF50)';
-  }
-  if (evalScoreBoard) {
-    evalScoreBoard.textContent = '+0.00';
-    evalScoreBoard.style.color = '#ffffff';
-    evalScoreBoard.style.backgroundColor = 'rgba(100, 181, 246, 0.2)';
+  if (!applyCachedEvaluationForMove(currentMoveIndex)) {
+    const evalBarBoard = document.getElementById('evalBarFill');
+    const evalScoreBoard = document.getElementById('evalScoreBoard');
+    if (evalBarBoard) {
+      evalBarBoard.style.width = '50%';
+      evalBarBoard.style.background = 'linear-gradient(90deg, #f44336, #666, #4CAF50)';
+    }
+    if (evalScoreBoard) {
+      evalScoreBoard.textContent = '+0.00';
+      evalScoreBoard.style.color = '#ffffff';
+      evalScoreBoard.style.backgroundColor = 'rgba(100, 181, 246, 0.2)';
+    }
   }
   
   if (currentMoveIndex === 0) {
@@ -1706,12 +1872,34 @@ function analyzePosition() {
 }
 
 function analyzeCurrentPosition() {
-  if (!isContinuousAnalysis || !stockfish) return;
+  if (!stockfish || !chess) return;
+  
+  const nextRequestId = (currentAnalysisContext && typeof currentAnalysisContext.requestId === 'number'
+    ? currentAnalysisContext.requestId + 1
+    : 1);
+  const currentFen = gameHistory[currentMoveIndex] || chess.fen();
+  currentAnalysisContext = {
+    index: currentMoveIndex,
+    fen: currentFen,
+    requestId: nextRequestId
+  };
+  currentAnalysis = {};
+  
+  if (!isContinuousAnalysis) {
+    if (chess.game_over()) return;
+    
+    try {
+      stockfish.postMessage('ucinewgame');
+      stockfish.postMessage(`position fen ${currentFen}`);
+      stockfish.postMessage('go depth 15 movetime 1200');
+      isAnalyzing = true;
+    } catch (e) {
+      console.error('Error analyzing position:', e);
+    }
+    return;
+  }
   
   isAnalyzing = true;
-  currentAnalysis = {};
-  const currentFen = gameHistory[currentMoveIndex];
-  
   document.getElementById('analysisDisplay').textContent = 'Analyzing position...';
   clearHighlights();
   
@@ -1942,6 +2130,7 @@ function clearGame() {
   currentMoveIndex = 0;
   currentAnalysis = {};
   moveAnalyses = {};
+  resetPositionEvalCache();
   
   document.getElementById('pgnInput').value = '';
   document.getElementById('fenInput').value = '';
