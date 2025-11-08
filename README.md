@@ -62,13 +62,21 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 - **Game Review** - Analyze your games position by position with Stockfish engine analysis
   - Load games via PGN, FEN, or directly from Chess.com API
   - Real-time Stockfish evaluation via HuggingFace API integration
-  - Dynamic evaluation bar that updates instantly on position changes
-  - Move-by-move analysis with Centipawn Loss (CPL) calculations
-  - Automatic move quality ratings (Brilliant, Best, Good, Inaccuracy, Mistake, Blunder)
-  - Performance rating calculations for both players
-  - Batch analysis of entire games with progress tracking
+  - Dynamic evaluation bar that updates instantly on position changes with cached results for seamless navigation
+  - Move-by-move analysis with Centipawn Loss (CPL) calculations and quality grading
+  - Performance dashboards with estimated Elo, accuracy %, and ACPL for each player (Elo derived from normalized evaluation scores using a ±400 SD mapping)
+  - Batch analysis of entire games with progress tracking and smart retry handling
+  - Short-game detection warning when fewer than 10 moves are available for meaningful stats
 - **Automatic Opponent Responses** - Computer plays opponent moves seamlessly
 - **Color-coded difficulty** - Cyan (Beginner) → Blue (Intermediate) → Yellow (Advanced) → Red (Expert)
+
+## 🆕 Recent Enhancements (2025)
+- **Game Review overhauled** with batched Stockfish requests (5 moves at a time) for faster analysis
+- Introduced **evaluation caching** so navigating the move list keeps the bar in sync instantly
+- Added **performance overview cards** showing each player’s estimated Elo (using our normalized evaluation score → Elo formula), accuracy, and ACPL
+- Implemented **short-game warnings** to highlight when statistics may be unreliable
+- Polished quick-eval workflow and reduced unnecessary API traffic for a smoother experience
+- Documented the new performance formula in the README for future contributors
 
 ## 🏗️ **System Architecture**
 

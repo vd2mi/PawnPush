@@ -105,6 +105,13 @@ const normalizeEvalToWhite = (centipawns, fen) => {
   return parts[1] === 'b' ? -centipawns : centipawns;
 };
 
+const toWhitePerspective = (centipawns, fallback, fen) => {
+  const normalized = normalizeEvalToWhite(centipawns, fen);
+  if (typeof normalized === 'number' && !Number.isNaN(normalized)) return normalized;
+  if (typeof fallback === 'number' && !Number.isNaN(fallback)) return fallback;
+  return centipawns;
+};
+
 const cachePositionEvaluation = (index, { score, mate, depth, fen }) => {
   const numericIndex = Number(index);
   if (Number.isNaN(numericIndex) || (typeof score !== 'number' && typeof mate !== 'number')) return;
@@ -404,27 +411,28 @@ const updateAnalysisDisplay = (analysis, altMoves) => {
   const contextFen = currentAnalysisContext.fen;
 
   if (analysis.score !== undefined) {
-    const score = (analysis.score / 100).toFixed(2);
+    const whiteScore = toWhitePerspective(analysis.score, analysis.score, contextFen);
+    const score = (whiteScore / 100).toFixed(2);
     text += `Evaluation: ${score > 0 ? '+' : ''}${score}`;
-    updateEvaluationBar(analysis.score);
+    updateEvaluationBar(whiteScore);
 
     if (contextIndex !== null) {
       cachePositionEvaluation(contextIndex, {
-        score: analysis.score,
+        score: whiteScore,
         depth: depthNumber,
         fen: contextFen
       });
     }
 
-    if (Math.abs(analysis.score) > 200) text += analysis.score > 0 ? ' (White has significant advantage)' : ' (Black has significant advantage)';
-    else if (Math.abs(analysis.score) < 50) text += ' (Position is roughly equal)';
+    if (Math.abs(whiteScore) > 200) text += whiteScore > 0 ? ' (White has significant advantage)' : ' (Black has significant advantage)';
+    else if (Math.abs(whiteScore) < 50) text += ' (Position is roughly equal)';
   }
 
   if (analysis.mate !== undefined) {
     text += `Mate in: ${Math.abs(analysis.mate)}`;
+    const mateWhite = normalizeEvalToWhite(analysis.mate > 0 ? 1000 : -1000, contextFen);
     text += analysis.mate > 0 ? ' (White to mate)' : ' (Black to mate)';
-    const mateCentipawns = analysis.mate > 0 ? 1000 : -1000;
-    updateEvaluationBar(mateCentipawns, { textOverride: formatMateText(analysis.mate) });
+    updateEvaluationBar(mateWhite, { textOverride: formatMateText(analysis.mate) });
 
     if (contextIndex !== null) {
       cachePositionEvaluation(contextIndex, {
@@ -1002,7 +1010,14 @@ const handleStockfishMessage = (message) => {
     const analysis = parseAnalysisLine(messageText);
     if (analysis.depth && parseInt(analysis.depth, 10) >= 1) {
       if (isQuickEvalActive && analysis.score !== undefined) {
-        updateEvaluationBar(analysis.score);
+        const currentFen = gameHistory[currentMoveIndex] || chess?.fen();
+        const normalizedScore = toWhitePerspective(analysis.score, analysis.score, currentFen);
+        updateEvaluationBar(normalizedScore);
+        cachePositionEvaluation(currentMoveIndex, {
+          score: normalizedScore,
+          depth: normalizeDepth(analysis.depth),
+          fen: cleanFenForAnalysis(currentFen)
+        });
       } else {
         currentAnalysis = { ...currentAnalysis, ...analysis };
         updateAnalysisDisplay(analysis);
