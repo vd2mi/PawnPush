@@ -1364,15 +1364,12 @@ const calculatePerformanceRating = () => {
     const trimmedAcpl = cplValues.length ? trimmedMean(cplValues) : null;
 
     const accuracy = trimmedAcpl !== null
-      ? Math.min(
-          100,
-          Math.max(0, 100 * Math.exp(-0.07 * trimmedAcpl / 100))
-        )
+      ? accuracyFromAcpl(trimmedAcpl)
       : null;
 
     const acpl = trimmedAcpl;
 
-    const rating = scoreValues.length ? mapScoresToElo(scoreValues) : null;
+    const rating = acpl != null ? eloFromAcpl(acpl) : null;
 
     return {
       rating,
@@ -1382,10 +1379,25 @@ const calculatePerformanceRating = () => {
     };
   };
 
-  return {
+  const stats = {
     white: computeStats(whiteEntries),
     black: computeStats(blackEntries)
   };
+
+  const GAP_PER_ACC_PERCENT = 20;
+  if (
+    stats?.white?.rating != null &&
+    stats?.black?.rating != null &&
+    stats?.white?.accuracy != null &&
+    stats?.black?.accuracy != null
+  ) {
+    const targetGap = GAP_PER_ACC_PERCENT * (stats.black.accuracy - stats.white.accuracy);
+    const mid = (stats.white.rating + stats.black.rating) / 2;
+    stats.white.rating = Math.round(mid - targetGap / 2);
+    stats.black.rating = Math.round(mid + targetGap / 2);
+  }
+
+  return stats;
 };
 
 const ensurePerformanceOverviewStyle = () => {
@@ -1944,3 +1956,17 @@ const initialize = () => {
 };
 
 document.addEventListener('DOMContentLoaded', initialize);
+
+const accuracyFromAcpl = (acpl) => {
+  if (acpl == null || !Number.isFinite(acpl)) return null;
+  return Math.min(100, Math.max(0, 100 * Math.exp(-0.07 * acpl / 100)));
+};
+
+const eloFromAcpl = (acpl) => {
+  if (acpl == null || !Number.isFinite(acpl)) return null;
+  const A = 2850;
+  const B = 480;
+  const ACPL0 = 10;
+  const elo = A - B * Math.log(Math.max(acpl, 1) / ACPL0);
+  return Math.round(Math.min(3000, Math.max(400, elo)));
+};
