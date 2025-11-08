@@ -1816,7 +1816,7 @@ const loadChessComGames = async () => {
   const username = prompt('Enter Chess.com username:');
   if (!username) return;
 
-  const months = ['10', '11', '12'];
+  const months = ['11', '12'];
   const allGames = [];
 
   showToast('Fetching games from Chess.com...', 'info');
