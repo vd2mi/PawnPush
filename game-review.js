@@ -603,7 +603,7 @@ const analyzeMoveReal = async (beforeFen, afterFen, moveIndex) => {
 
     const bestEvalRaw = toCentipawnsFromApi(beforeData.eval);
     const beforeWhiteEvalFixed = normalizeEvalToWhite(bestEvalRaw, cleanBeforeFen);
-    if (bestEvalRaw === null || beforeWhiteEvalFixed === undefined) {
+    if (bestEvalRaw === null || beforeWhiteEvalFixed === undefined || !Number.isFinite(beforeWhiteEvalFixed)) {
       fallbackAnalysis(playedMove, moveIndex);
       return false;
     }
@@ -646,8 +646,8 @@ const analyzeMoveReal = async (beforeFen, afterFen, moveIndex) => {
 
     const afterEvalRaw = toCentipawnsFromApi(afterData.eval);
     const afterWhiteEvalFixed = normalizeEvalToWhite(afterEvalRaw, cleanAfterFen);
-    if (afterEvalRaw === null || afterWhiteEvalFixed === undefined) {
-            fallbackAnalysis(playedMove, moveIndex);
+    if (afterEvalRaw === null || afterWhiteEvalFixed === undefined || !Number.isFinite(afterWhiteEvalFixed)) {
+      fallbackAnalysis(playedMove, moveIndex);
       return false;
     }
 
@@ -665,7 +665,7 @@ const analyzeMoveReal = async (beforeFen, afterFen, moveIndex) => {
       return false;
     }
 
-    const cpl = cplBetween(beforeForCpl, afterForCpl);
+    const cpl = cplBetween(beforeWhiteEvalFixed, afterWhiteEvalFixed);
     const evaluation = evaluateMoveQualityFromCPL(cpl);
 
     moveAnalyses[moveIndex] = {
