@@ -1336,8 +1336,14 @@ const calculatePerformanceRating = () => {
     const scoreValues = entries.map((entry) => entry.score).filter((value) => typeof value === 'number');
     const cplValues = entries.map((entry) => entry.cpl).filter((value) => typeof value === 'number');
 
-    const accuracy = scoreValues.length
-      ? Math.min(100, Math.max(0, (scoreValues.reduce((sum, value) => sum + value, 0) / scoreValues.length) * 100))
+    const accuracy = cplValues.length
+      ? Math.min(
+          100,
+          Math.max(
+            0,
+            100 * Math.exp(-0.07 * (cplValues.reduce((sum, value) => sum + value, 0) / cplValues.length) / 100)
+          )
+        )
       : null;
 
     const acpl = cplValues.length
