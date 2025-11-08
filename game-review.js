@@ -765,6 +765,9 @@ const analyzeAllMoves = async () => {
 
     const performanceStats = calculatePerformanceRating();
     updatePerformanceOverview(performanceStats);
+    if (!applyCachedEvaluationForMove(currentMoveIndex)) {
+      triggerQuickEval();
+    }
     updateLoadingProgress('Finalizing analysis...');
 
     if (totalMoves < 10) {
