@@ -166,7 +166,7 @@ const cachePositionEvaluation = (index, { score, mate, depth, fen, normalized = 
   } else if (existing) {
     centipawns = existing.centipawns;
     displayText = existing.text;
-  } else {
+        } else {
     return;
   }
 
@@ -200,7 +200,7 @@ const requestStockfishEvaluation = async (fen, signal) => {
 
   try {
     const response = await fetch('/api/stockfish', {
-      method: 'POST',
+                      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fen }),
       signal: activeSignal
@@ -208,7 +208,7 @@ const requestStockfishEvaluation = async (fen, signal) => {
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     return await response.json();
   } finally {
-    clearTimeout(timeoutId);
+                      clearTimeout(timeoutId);
   }
 };
 
@@ -294,7 +294,7 @@ const updateEvaluationBar = (centipawns, options = {}) => {
   let percentage;
   if (Math.abs(centipawns) >= 1000) {
     percentage = centipawns > 0 ? 95 : 5;
-  } else {
+      } else {
     percentage = Math.max(5, Math.min(95, 50 + centipawns / 40));
   }
 
@@ -310,7 +310,7 @@ const updateEvaluationBar = (centipawns, options = {}) => {
   } else if (centipawns < -100) {
     evalScoreBoard.style.color = '#FFFFFF';
     evalScoreBoard.style.backgroundColor = '#000000';
-  } else {
+        } else {
     evalScoreBoard.style.color = '#ffffff';
     evalScoreBoard.style.backgroundColor = 'rgba(100, 181, 246, 0.2)';
   }
@@ -602,11 +602,13 @@ const analyzeMoveReal = async (beforeFen, afterFen, moveIndex) => {
     }
 
     const bestEvalRaw = toCentipawnsFromApi(beforeData.eval);
-    const beforeWhiteEval = normalizeEvalToWhite(bestEvalRaw, cleanBeforeFen);
-    if (bestEvalRaw === null || beforeWhiteEval === undefined) {
+    const beforeWhiteEvalFixed = normalizeEvalToWhite(bestEvalRaw, cleanBeforeFen);
+    if (bestEvalRaw === null || beforeWhiteEvalFixed === undefined) {
       fallbackAnalysis(playedMove, moveIndex);
       return false;
     }
+
+    const beforeForCpl = cleanBeforeFen.includes(' b ') ? -beforeWhiteEvalFixed : beforeWhiteEvalFixed;
 
     const bestMove = beforeData.move;
     const beforeDepth = normalizeDepth(beforeData.depth);
@@ -615,24 +617,24 @@ const analyzeMoveReal = async (beforeFen, afterFen, moveIndex) => {
       depth: beforeDepth,
       fen: cleanBeforeFen
     });
-
-    if (playedMove === bestMove) {
-      const evaluation = evaluateMoveQualityFromCPL(0);
-      moveAnalyses[moveIndex] = {
-        played: playedMove,
+      
+      if (playedMove === bestMove) {
+        const evaluation = evaluateMoveQualityFromCPL(0);
+        moveAnalyses[moveIndex] = {
+          played: playedMove,
         evaluation,
-        score: beforeWhiteEval,
-        bestScore: beforeWhiteEval,
+        score: beforeWhiteEvalFixed,
+        bestScore: beforeWhiteEvalFixed,
         bestMove,
-        cpl: 0,
-        alternatives: []
-      };
+          cpl: 0,
+          alternatives: []
+        };
       cachePositionEvaluation(moveIndex + 1, {
         score: bestEvalRaw,
         depth: beforeDepth,
         fen: cleanAfterFen
       });
-      updateMoveInList(moveIndex, evaluation);
+        updateMoveInList(moveIndex, evaluation);
       return true;
     }
 
@@ -643,11 +645,13 @@ const analyzeMoveReal = async (beforeFen, afterFen, moveIndex) => {
     }
 
     const afterEvalRaw = toCentipawnsFromApi(afterData.eval);
-    const afterWhiteEval = normalizeEvalToWhite(afterEvalRaw, cleanAfterFen);
-    if (afterEvalRaw === null || afterWhiteEval === undefined) {
-      fallbackAnalysis(playedMove, moveIndex);
+    const afterWhiteEvalFixed = normalizeEvalToWhite(afterEvalRaw, cleanAfterFen);
+    if (afterEvalRaw === null || afterWhiteEvalFixed === undefined) {
+            fallbackAnalysis(playedMove, moveIndex);
       return false;
     }
+
+    const afterForCpl = cleanAfterFen.includes(' b ') ? -afterWhiteEvalFixed : afterWhiteEvalFixed;
 
     const afterDepth = normalizeDepth(afterData.depth);
     cachePositionEvaluation(moveIndex + 1, {
@@ -656,22 +660,27 @@ const analyzeMoveReal = async (beforeFen, afterFen, moveIndex) => {
       fen: cleanAfterFen
     });
 
-    const cpl = cplBetween(beforeWhiteEval, afterWhiteEval);
+    if (!Number.isFinite(beforeForCpl) || !Number.isFinite(afterForCpl)) {
+      fallbackAnalysis(playedMove, moveIndex);
+      return false;
+    }
+
+    const cpl = cplBetween(beforeForCpl, afterForCpl);
     const evaluation = evaluateMoveQualityFromCPL(cpl);
 
     moveAnalyses[moveIndex] = {
       played: playedMove,
       evaluation,
-      score: afterWhiteEval,
-      bestScore: beforeWhiteEval,
+      score: afterWhiteEvalFixed,
+      bestScore: beforeWhiteEvalFixed,
       bestMove,
       cpl,
       alternatives: []
     };
-    updateMoveInList(moveIndex, evaluation);
+            updateMoveInList(moveIndex, evaluation);
     return true;
   } catch {
-    fallbackAnalysis(playedMove, moveIndex);
+            fallbackAnalysis(playedMove, moveIndex);
     return false;
   }
 };
@@ -695,26 +704,26 @@ const evaluateLastMove = () => {
 const analyzeMove = (beforeFen, afterFen, moveIndex) => {
   const tempChess = new Chess(beforeFen);
   const moves = tempChess.moves({ verbose: true });
-
+  
   stockfish.postMessage('ucinewgame');
   stockfish.postMessage(`position fen ${beforeFen}`);
   stockfish.postMessage(`go depth ${ENGINE_DEPTH}`);
-
+  
   setTimeout(() => {
-    const playedMove = findPlayedMove(beforeFen, afterFen);
-    const mockEval = Math.random() * 400 - 200;
-    const bestEval = mockEval + (Math.random() * 100 - 50);
-    const evaluation = evaluateMoveQuality(mockEval, bestEval);
+      const playedMove = findPlayedMove(beforeFen, afterFen);
+      const mockEval = Math.random() * 400 - 200;
+      const bestEval = mockEval + (Math.random() * 100 - 50);
+      const evaluation = evaluateMoveQuality(mockEval, bestEval);
 
-    moveAnalyses[moveIndex] = {
-      played: playedMove,
+      moveAnalyses[moveIndex] = {
+          played: playedMove,
       evaluation,
-      score: mockEval,
-      bestScore: bestEval,
+          score: mockEval,
+          bestScore: bestEval,
       alternatives: moves.slice(0, 3).map((m) => m.san)
-    };
-
-    updateMoveInList(moveIndex, evaluation);
+      };
+      
+      updateMoveInList(moveIndex, evaluation);
   }, 1000);
 };
 
@@ -852,17 +861,17 @@ const goToMove = (index) => {
   }
 
   if (!applyCachedEvaluationForMove(currentMoveIndex)) {
-    const evalBarBoard = document.getElementById('evalBarFill');
-    const evalScoreBoard = document.getElementById('evalScoreBoard');
+  const evalBarBoard = document.getElementById('evalBarFill');
+  const evalScoreBoard = document.getElementById('evalScoreBoard');
     if (evalBarBoard) {
       evalBarBoard.style.width = '50%';
       evalBarBoard.style.background = 'linear-gradient(90deg, #f44336, #666, #4CAF50)';
     }
     if (evalScoreBoard) {
       evalScoreBoard.textContent = '+0.00';
-      evalScoreBoard.style.color = '#ffffff';
-      evalScoreBoard.style.backgroundColor = 'rgba(100, 181, 246, 0.2)';
-    }
+    evalScoreBoard.style.color = '#ffffff';
+    evalScoreBoard.style.backgroundColor = 'rgba(100, 181, 246, 0.2)';
+  }
   }
 
   const analysisDisplay = document.getElementById('analysisDisplay');
@@ -879,16 +888,16 @@ const lastMove = () => goToMove(gameHistory.length - 1);
 const displayFullAnalysis = (bestMove) => {
   const display = document.getElementById('analysisDisplay');
   if (!display) return;
-
+  
   let text = display.textContent || '';
   if (bestMove && bestMove !== '(none)' && bestMove.length >= 4) {
     text += '\n\n=== POSITION ANALYSIS ===';
     text += `\nRecommended move: ${bestMove}`;
-
+    
     const tempChess = new Chess(gameHistory[currentMoveIndex]);
     const legalMoves = tempChess.moves({ verbose: true });
     const moveObj = legalMoves.find((m) => (m.from + m.to + (m.promotion || '')) === bestMove);
-
+    
     if (moveObj) {
       text += ` (${moveObj.san})`;
       if (moveObj.captured) text += ` - Captures ${moveObj.captured}`;
@@ -896,20 +905,20 @@ const displayFullAnalysis = (bestMove) => {
       copyChess.move(moveObj);
       if (copyChess.in_check()) text += ' - Gives check';
     }
-
+    
     if (currentAnalysis.score !== undefined) {
       const score = currentAnalysis.score / 100;
       text += `\nPosition evaluation: ${score > 0 ? '+' : ''}${score.toFixed(2)}`;
-
+      
       if (Math.abs(score) > 3) text += ' (Decisive advantage)';
       else if (Math.abs(score) > 1) text += ' (Clear advantage)';
       else if (Math.abs(score) > 0.5) text += ' (Slight advantage)';
       else text += ' (Balanced position)';
     }
-
+    
     highlightMove(bestMove);
   }
-
+  
   display.textContent = text;
 };
 
@@ -1173,28 +1182,28 @@ const initBoard = () => {
 
 const updateBoard = (skipAnalysis = false) => {
   if (!(board && gameHistory[currentMoveIndex])) return;
-  chess.load(gameHistory[currentMoveIndex]);
-  board.position(chess.fen());
+    chess.load(gameHistory[currentMoveIndex]);
+    board.position(chess.fen());
   applyCachedEvaluationForMove(currentMoveIndex);
-  if (!skipAnalysis) {
-    triggerQuickEval();
-    analyzeCurrentPosition();
-  }
+    if (!skipAnalysis) {
+      triggerQuickEval();
+      analyzeCurrentPosition();
+    }
 };
 
 const updateMoveList = () => {
   const moveList = document.getElementById('moveList');
   if (!moveList) return;
-
+  
   moveList.innerHTML = '';
   if (gameHistory.length <= 1) {
     moveList.innerHTML = '<div style="text-align: center; color: #94a3b8; font-style: italic; padding: 1rem;">No moves to display</div>';
     return;
   }
-
+  
   const tempChess = new Chess();
   let moveNumber = 1;
-
+  
   for (let i = 1; i < gameHistory.length; i += 1) {
     tempChess.load(gameHistory[i - 1]);
     const moveObj = tempChess.moves({ verbose: true }).find((move) => {
@@ -1204,39 +1213,39 @@ const updateMoveList = () => {
     });
     if (!moveObj) continue;
 
-    const moveDiv = document.createElement('div');
-    moveDiv.className = 'move-item';
-    if (i === currentMoveIndex) moveDiv.classList.add('active');
-
-    const isWhite = i % 2 === 1;
-    const displayNumber = isWhite ? `${moveNumber}.` : `${moveNumber}...`;
+      const moveDiv = document.createElement('div');
+      moveDiv.className = 'move-item';
+      if (i === currentMoveIndex) moveDiv.classList.add('active');
+      
+      const isWhite = i % 2 === 1;
+      const displayNumber = isWhite ? `${moveNumber}.` : `${moveNumber}...`;
     if (!isWhite) moveNumber += 1;
-
-    const moveIdx = i - 1;
-    const hasAnalysis = moveAnalyses[moveIdx] && moveAnalyses[moveIdx].evaluation;
-    const evalSymbol = hasAnalysis ? moveAnalyses[moveIdx].evaluation.symbol : '--';
-    const evalColor = hasAnalysis ? moveAnalyses[moveIdx].evaluation.color : '#94a3b8';
-
-    moveDiv.innerHTML = `
-      <span class="move-notation">${displayNumber} ${moveObj.san}</span>
-      <span class="move-evaluation" style="color: ${evalColor}">${evalSymbol}</span>
-    `;
-
-    if (hasAnalysis) {
-      const evalSpan = moveDiv.querySelector('.move-evaluation');
-      evalSpan.title = moveAnalyses[moveIdx].evaluation.text;
-    }
-
-    moveDiv.addEventListener('click', () => {
-      currentMoveIndex = i;
-      updateBoard();
-      updateMoveList();
-      clearHighlights();
+      
+      const moveIdx = i - 1;
+      const hasAnalysis = moveAnalyses[moveIdx] && moveAnalyses[moveIdx].evaluation;
+      const evalSymbol = hasAnalysis ? moveAnalyses[moveIdx].evaluation.symbol : '--';
+      const evalColor = hasAnalysis ? moveAnalyses[moveIdx].evaluation.color : '#94a3b8';
+      
+      moveDiv.innerHTML = `
+        <span class="move-notation">${displayNumber} ${moveObj.san}</span>
+        <span class="move-evaluation" style="color: ${evalColor}">${evalSymbol}</span>
+      `;
+      
+      if (hasAnalysis) {
+        const evalSpan = moveDiv.querySelector('.move-evaluation');
+        evalSpan.title = moveAnalyses[moveIdx].evaluation.text;
+      }
+      
+      moveDiv.addEventListener('click', () => {
+        currentMoveIndex = i;
+        updateBoard();
+        updateMoveList();
+        clearHighlights();
       displayMoveAnalysis(i - 1);
-    });
-
-    moveList.appendChild(moveDiv);
-  }
+      });
+      
+      moveList.appendChild(moveDiv);
+    }
 };
 
 const analyzePosition = () => {
@@ -1244,7 +1253,7 @@ const analyzePosition = () => {
     showToast('Engine not loaded yet', 'error');
     return;
   }
-
+  
   if (isAnalyzing) {
     stockfish.postMessage('stop');
     isAnalyzing = false;
@@ -1255,14 +1264,14 @@ const analyzePosition = () => {
     clearHighlights();
     return;
   }
-
+  
   isAnalyzing = true;
   showToast('Analyzing all moves in the game...', 'info');
   const analyzeBtn = document.getElementById('analyzeBtn');
   if (analyzeBtn) analyzeBtn.innerHTML = '<span class="btn-icon">🛑</span><span class="btn-text">Stop Analysis</span>';
-
+  
   analyzeAllMoves();
-
+  
   setTimeout(() => {
     const currentFen = gameHistory[currentMoveIndex];
     stockfish.postMessage('ucinewgame');
@@ -1299,25 +1308,25 @@ const analyzeCurrentPosition = () => {
   const analysisDisplay = document.getElementById('analysisDisplay');
   if (analysisDisplay) analysisDisplay.textContent = 'Analyzing position...';
   clearHighlights();
-
+  
   stockfish.postMessage('ucinewgame');
   stockfish.postMessage(`position fen ${currentFen}`);
-
+  
   if (engineType === 'mock') {
     stockfish.postMessage(`go depth ${ENGINE_DEPTH}`);
   } else {
     stockfish.postMessage('setoption name UCI_Variant value chess');
     stockfish.postMessage('setoption name UCI_AnalyseMode value true');
     stockfish.postMessage('go infinite');
-
+    
     analysisTimeout = setTimeout(() => {
       if (!isAnalyzing) return;
-      stockfish.postMessage('stop');
-      isAnalyzing = false;
+        stockfish.postMessage('stop');
+        isAnalyzing = false;
       setTimeout(() => generateEnhancedMockAnalysis(), 500);
     }, 5000);
   }
-
+  
   setTimeout(() => {
     if (isAnalyzing && isContinuousAnalysis) stockfish.postMessage('stop');
   }, 3000);
@@ -1330,7 +1339,7 @@ const calculatePerformanceRating = () => {
   const blackEntries = [];
 
   Object.keys(moveAnalyses).forEach((key) => {
-    const analysis = moveAnalyses[key];
+          const analysis = moveAnalyses[key];
     if (!analysis) return;
     const moveIndex = parseInt(key, 10);
     if (Number.isNaN(moveIndex)) return;
@@ -1737,7 +1746,7 @@ const showGameSelectionDialog = (games) => {
     </div>
   `;
   document.body.appendChild(dialog);
-
+  
   dialog.querySelectorAll('.chesscom-game-item').forEach((item) => {
     item.addEventListener('click', () => {
       const idx = parseInt(item.dataset.index, 10);
@@ -1745,9 +1754,9 @@ const showGameSelectionDialog = (games) => {
       dialog.remove();
     });
   });
-
+  
   dialog.querySelector('.chesscom-close-btn').addEventListener('click', () => dialog.remove());
-
+  
   if (!document.querySelector('#chesscom-dialog-style')) {
     const style = document.createElement('style');
     style.id = 'chesscom-dialog-style';
@@ -1840,7 +1849,7 @@ const clearGame = () => {
       analysisTimeout = null;
     }
   }
-
+  
   chess = new Chess();
   gameHistory = [chess.fen()];
   currentMoveIndex = 0;
@@ -1848,7 +1857,7 @@ const clearGame = () => {
   moveAnalyses = {};
   resetPositionEvalCache();
   updatePerformanceOverview(null);
-
+  
   document.getElementById('pgnInput').value = '';
   document.getElementById('fenInput').value = '';
   const analysisDisplay = document.getElementById('analysisDisplay');
@@ -1856,11 +1865,11 @@ const clearGame = () => {
 
   const analyzeBtn = document.getElementById('analyzeBtn');
   if (analyzeBtn) analyzeBtn.innerHTML = '<span class="btn-icon">🧠</span><span class="btn-text">Suggest Move</span>';
-
+  
   updateBoard(true);
   updateMoveList();
   clearHighlights();
-
+  
   const evalBarBoard = document.getElementById('evalBarFill');
   const evalScoreBoard = document.getElementById('evalScoreBoard');
   if (evalBarBoard) {
@@ -1872,7 +1881,7 @@ const clearGame = () => {
     evalScoreBoard.style.color = '#ffffff';
     evalScoreBoard.style.backgroundColor = 'rgba(100, 181, 246, 0.2)';
   }
-
+  
   showToast('Board cleared', 'info');
 };
 
@@ -1949,7 +1958,7 @@ const initialize = () => {
   setupUIListeners();
   ensurePerformanceOverview();
   updatePerformanceOverview(null);
-
+  
   setTimeout(() => {
     showToast('Game Review ready! Load a game to start analyzing.', 'success');
   }, 2000);
@@ -1959,13 +1968,15 @@ document.addEventListener('DOMContentLoaded', initialize);
 
 const accuracyFromAcpl = (acpl) => {
   if (acpl == null || !Number.isFinite(acpl)) return null;
-  return Math.min(100, Math.max(0, 100 * Math.exp(-0.07 * acpl / 100)));
+  const x = Math.max(1, acpl);
+  const accuracy = 103 - 16 * Math.log(x + 15);
+  return Math.min(100, Math.max(0, accuracy));
 };
 
 const eloFromAcpl = (acpl) => {
   if (acpl == null || !Number.isFinite(acpl)) return null;
   const A = 2850;
-  const B = 480;
+  const B = 420;
   const ACPL0 = 10;
   const elo = A - B * Math.log(Math.max(acpl, 1) / ACPL0);
   return Math.round(Math.min(3000, Math.max(400, elo)));
