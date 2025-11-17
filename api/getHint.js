@@ -103,7 +103,7 @@ async function getStockfishAnalysis(fen, solutionMoves) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${HF_TOKEN}`
         },
-        body: JSON.stringify({ fen, depth: 18 }),
+        body: JSON.stringify({ fen, depth: 18, multipv: 3 }),
         signal: controller1.signal
       });
       clearTimeout(timeoutId1);
@@ -122,6 +122,44 @@ async function getStockfishAnalysis(fen, solutionMoves) {
     }
 
     const currentAnalysis = await currentAnalysisResponse.json();
+    
+    // Debug: log API response structure (remove in production if too verbose)
+    console.log('Stockfish API response keys:', Object.keys(currentAnalysis));
+    if (currentAnalysis.lines) console.log('Found lines array with', currentAnalysis.lines.length, 'entries');
+    if (currentAnalysis.multipv) console.log('Found multipv array with', currentAnalysis.multipv.length, 'entries');
+    if (currentAnalysis.pv) console.log('Found pv with', currentAnalysis.pv.length, 'moves');
+    
+    // Extract principal variation and top moves
+    const principalVariation = currentAnalysis.pv || 
+                              currentAnalysis.principal_variation || 
+                              currentAnalysis.principalVariation || 
+                              [];
+    
+    // Extract top moves (multipv results)
+    let topMoves = [];
+    if (currentAnalysis.lines && Array.isArray(currentAnalysis.lines)) {
+      topMoves = currentAnalysis.lines.slice(0, 3).map(line => ({
+        move: line.move || line.best_move || currentAnalysis.best_move,
+        evaluation: line.evaluation || currentAnalysis.evaluation,
+        evalScore: parseEval(line.evaluation || currentAnalysis.evaluation),
+        pv: line.pv || line.principal_variation || line.principalVariation || []
+      }));
+    } else if (currentAnalysis.multipv && Array.isArray(currentAnalysis.multipv)) {
+      topMoves = currentAnalysis.multipv.slice(0, 3).map(line => ({
+        move: line.move || line.best_move || currentAnalysis.best_move,
+        evaluation: line.evaluation || currentAnalysis.evaluation,
+        evalScore: parseEval(line.evaluation || currentAnalysis.evaluation),
+        pv: line.pv || line.principal_variation || line.principalVariation || []
+      }));
+    } else {
+      // Fallback: create single entry from best move
+      topMoves = [{
+        move: currentAnalysis.best_move,
+        evaluation: currentAnalysis.evaluation,
+        evalScore: parseEval(currentAnalysis.evaluation),
+        pv: principalVariation
+      }];
+    }
 
     let afterSolutionAnalysis = null;
     if (solutionMoves && solutionMoves.length > 0) {
@@ -199,6 +237,13 @@ async function getStockfishAnalysis(fen, solutionMoves) {
       isMate,
       mateIn,
       tacticalTheme,
+      principalVariation: principalVariation.slice(0, 8), // First 8 moves of PV
+      topMoves: topMoves.map(m => ({
+        move: m.move,
+        evaluation: formatEval(m.evaluation),
+        evalScore: m.evalScore,
+        pv: m.pv.slice(0, 4) // First 4 moves of each line
+      })),
       opponentBestResponse: afterSolutionAnalysis?.best_move || null,
       opponentEvalAfterSolution: afterSolutionAnalysis?.evaluation || null
     };
@@ -348,7 +393,7 @@ async function getGPTExplanation(fen, stockfishAnalysis, userQuestion, moveHisto
             { role: 'user', content: userPrompt }
           ],
           temperature: 0.7,
-          max_tokens: 500
+          max_tokens: 300
         }),
         signal: controller.signal
       });
@@ -380,27 +425,39 @@ async function getGPTExplanation(fen, stockfishAnalysis, userQuestion, moveHisto
 }
 
 function buildSystemPrompt() {
-  return `You are a friendly chess coach who teaches like a human — conversational, realistic, and encouraging. 
-You sometimes admit when something is tricky, you explain with personality, and you always keep things short and understandable.
-Your tone should feel like a smart friend guiding someone through puzzles, not like a textbook.
+  return `You are a chess coach explaining puzzles. You have Stockfish engine analysis.
 
-RULES:
-1. If the user says something unrelated to chess, chat normally like a friendly person.
-2. If the user asks about a chess position, use the Stockfish analysis data provided - it is accurate.
-3. Explain in concrete terms: specific squares, pieces, and forced variations.
-4. Always mention WHY alternatives are inferior (use the evaluation differences if available).
-5. If it's a forced mate, show the exact mating sequence.
-6. Identify and name the tactical pattern (fork, pin, skewer, mate pattern, etc.).
-7. Keep explanations concise but complete (3-5 sentences).
-8. Be conversational and encouraging, not robotic.
+🚨 CRITICAL RULES - NEVER VIOLATE THESE:
 
-GOOD EXAMPLE:
-"1.Qxh7+ is a forced checkmate in 2 moves. After 1...Kxh7 (forced, as the king is in check), 2.Rh3# delivers mate because the Rook on h3 is protected by the Knight on f6, and all escape squares (g8, g7, g6) are controlled. Alternative moves like 1.Rh3 only give +0.5 advantage according to the engine."
+1. ONLY explain variations that appear in the "FORCED SEQUENCE" or "pv" data provided. If a move sequence is not in the data, DO NOT mention it.
 
-BAD EXAMPLE (too vague):
-"This move attacks the king and creates winning chances by improving your position."
+2. DO NOT invent moves, threats, or piece placements. If it's not in the Stockfish data or FEN, don't mention it.
 
-Now explain the current puzzle using Stockfish's analysis.`;
+3. When mentioning piece locations, they must be from the FEN or confirmed by the provided data.
+
+4. If you don't have enough data to explain something, say "The engine shows this is best" instead of guessing or inventing details.
+
+5. If the user says something unrelated to chess, chat normally like a friendly person.
+
+LENGTH REQUIREMENT:
+- Maximum 4 sentences
+- Maximum 100 words
+- Get to the point: best move, why it works (using PV), why alternatives fail
+
+✅ GOOD (uses provided data):
+"The best move is 1.Be5 (-2.8). The forcing sequence is: 1.Be5 Qxe5 2.Rxd5+ Kh8 3.Rxd8, winning the rook. Alternative moves like 1.Rxd5 (+0.9) are much weaker because Black can defend better."
+
+❌ BAD (invented):
+"The queen is protecting d5, so we deflect it" (you don't know if queen is protecting d5!)
+"After Qxe5, the queen leaves its defense" (only say this if Qxe5 is in the PV!)
+
+REQUIRED FORMAT:
+1. State the best move and evaluation
+2. Show the forcing sequence from Stockfish's PV (if available) - use EXACT moves from the data
+3. Explain why alternatives are worse using their evaluations from the data
+4. Keep it 3-4 sentences MAX
+
+Now explain this puzzle using ONLY the Stockfish data provided. Do not invent variations.`;
 }
 
 function buildUserPrompt(fen, analysis, userQuestion, moveHistory, solutionMoves, puzzleType) {
@@ -417,12 +474,23 @@ Note: Stockfish analysis unavailable. Provide a general explanation based on the
     ? `FORCED MATE IN ${analysis.mateIn} MOVES`
     : `Evaluation: ${analysis.evaluation}`;
 
+  const pvText = analysis.principalVariation && analysis.principalVariation.length > 0
+    ? `- FORCED SEQUENCE: ${analysis.principalVariation.slice(0, 6).join(' ')}`
+    : '';
+
+  const alternativesText = analysis.topMoves && analysis.topMoves.length > 1
+    ? `\n- Alternative moves and why they're worse:\n${analysis.topMoves.slice(1).map((m, i) => 
+        `  ${i+2}. ${m.move} (${m.evaluation})${m.pv && m.pv.length > 0 ? ` - leads to ${m.pv.slice(0, 3).join(' ')}` : ''}`
+      ).join('\n')}`
+    : '';
+
   return `POSITION (FEN): ${fen}
 
 STOCKFISH ANALYSIS:
 - Best Move: ${analysis.bestMove || solutionMoves[0] || 'Unknown'}
 - ${evalText}
-- Tactical Theme: ${analysis.tacticalTheme}
+${pvText}
+- Tactical Theme: ${analysis.tacticalTheme}${alternativesText}
 ${analysis.opponentBestResponse ? `- Opponent's best response after solution: ${analysis.opponentBestResponse}` : ''}
 ${analysis.opponentEvalAfterSolution ? `- Position evaluation after solution: ${formatEval(analysis.opponentEvalAfterSolution)}` : ''}
 
@@ -432,12 +500,11 @@ ${moveHistory ? `MOVE HISTORY:\n${Array.isArray(moveHistory) ? moveHistory.join(
 
 USER QUESTION: ${userQuestion || 'Why is this the best move?'}
 
-Explain the solution clearly using the Stockfish data above. Focus on:
-1. The tactical pattern/theme
-2. Forced variations (if applicable)
-3. Why alternatives don't work (use evaluation differences if available)
-4. Concrete moves and squares (no vague statements)
-5. Keep it conversational and encouraging`;
+Explain the solution using ONLY the Stockfish data above. 
+- Use the FORCED SEQUENCE exactly as shown (do not invent moves)
+- Compare alternatives using their evaluations
+- Maximum 4 sentences, 100 words
+- Do not mention piece placements or threats unless they appear in the data`;
 }
 
 function formatEval(evaluation) {
