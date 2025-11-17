@@ -2,14 +2,14 @@ import { Chess } from 'chess.js';
 
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+  
 
   let fen, userQuestion, solutionMoves, moveHistory, puzzleType;
   
@@ -23,13 +23,13 @@ export default async function handler(req, res) {
     ({ fen, userQuestion, solutionMoves, moveHistory } = req.body);
     puzzleType = req.body.puzzleType;
   } else {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  if (!fen) {
-    return res.status(400).json({ error: 'FEN is required' });
-  }
-
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+  
+      if (!fen) {
+        return res.status(400).json({ error: 'FEN is required' });
+      }
+  
 
   try {
     const testChess = new Chess(fen);
@@ -55,8 +55,8 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Agentic coach error:', error);
     
-    return res.status(200).json({
-      success: true,
+        return res.status(200).json({
+          success: true,
       hint: solutionMoves[0] 
         ? `The best move is ${solutionMoves[0]}. This appears to be a ${puzzleType || 'tactical'} puzzle.`
         : 'Error occurred, but try looking for tactical patterns like checks, captures, and threats.',
@@ -140,6 +140,17 @@ async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, pu
 
             if (!bestMove && analysisResult.bestMove) {
               bestMove = analysisResult.bestMove;
+              
+              
+              const from = bestMove?.substring(0, 2);
+              const pieceExists = positionFacts.pieces.some(p => p.square === from);
+              
+              conversationHistory.push({
+                role: "system",
+                content: pieceExists
+                  ? "VALID_MOVE_START_SQUARE"
+                  : `WARNING: Stockfish best move starts on ${from} but no piece exists there in FACTS. Do not produce tactical reasoning. Avoid fabricated explanations.`
+              });
             }
           }
         }
@@ -177,13 +188,13 @@ async function callGPTWithTools(messages, apiKey) {
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
         messages: messages,
         tools: [
           {
@@ -370,24 +381,119 @@ async function analyzePosition({ fen, depth, multipv, purpose, hfToken }) {
 function buildSystemPrompt(fen, solutionMoves, moveHistory, puzzleType, positionFacts) {
   const factsJson = JSON.stringify(positionFacts, null, 2);
   
+  let warnings = [];
+  let hasTacticalInfo = false;
+  let hasPieceOnStartSquare = false;
+  
+  try {
+    const pieces = positionFacts.pieces || [];
+    
+    if (solutionMoves && solutionMoves.length > 0) {
+      const move = solutionMoves[0];
+      if (move.length >= 4) {
+        const fromSquare = move.substring(0, 2);
+        hasPieceOnStartSquare = pieces.some(p => p.square === fromSquare);
+        
+        if (!hasPieceOnStartSquare) {
+          warnings.push(`WARNING: Move starting square (${fromSquare}) contains no piece in FACTS. Do not produce any tactical reasoning.`);
+        }
+      }
+    }
+    
+    for (const piece of pieces) {
+      if (piece.attacksPieces && piece.attacksPieces.length > 0) {
+        hasTacticalInfo = true;
+        break;
+      }
+      if (piece.defendsPieces && piece.defendsPieces.length > 0) {
+        hasTacticalInfo = true;
+        break;
+      }
+      if (piece.forks && piece.forks.length > 0) {
+        hasTacticalInfo = true;
+        break;
+      }
+      if (piece.pinned === true) {
+        hasTacticalInfo = true;
+        break;
+      }
+      if (piece.hanging === true) {
+        hasTacticalInfo = true;
+        break;
+      }
+      if (piece.overloaded === true) {
+        hasTacticalInfo = true;
+        break;
+      }
+      if (piece.discoveredAttack) {
+        hasTacticalInfo = true;
+        break;
+      }
+      if (piece.skewer === true) {
+        hasTacticalInfo = true;
+        break;
+      }
+    }
+    
+    if (!hasTacticalInfo) {
+      warnings.push(`WARNING: No tactical motifs present in FACTS. Do not invent any tactical language.`);
+    }
+  } catch (error) {
+    warnings.push(`WARNING: Error parsing FACTS. Use extreme caution and do not invent any details.`);
+  }
+  
+  const warningsSection = warnings.length > 0 
+    ? `\n\n🚨 CRITICAL WARNINGS:\n${warnings.join('\n')}\n`
+    : '';
+  
+  const templateSection = hasPieceOnStartSquare && hasTacticalInfo
+    ? `REQUIRED EXPLANATION TEMPLATE (4-6 sentences):
+1. "The best move is [move] with an evaluation of [eval]."
+2. "The principal variation continues: [PV moves from Stockfish]."
+3. If tactical FACTS exist: Use ONLY those facts. Reference EXACT attacks/defends/forks/hanging as listed in FACTS.
+4. If tactical facts DO NOT exist: "No tactical patterns appear in the position facts."
+5. If alternatives exist in multipv: "Alternative moves evaluate worse: [move + eval]."
+6. Never exceed the factual content of FACTS JSON.`
+    : hasPieceOnStartSquare && !hasTacticalInfo
+    ? `REQUIRED EXPLANATION TEMPLATE (2-3 sentences):
+1. "The best move is [move] with an evaluation of [eval]."
+2. "The principal variation continues: [PV moves from Stockfish]."
+3. "No tactical patterns appear in the position facts."`
+    : `REQUIRED EXPLANATION TEMPLATE (1-2 sentences):
+1. "The best move is [move] with an evaluation of [eval]."
+2. "No piece exists on the starting square in the FACTS JSON, so a tactical explanation cannot be provided."`;
+  
   return `You are a chess coach with access to Stockfish engine analysis.
 
 Your job: Explain why the best move is best, using ONLY the FACTS provided and Stockfish data.
 
-REQUIRED EXPLANATION TEMPLATE (4-6 sentences):
-1. "The best move is [move] with an evaluation of [eval]."
-2. "The principal variation continues: [PV moves from Stockfish]."
-3. "[Tactical reason from FACTS: e.g., 'This move increases pressure on the pinned knight on f6' or 'This defends the rook on e1 which was previously hanging' or 'This creates a fork between the queen on a8 and rook on g8']"
-4. "[Why alternatives fail: Compare evaluations from Stockfish multipv data]"
-5. "[Additional tactical detail from FACTS if relevant]"
-6. "The engine shows this move leads to the best position."
+${templateSection}
+
+HARD FAILSAFE RULES (ABSOLUTE - NO EXCEPTIONS):
+1. If the best move's starting square does NOT contain a piece in the FACTS JSON, you MUST NOT explain it. Instead output: "The best move is [move] with evaluation [eval]. No piece exists on the starting square in the FACTS JSON, so a tactical explanation cannot be provided."
+
+2. If the FACTS JSON contains NO tactical keywords (attacks, defends, forks, pinned, hanging, overloaded, discoveredAttack, skewer), you MUST NOT invent any tactical justification. You must only say: "Stockfish prefers this move with evaluation [eval]. No tactical information is present in the position facts."
+
+3. You MUST NOT use generic strategic phrases unless explicitly present in FACTS. PROHIBITED unless explicitly in FACTS:
+   - "opens the diagonal"
+   - "controls the center"
+   - "improves piece activity"
+   - "develops the bishop/knight/rook"
+   - "pressures the king"
+   - "threatens a pawn on X"
+   - ANY invented pin, fork, check, attack, defense not present in FACTS
+
+4. If a tactical explanation is impossible, fallback to a safe template: "The best move is [move] with evaluation [eval]. PV continues: [...]. No valid tactical motifs found, so explanation is limited to engine evaluation."
+
+5. You MUST NEVER fabricate a reason to fill the 4-6 sentence template. If no relevant FACTS exist, you MUST shorten the answer.
 
 STRICT RULES:
 - You MUST ONLY use information from the FACTS JSON below and Stockfish analysis.
 - You MUST NOT invent any piece locations, attacks, defenses, or tactical features.
-- You CAN use tactical language like "attacks", "defends", "pressure", "fork", "pin", "hanging", "overloaded" IF those facts appear in the FACTS JSON.
+- You CAN use tactical language like "attacks", "defends", "pressure", "fork", "pin", "hanging", "overloaded" IF and ONLY IF those facts appear in the FACTS JSON.
 - All tactical reasoning must be grounded in FACTS + engine PV.
 - Compare alternative moves using their evalScore differences from Stockfish multipv.
+- If FACTS are empty or incomplete, acknowledge this limitation explicitly.
 
 Your reasoning steps:
 1. First analyze the main position (multipv=3, purpose='main_position').
@@ -395,14 +501,18 @@ Your reasoning steps:
 3. If needed, analyze alternatives (purpose='alternative_move').
 4. Once you have Stockfish data, output the explanation following the template above.
 
+${warningsSection}
+
 FACTS ABOUT THIS POSITION (COMPUTED WITH CHESS.JS):
 ${factsJson}
 
 When you need Stockfish analysis, call "analyze_position".
-When ready, output your final explanation following the 4-6 sentence template.
+When ready, output your final explanation following the template above.
 
 ${solutionMoves && solutionMoves.length > 0 ? `Solution move to explain: ${solutionMoves[0]}` : ''}
-${puzzleType ? `Puzzle type: ${puzzleType}` : ''}`;
+${puzzleType ? `Puzzle type: ${puzzleType}` : ''}
+
+FINAL REQUIREMENT: All explanations MUST be strictly grounded in FACTS JSON and Stockfish's evaluation/lines. If not present, do NOT infer anything. NO hallucinations.`;
 }
 
 function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false) {
@@ -564,8 +674,8 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false) {
     }
     
     return facts;
-    
-  } catch (error) {
+  
+    } catch (error) {
     console.error('Error computing full position facts:', error);
     return {
       pieces: [],
