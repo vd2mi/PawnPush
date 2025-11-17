@@ -123,43 +123,20 @@ async function getStockfishAnalysis(fen, solutionMoves) {
 
     const currentAnalysis = await currentAnalysisResponse.json();
     
-    // Debug: log API response structure (remove in production if too verbose)
+    // Debug: log API response structure
     console.log('Stockfish API response keys:', Object.keys(currentAnalysis));
-    if (currentAnalysis.lines) console.log('Found lines array with', currentAnalysis.lines.length, 'entries');
-    if (currentAnalysis.multipv) console.log('Found multipv array with', currentAnalysis.multipv.length, 'entries');
-    if (currentAnalysis.pv) console.log('Found pv with', currentAnalysis.pv.length, 'moves');
+    console.log('Full response:', JSON.stringify(currentAnalysis).substring(0, 500));
     
-    // Extract principal variation and top moves
-    const principalVariation = currentAnalysis.pv || 
-                              currentAnalysis.principal_variation || 
-                              currentAnalysis.principalVariation || 
-                              [];
+    const bestMove = currentAnalysis.best_move || null;
     
-    // Extract top moves (multipv results)
-    let topMoves = [];
-    if (currentAnalysis.lines && Array.isArray(currentAnalysis.lines)) {
-      topMoves = currentAnalysis.lines.slice(0, 3).map(line => ({
-        move: line.move || line.best_move || currentAnalysis.best_move,
-        evaluation: line.evaluation || currentAnalysis.evaluation,
-        evalScore: parseEval(line.evaluation || currentAnalysis.evaluation),
-        pv: line.pv || line.principal_variation || line.principalVariation || []
-      }));
-    } else if (currentAnalysis.multipv && Array.isArray(currentAnalysis.multipv)) {
-      topMoves = currentAnalysis.multipv.slice(0, 3).map(line => ({
-        move: line.move || line.best_move || currentAnalysis.best_move,
-        evaluation: line.evaluation || currentAnalysis.evaluation,
-        evalScore: parseEval(line.evaluation || currentAnalysis.evaluation),
-        pv: line.pv || line.principal_variation || line.principalVariation || []
-      }));
-    } else {
-      // Fallback: create single entry from best move
-      topMoves = [{
-        move: currentAnalysis.best_move,
-        evaluation: currentAnalysis.evaluation,
-        evalScore: parseEval(currentAnalysis.evaluation),
-        pv: principalVariation
-      }];
-    }
+    // Get alternative moves (this also generates PV for the best move)
+    const topMoves = await getAlternativeMoves(fen, bestMove, currentAnalysis, HF_TOKEN);
+    
+    // Extract PV from best move (first entry in topMoves)
+    // Fallback to just the best move if PV generation failed
+    const principalVariation = topMoves[0]?.pv && topMoves[0].pv.length > 0 
+      ? topMoves[0].pv 
+      : (bestMove ? [bestMove] : []);
 
     let afterSolutionAnalysis = null;
     if (solutionMoves && solutionMoves.length > 0) {
@@ -201,9 +178,6 @@ async function getStockfishAnalysis(fen, solutionMoves) {
     }
 
 
-    const bestMove = currentAnalysis.best_move || null;
-    
-
     let evaluation = null;
     let isMate = false;
     let mateIn = null;
@@ -230,7 +204,7 @@ async function getStockfishAnalysis(fen, solutionMoves) {
       afterSolutionAnalysis
     );
 
-    return {
+    const result = {
       bestMove,
       evaluation,
       evalScore,
@@ -247,6 +221,16 @@ async function getStockfishAnalysis(fen, solutionMoves) {
       opponentBestResponse: afterSolutionAnalysis?.best_move || null,
       opponentEvalAfterSolution: afterSolutionAnalysis?.evaluation || null
     };
+    
+    // Debug: log what we're returning
+    console.log('Stockfish analysis result:');
+    console.log('- PV length:', result.principalVariation.length, 'moves:', result.principalVariation);
+    console.log('- Top moves count:', result.topMoves.length);
+    result.topMoves.forEach((m, i) => {
+      console.log(`  ${i+1}. ${m.move} (${m.evaluation}) - PV: ${m.pv.join(' ')}`);
+    });
+    
+    return result;
 
   } catch (error) {
     console.error('Stockfish analysis failed:', error);
@@ -254,6 +238,169 @@ async function getStockfishAnalysis(fen, solutionMoves) {
   }
 }
 
+
+// Generate Principal Variation by playing out the best move sequence
+async function generatePrincipalVariation(fen, bestMove, hfToken) {
+  if (!bestMove || bestMove.length < 4) return [];
+  
+  const pv = [bestMove];
+  let currentFen = fen;
+  let currentChess = new Chess(fen);
+  
+  try {
+    // Play the best move
+    const from = bestMove.substring(0, 2);
+    const to = bestMove.substring(2, 4);
+    const promotion = bestMove.length > 4 ? bestMove.substring(4) : undefined;
+    
+    const moveObj = currentChess.move({ from, to, promotion: promotion || 'q' });
+    if (!moveObj) return [bestMove];
+    
+    currentFen = currentChess.fen();
+    
+    // Get opponent's best response
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      
+      const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${hfToken}`
+        },
+        body: JSON.stringify({ fen: currentFen, depth: 15 }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.best_move) {
+          pv.push(data.best_move);
+          
+          // Play opponent's move and get our next move (up to 6 moves total)
+          const oppFrom = data.best_move.substring(0, 2);
+          const oppTo = data.best_move.substring(2, 4);
+          const oppPromotion = data.best_move.length > 4 ? data.best_move.substring(4) : undefined;
+          
+          const oppMove = currentChess.move({ from: oppFrom, to: oppTo, promotion: oppPromotion || 'q' });
+          if (oppMove && pv.length < 6) {
+            const nextFen = currentChess.fen();
+            
+            const controller2 = new AbortController();
+            const timeoutId2 = setTimeout(() => controller2.abort(), 12000);
+            
+            const response2 = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${hfToken}`
+              },
+              body: JSON.stringify({ fen: nextFen, depth: 15 }),
+              signal: controller2.signal
+            });
+            clearTimeout(timeoutId2);
+            
+            if (response2.ok) {
+              const data2 = await response2.json();
+              if (data2.best_move) {
+                pv.push(data2.best_move);
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      // If PV generation fails, at least return the best move
+      console.error('Error generating PV continuation:', error);
+    }
+  } catch (error) {
+    console.error('Error generating PV:', error);
+  }
+  
+  return pv;
+}
+
+// Get alternative moves by analyzing positions after different first moves
+async function getAlternativeMoves(fen, bestMove, currentAnalysis, hfToken) {
+  const topMoves = [];
+  
+  // Add the best move first
+  const bestEval = currentAnalysis.evaluation || { type: 'cp', value: 0 };
+  topMoves.push({
+    move: bestMove,
+    evaluation: bestEval,
+    evalScore: parseEval(bestEval),
+    pv: [] // Will be filled by PV generation
+  });
+  
+  if (!bestMove || bestMove.length < 4) return topMoves;
+  
+  // Get legal moves to find alternatives
+  const chess = new Chess(fen);
+  const legalMoves = chess.moves({ verbose: true });
+  
+  // Try up to 5 alternative moves (excluding the best move)
+  const alternativeMoves = legalMoves
+    .filter(m => {
+      const moveStr = m.from + m.to + (m.promotion || '');
+      return moveStr !== bestMove;
+    })
+    .slice(0, 5)
+    .map(m => m.from + m.to + (m.promotion || ''));
+  
+  // Analyze each alternative move
+  const alternativePromises = alternativeMoves.map(async (move) => {
+    try {
+      const moveFen = applyMove(fen, move);
+      if (moveFen === fen) return null;
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      
+      const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${hfToken}`
+        },
+        body: JSON.stringify({ fen: moveFen, depth: 15 }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          move: move,
+          evaluation: data.evaluation || { type: 'cp', value: 0 },
+          evalScore: parseEval(data.evaluation || { type: 'cp', value: 0 }),
+          pv: data.best_move ? [move, data.best_move] : [move]
+        };
+      }
+    } catch (error) {
+      console.error(`Error analyzing alternative move ${move}:`, error);
+      return null;
+    }
+    return null;
+  });
+  
+  const alternatives = (await Promise.all(alternativePromises))
+    .filter(m => m !== null)
+    .sort((a, b) => b.evalScore - a.evalScore) // Sort by evaluation (best first)
+    .slice(0, 2); // Take top 2 alternatives
+  
+  // Add alternatives to topMoves
+  topMoves.push(...alternatives);
+  
+  // Generate PV for best move (if not already generated)
+  if (topMoves[0] && topMoves[0].pv.length === 0) {
+    topMoves[0].pv = await generatePrincipalVariation(fen, bestMove, hfToken);
+  }
+  
+  return topMoves;
+}
 
 function applyMove(fen, move) {
   try {
@@ -474,15 +621,19 @@ Note: Stockfish analysis unavailable. Provide a general explanation based on the
     ? `FORCED MATE IN ${analysis.mateIn} MOVES`
     : `Evaluation: ${analysis.evaluation}`;
 
+  // Always show PV if available, even if just one move
   const pvText = analysis.principalVariation && analysis.principalVariation.length > 0
     ? `- FORCED SEQUENCE: ${analysis.principalVariation.slice(0, 6).join(' ')}`
-    : '';
+    : analysis.bestMove 
+      ? `- Best Move: ${analysis.bestMove} (no continuation available)`
+      : '';
 
+  // Show alternatives if we have them
   const alternativesText = analysis.topMoves && analysis.topMoves.length > 1
     ? `\n- Alternative moves and why they're worse:\n${analysis.topMoves.slice(1).map((m, i) => 
         `  ${i+2}. ${m.move} (${m.evaluation})${m.pv && m.pv.length > 0 ? ` - leads to ${m.pv.slice(0, 3).join(' ')}` : ''}`
       ).join('\n')}`
-    : '';
+    : '\n- Note: Alternative moves analysis not available';
 
   return `POSITION (FEN): ${fen}
 
