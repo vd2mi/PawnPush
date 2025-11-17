@@ -5,6 +5,9 @@
     },
     "api/chesscom.js": {
       "maxDuration": 30
+    },
+    "api/getHint.js": {
+      "maxDuration": 60
     }
   },
   "headers": [

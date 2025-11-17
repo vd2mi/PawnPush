@@ -1971,16 +1971,14 @@ document.addEventListener('DOMContentLoaded', initialize);
 
 const accuracyFromAcpl = (acpl) => {
   if (acpl == null || !Number.isFinite(acpl)) return null;
-  const x = Math.max(1, acpl);
-  const accuracy = 103 - 16 * Math.log(x + 15);
+  const mid = 206.4;
+  const scale = 123.1;
+  const accuracy = 20 + 78 / (1 + Math.exp((acpl - mid) / scale));
   return Math.min(100, Math.max(0, accuracy));
 };
 
 const eloFromAcpl = (acpl) => {
   if (acpl == null || !Number.isFinite(acpl)) return null;
-  const A = 2850;
-  const B = 420;
-  const ACPL0 = 10;
-  const elo = A - B * Math.log(Math.max(acpl, 1) / ACPL0);
-  return Math.round(Math.min(3000, Math.max(400, elo)));
+  const rating = 7077 - 897 * Math.log(acpl + 300);
+  return Math.round(Math.min(3000, Math.max(400, rating)));
 };
