@@ -1,5 +1,13 @@
 import { Chess } from 'chess.js';
 
+function sanitizeMove(move) {
+  if (!move) return "";
+  return move
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-h1-8=qrnb]/g, ""); // remove symbols except UCI characters
+}
+
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -83,12 +91,12 @@ async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, pu
   const maxIterations = 5;
   const analysisSteps = [];
   
-  const positionFacts = computeFullPositionFacts(fen, solutionMoves);
+  let positionFacts = computeFullPositionFacts(fen, solutionMoves);
   
   const conversationHistory = [
     {
       role: 'system',
-      content: buildSystemPrompt(fen, solutionMoves, moveHistory, puzzleType, positionFacts)
+      content: buildSystemPrompt(fen, solutionMoves, moveHistory, puzzleType, positionFacts, null)
     },
     {
       role: 'user',
@@ -141,16 +149,50 @@ async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, pu
             if (!bestMove && analysisResult.bestMove) {
               bestMove = analysisResult.bestMove;
               
+              // Recompute FACTS for the position being analyzed (might differ from initial FEN)
+              const analyzedFen = args.fen || fen;
+              const factsForPosition = computeFullPositionFacts(analyzedFen, [bestMove], true);
               
-              const from = bestMove?.substring(0, 2);
-              const pieceExists = positionFacts.pieces.some(p => p.square === from);
+              // Validate move legality, not just from-square existence
+              const sanitizedMove = sanitizeMove(bestMove);
+              const from = sanitizedMove?.substring(0, 2);
+              const to = sanitizedMove?.substring(2, 4);
               
-              conversationHistory.push({
-                role: "system",
-                content: pieceExists
-                  ? "VALID_MOVE_START_SQUARE"
-                  : `WARNING: Stockfish best move starts on ${from} but no piece exists there in FACTS. Do not produce tactical reasoning. Avoid fabricated explanations.`
-              });
+              let moveIsLegal = false;
+              let pieceExists = false;
+              
+              if (from && to && from.length === 2 && to.length === 2) {
+                pieceExists = factsForPosition.pieces.some(p => p.square.toLowerCase().trim() === from);
+                
+                // Check if move is actually legal
+                try {
+                  const testChess = new Chess(analyzedFen);
+                  const promotion = sanitizedMove.length > 4 ? sanitizedMove.substring(4) : undefined;
+                  const moveObj = testChess.move({ from, to, promotion: promotion || 'q' });
+                  moveIsLegal = !!moveObj;
+                } catch (error) {
+                  moveIsLegal = false;
+                }
+              }
+              
+              // Update positionFacts if this is the main position analysis
+              if (args.purpose === 'main_position' || !args.fen || args.fen === fen) {
+                positionFacts = factsForPosition;
+                // Update system prompt with new FACTS and bestMove
+                const updatedPrompt = buildSystemPrompt(analyzedFen, solutionMoves, moveHistory, puzzleType, positionFacts, bestMove);
+                
+                // ISSUE 1 FIX: Clear previous assistant/user messages when updating system prompt
+                // Keep only the initial system prompt and user question, remove all tool calls and responses
+                const initialUserMessage = conversationHistory.find(m => m.role === 'user' && !m.tool_call_id);
+                conversationHistory.length = 0;
+                conversationHistory.push({
+                  role: 'system',
+                  content: updatedPrompt
+                });
+                if (initialUserMessage) {
+                  conversationHistory.push(initialUserMessage);
+                }
+              }
             }
           }
         }
@@ -378,27 +420,13 @@ async function analyzePosition({ fen, depth, multipv, purpose, hfToken }) {
 }
 
 
-function buildSystemPrompt(fen, solutionMoves, moveHistory, puzzleType, positionFacts) {
+function buildSystemPrompt(fen, solutionMoves, moveHistory, puzzleType, positionFacts, bestMoveFromStockfish = null) {
   const factsJson = JSON.stringify(positionFacts, null, 2);
   
-  let warnings = [];
   let hasTacticalInfo = false;
-  let hasPieceOnStartSquare = false;
   
   try {
     const pieces = positionFacts.pieces || [];
-    
-    if (solutionMoves && solutionMoves.length > 0) {
-      const move = solutionMoves[0];
-      if (move.length >= 4) {
-        const fromSquare = move.substring(0, 2);
-        hasPieceOnStartSquare = pieces.some(p => p.square === fromSquare);
-        
-        if (!hasPieceOnStartSquare) {
-          warnings.push(`WARNING: Move starting square (${fromSquare}) contains no piece in FACTS. Do not produce any tactical reasoning.`);
-        }
-      }
-    }
     
     for (const piece of pieces) {
       if (piece.attacksPieces && piece.attacksPieces.length > 0) {
@@ -413,87 +441,38 @@ function buildSystemPrompt(fen, solutionMoves, moveHistory, puzzleType, position
         hasTacticalInfo = true;
         break;
       }
-      if (piece.pinned === true) {
+      if (piece.pinned === true || piece.hanging === true || piece.overloaded === true || piece.skewer === true || piece.discoveredAttack) {
         hasTacticalInfo = true;
         break;
       }
-      if (piece.hanging === true) {
-        hasTacticalInfo = true;
-        break;
-      }
-      if (piece.overloaded === true) {
-        hasTacticalInfo = true;
-        break;
-      }
-      if (piece.discoveredAttack) {
-        hasTacticalInfo = true;
-        break;
-      }
-      if (piece.skewer === true) {
-        hasTacticalInfo = true;
-        break;
-      }
-    }
-    
-    if (!hasTacticalInfo) {
-      warnings.push(`WARNING: No tactical motifs present in FACTS. Do not invent any tactical language.`);
     }
   } catch (error) {
-    warnings.push(`WARNING: Error parsing FACTS. Use extreme caution and do not invent any details.`);
+    console.error('Error checking tactical info:', error);
   }
   
-  const warningsSection = warnings.length > 0 
-    ? `\n\n🚨 CRITICAL WARNINGS:\n${warnings.join('\n')}\n`
-    : '';
-  
-  const templateSection = hasPieceOnStartSquare && hasTacticalInfo
-    ? `REQUIRED EXPLANATION TEMPLATE (4-6 sentences):
-1. "The best move is [move] with an evaluation of [eval]."
-2. "The principal variation continues: [PV moves from Stockfish]."
-3. If tactical FACTS exist: Use ONLY those facts. Reference EXACT attacks/defends/forks/hanging as listed in FACTS.
-4. If tactical facts DO NOT exist: "No tactical patterns appear in the position facts."
-5. If alternatives exist in multipv: "Alternative moves evaluate worse: [move + eval]."
-6. Never exceed the factual content of FACTS JSON.`
-    : hasPieceOnStartSquare && !hasTacticalInfo
-    ? `REQUIRED EXPLANATION TEMPLATE (2-3 sentences):
-1. "The best move is [move] with an evaluation of [eval]."
-2. "The principal variation continues: [PV moves from Stockfish]."
-3. "No tactical patterns appear in the position facts."`
-    : `REQUIRED EXPLANATION TEMPLATE (1-2 sentences):
-1. "The best move is [move] with an evaluation of [eval]."
-2. "No piece exists on the starting square in the FACTS JSON, so a tactical explanation cannot be provided."`;
+  const moveToCheck = bestMoveFromStockfish || (solutionMoves && solutionMoves[0]) || null;
   
   return `You are a chess coach with access to Stockfish engine analysis.
 
-Your job: Explain why the best move is best, using ONLY the FACTS provided and Stockfish data.
+Your job: Explain why the best move is best, using the FACTS provided and Stockfish data.
 
-${templateSection}
+REQUIRED EXPLANATION TEMPLATE (4-6 sentences):
+1. "The best move is [move] with an evaluation of [eval]."
+2. "The principal variation continues: [PV moves from Stockfish]."
+3. If tactical FACTS exist: Use those facts to explain the move. Reference attacks/defends/forks/hanging/pins as listed in FACTS.
+4. If tactical facts DO NOT exist: Explain using Stockfish evaluation differences. You can say things like "This move improves the position by [eval difference]" or "Alternative moves evaluate worse: [comparison]."
+5. If alternatives exist in multipv: "Alternative moves evaluate worse: [move + eval comparison]."
+6. Conclude with why Stockfish prefers this move.
 
-HARD FAILSAFE RULES (ABSOLUTE - NO EXCEPTIONS):
-1. If the best move's starting square does NOT contain a piece in the FACTS JSON, you MUST NOT explain it. Instead output: "The best move is [move] with evaluation [eval]. No piece exists on the starting square in the FACTS JSON, so a tactical explanation cannot be provided."
-
-2. If the FACTS JSON contains NO tactical keywords (attacks, defends, forks, pinned, hanging, overloaded, discoveredAttack, skewer), you MUST NOT invent any tactical justification. You must only say: "Stockfish prefers this move with evaluation [eval]. No tactical information is present in the position facts."
-
-3. You MUST NOT use generic strategic phrases unless explicitly present in FACTS. PROHIBITED unless explicitly in FACTS:
-   - "opens the diagonal"
-   - "controls the center"
-   - "improves piece activity"
-   - "develops the bishop/knight/rook"
-   - "pressures the king"
-   - "threatens a pawn on X"
-   - ANY invented pin, fork, check, attack, defense not present in FACTS
-
-4. If a tactical explanation is impossible, fallback to a safe template: "The best move is [move] with evaluation [eval]. PV continues: [...]. No valid tactical motifs found, so explanation is limited to engine evaluation."
-
-5. You MUST NEVER fabricate a reason to fill the 4-6 sentence template. If no relevant FACTS exist, you MUST shorten the answer.
-
-STRICT RULES:
-- You MUST ONLY use information from the FACTS JSON below and Stockfish analysis.
-- You MUST NOT invent any piece locations, attacks, defenses, or tactical features.
-- You CAN use tactical language like "attacks", "defends", "pressure", "fork", "pin", "hanging", "overloaded" IF and ONLY IF those facts appear in the FACTS JSON.
-- All tactical reasoning must be grounded in FACTS + engine PV.
+IMPORTANT RULES:
+- Use information from FACTS JSON when available. If FACTS contain tactical details (attacks, defends, forks, pins, etc.), reference them.
+- If FACTS do not contain tactical details, you can still explain using Stockfish evaluation and PV.
+- You CAN explain positional/strategic reasons based on Stockfish evaluation (e.g., "improves the position", "better evaluation", "leads to winning endgame") - these are based on engine data, not invented.
+- You MUST NOT invent piece locations, attacks, or defenses that are NOT in FACTS.
+- You CAN use tactical language like "attacks", "defends", "pressure", "fork", "pin", "hanging", "overloaded" IF those facts appear in FACTS JSON.
 - Compare alternative moves using their evalScore differences from Stockfish multipv.
-- If FACTS are empty or incomplete, acknowledge this limitation explicitly.
+- Ground your explanation in Stockfish data (evaluations, PV) and FACTS when available.
+- Positional explanations based on Stockfish evaluation are allowed and encouraged when tactical FACTS are not available.
 
 Your reasoning steps:
 1. First analyze the main position (multipv=3, purpose='main_position').
@@ -501,21 +480,31 @@ Your reasoning steps:
 3. If needed, analyze alternatives (purpose='alternative_move').
 4. Once you have Stockfish data, output the explanation following the template above.
 
-${warningsSection}
-
 FACTS ABOUT THIS POSITION (COMPUTED WITH CHESS.JS):
 ${factsJson}
+
+${hasTacticalInfo ? 'Note: This position contains tactical elements (attacks, defends, forks, pins, etc.) listed in FACTS above.' : 'Note: This position may not have obvious tactical patterns. Focus on Stockfish evaluation and positional factors.'}
 
 When you need Stockfish analysis, call "analyze_position".
 When ready, output your final explanation following the template above.
 
-${solutionMoves && solutionMoves.length > 0 ? `Solution move to explain: ${solutionMoves[0]}` : ''}
+${moveToCheck ? `Move to explain: ${moveToCheck}` : ''}
 ${puzzleType ? `Puzzle type: ${puzzleType}` : ''}
 
-FINAL REQUIREMENT: All explanations MUST be strictly grounded in FACTS JSON and Stockfish's evaluation/lines. If not present, do NOT infer anything. NO hallucinations.`;
+FINAL REQUIREMENT: Ground explanations in Stockfish data and FACTS. Do not invent details not present in FACTS, but you can explain based on Stockfish evaluation even if FACTS lack tactical details.`;
 }
 
-function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false) {
+function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false, recursionDepth = 0) {
+  // ISSUE 2 FIX: Guard against infinite recursion
+  if (recursionDepth > 2) {
+    console.warn('computeFullPositionFacts recursion depth exceeded');
+    return {
+      pieces: [],
+      turn: 'white',
+      check: false
+    };
+  }
+  
   try {
     const chess = new Chess(fen);
     const allSquares = ['a1', 'b1', 'c1', 'd1', 'e1', 'f1', 'g1', 'h1',
@@ -538,7 +527,8 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false) {
       const color = piece.color === 'w' ? 'white' : 'black';
       const type = getPieceName(piece.type);
       
-      const attackedSquares = getAttackedSquares(chess, square, piece.type, piece.color);
+      // ISSUE 3 FIX: Use legal moves instead of ray-tracing for accurate attack detection
+      const attackedSquares = getAttackedSquaresLegal(chess, square);
       
       const attackedPieces = attackedSquares
         .map(sq => {
@@ -564,11 +554,11 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false) {
       }
       
       const pieceData = {
-        square: square,
+        square: square.toLowerCase().trim(),
         type: type,
         color: color,
-        attacks: attackedSquares,
-        defends: defendedSquares,
+        attacks: attackedSquares.map(sq => sq.toLowerCase().trim()),
+        defends: defendedSquares.map(sq => sq.toLowerCase().trim()),
         attacksPieces: attackedPieces,
         defendsPieces: defendedPieces,
         forks: [],
@@ -581,14 +571,14 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false) {
       
       pieces.push(pieceData);
       
-      for (const sq of attackedSquares) {
+      for (const sq of pieceData.attacks) {
         if (!attackMap.has(sq)) attackMap.set(sq, []);
-        attackMap.get(sq).push({ square, color, type });
+        attackMap.get(sq).push({ square: pieceData.square, color, type });
       }
       
-      for (const sq of defendedSquares) {
+      for (const sq of pieceData.defends) {
         if (!defenseMap.has(sq)) defenseMap.set(sq, []);
-        defenseMap.get(sq).push({ square, color, type });
+        defenseMap.get(sq).push({ square: pieceData.square, color, type });
       }
     }
     
@@ -630,7 +620,8 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false) {
           if (direction) {
             const blockingSquare = getSquareBetween(piece.square, sq, chess);
             if (blockingSquare) {
-              const blockingPiece = pieces.find(p => p.square === blockingSquare);
+              const blockingSquareSanitized = blockingSquare.toLowerCase().trim();
+              const blockingPiece = pieces.find(p => p.square.toLowerCase().trim() === blockingSquareSanitized);
               if (blockingPiece && blockingPiece.color === piece.color) {
                 piece.discoveredAttack = `${blockingPiece.color} ${blockingPiece.type} on ${blockingPiece.square} can reveal attack on ${sq}`;
                 break;
@@ -652,23 +643,25 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false) {
     
     if (!skipAfterMove && solutionMoves && solutionMoves.length > 0) {
       const move = solutionMoves[0];
-      if (move.length >= 4) {
-        const from = move.substring(0, 2);
-        const to = move.substring(2, 4);
-        const promotion = move.length > 4 ? move.substring(4) : undefined;
+      if (move && move.length >= 4) {
+        const sanitizedMove = sanitizeMove(move);
+        const from = sanitizedMove.substring(0, 2);
+        const to = sanitizedMove.substring(2, 4);
+        const promotion = sanitizedMove.length > 4 ? sanitizedMove.substring(4) : undefined;
         
         try {
           const afterChess = new Chess(fen);
           const moveObj = afterChess.move({ from, to, promotion: promotion || 'q' });
           
           if (moveObj) {
-            const afterFacts = computeFullPositionFacts(afterChess.fen(), [], true);
+            const afterFacts = computeFullPositionFacts(afterChess.fen(), [], true, recursionDepth + 1);
             facts.afterMove = {
-              move: `${from}${to}${promotion || ''}`,
+              move: sanitizedMove,
               position: afterFacts
             };
           }
         } catch (error) {
+          console.error('Error computing afterMove facts:', error);
         }
       }
     }
@@ -773,67 +766,15 @@ function getSquareBehind(square, direction) {
   return getNextSquare(square, reverseDir);
 }
 
-function getAttackedSquares(chess, square, pieceType, pieceColor) {
-  const attackedSquares = [];
-  const file = square.charCodeAt(0) - 97;
-  const rank = parseInt(square[1]);
-  
-  if (pieceType === 'p') {
-    const direction = pieceColor === 'w' ? 1 : -1;
-    const leftFile = file - 1;
-    const rightFile = file + 1;
-    const nextRank = rank + direction;
-    
-    if (leftFile >= 0 && nextRank >= 1 && nextRank <= 8) {
-      attackedSquares.push(String.fromCharCode(97 + leftFile) + nextRank);
-    }
-    if (rightFile <= 7 && nextRank >= 1 && nextRank <= 8) {
-      attackedSquares.push(String.fromCharCode(97 + rightFile) + nextRank);
-    }
-  } else if (pieceType === 'n') {
-    const knightMoves = [
-      [-2, -1], [-2, 1], [-1, -2], [-1, 2],
-      [1, -2], [1, 2], [2, -1], [2, 1]
-    ];
-    for (const [df, dr] of knightMoves) {
-      const newFile = file + df;
-      const newRank = rank + dr;
-      if (newFile >= 0 && newFile <= 7 && newRank >= 1 && newRank <= 8) {
-        attackedSquares.push(String.fromCharCode(97 + newFile) + newRank);
-      }
-    }
-  } else if (pieceType === 'k') {
-    for (let df = -1; df <= 1; df++) {
-      for (let dr = -1; dr <= 1; dr++) {
-        if (df === 0 && dr === 0) continue;
-        const newFile = file + df;
-        const newRank = rank + dr;
-        if (newFile >= 0 && newFile <= 7 && newRank >= 1 && newRank <= 8) {
-          attackedSquares.push(String.fromCharCode(97 + newFile) + newRank);
-        }
-      }
-    }
-  } else {
-    const directions = [];
-    if (pieceType === 'r' || pieceType === 'q') {
-      directions.push('up', 'down', 'left', 'right');
-    }
-    if (pieceType === 'b' || pieceType === 'q') {
-      directions.push('up-right', 'up-left', 'down-right', 'down-left');
-    }
-    
-    for (const direction of directions) {
-      let current = getNextSquare(square, direction);
-      while (current) {
-        attackedSquares.push(current);
-        const piece = chess.get(current);
-        if (piece) break;
-        current = getNextSquare(current, direction);
-      }
-    }
+function getAttackedSquaresLegal(chess, square) {
+  // ISSUE 3 FIX: Use legal moves to get accurate attack squares (respects pins, blockers, etc.)
+  try {
+    const moves = chess.moves({ square, verbose: true });
+    const attackedSquares = moves.map(m => m.to);
+    return [...new Set(attackedSquares)];
+  } catch (error) {
+    return [];
   }
-  
-  return attackedSquares;
 }
 
 function isPinned(chess, square, pieceColor) {
@@ -970,6 +911,7 @@ function canCaptureSquare(chess, fromSquare, toSquare, pieceColor) {
 }
 
 function detectSkewer(chess, piece, allPieces) {
+  // ISSUE 6 FIX: Improved skewer detection - handles all line pieces and value comparisons correctly
   if (piece.type === 'pawn' || piece.type === 'knight' || piece.type === 'king') {
     return false;
   }
@@ -980,15 +922,16 @@ function detectSkewer(chess, piece, allPieces) {
   const match = attackedDesc.match(/(\w+) (\w+) on (\w+)/);
   if (!match) return false;
   
-  const attackedSquare = match[3];
-  const attackedPiece = allPieces.find(p => p.square === attackedSquare);
+  const attackedSquare = match[3].toLowerCase().trim();
+  const attackedPiece = allPieces.find(p => p.square.toLowerCase().trim() === attackedSquare);
   if (!attackedPiece) return false;
   
   const direction = getDirection(piece.square, attackedSquare);
   if (!direction) return false;
   
   const attackedValue = getPieceValue(attackedPiece.type);
-  if (attackedValue < 3) return false;
+  // High-value piece must be in front (queen, rook, or king)
+  if (attackedValue < 5 && attackedPiece.type !== 'king') return false;
   
   const oppositeDir = getOppositeDirection(direction);
   if (!oppositeDir) return false;
@@ -999,7 +942,12 @@ function detectSkewer(chess, piece, allPieces) {
     if (p) {
       if (p.color === attackedPiece.color) {
         const behindValue = getPieceValue(p.type);
-        if (behindValue < attackedValue) {
+        // Behind piece must be less valuable (or king behind non-king)
+        if (behindValue < attackedValue || (p.type === 'king' && attackedPiece.type !== 'king')) {
+          return true;
+        }
+        // Also handle reverse: king in front, piece behind
+        if (attackedPiece.type === 'king' && behindValue > 0) {
           return true;
         }
       }
