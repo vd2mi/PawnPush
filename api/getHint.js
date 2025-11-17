@@ -30,43 +30,32 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'FEN is required' });
   }
 
-  
+
   try {
     const testChess = new Chess(fen);
-    
   } catch (error) {
     return res.status(400).json({ error: 'Invalid FEN format' });
   }
 
   try {
+    const result = await runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, puzzleType);
     
-    const stockfishAnalysis = await getStockfishAnalysis(fen, solutionMoves);
-
-    
-    const gptExplanation = await getGPTExplanation(
-      fen,
-      stockfishAnalysis,
-      userQuestion,
-      moveHistory,
-      solutionMoves,
-      puzzleType
-    );
-
 
     return res.status(200).json({
       success: true,
-      hint: gptExplanation,
-      bestMove: solutionMoves[0] || stockfishAnalysis?.bestMove || 'Unknown',
+      hint: result.explanation,
+      explanation: result.explanation,
+      bestMove: solutionMoves[0] || result.bestMove || 'Unknown',
       puzzleType: puzzleType,
-      explanation: gptExplanation,
-      analysis: stockfishAnalysis, 
-      method: 'Enhanced Stockfish + GPT analysis',
+      analysisSteps: result.analysisSteps,
+      method: 'Agentic GPT + Stockfish',
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error('Enhanced hint error:', error);
-
+    console.error('Agentic coach error:', error);
+    
+    // Fallback response
     return res.status(200).json({
       success: true,
       hint: solutionMoves[0] 
@@ -74,322 +63,346 @@ export default async function handler(req, res) {
         : 'Error occurred, but try looking for tactical patterns like checks, captures, and threats.',
       bestMove: solutionMoves[0] || 'Unknown',
       explanation: 'API temporarily unavailable',
-      analysis: null
+      analysisSteps: []
     });
   }
 }
 
 
-async function getStockfishAnalysis(fen, solutionMoves) {
+async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, puzzleType) {
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const HF_TOKEN = process.env.HF_TOKEN;
-  
-  if (!HF_TOKEN) {
-    console.log('No HF_TOKEN available for Stockfish analysis');
-    return null;
+
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY not configured');
   }
 
-  try {
-    
-    const controller1 = new AbortController();
-    const timeoutId1 = setTimeout(() => {
-      controller1.abort();
-    }, 25000); 
+  if (!HF_TOKEN) {
+    throw new Error('HF_TOKEN not configured');
+  }
 
-    let currentAnalysisResponse;
+  const maxIterations = 5;
+  const analysisSteps = [];
+  const conversationHistory = [
+    {
+      role: 'system',
+      content: buildSystemPrompt(fen, solutionMoves, moveHistory, puzzleType)
+    },
+    {
+      role: 'user',
+      content: userQuestion || 'Why is this the best move?'
+    }
+  ];
+
+  let iteration = 0;
+  let finalExplanation = null;
+  let bestMove = null;
+
+  while (iteration < maxIterations) {
+    iteration++;
+    console.log(`Agent iteration ${iteration}/${maxIterations}`);
+
     try {
-      currentAnalysisResponse = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${HF_TOKEN}`
-        },
-        body: JSON.stringify({ fen, depth: 18, multipv: 3 }),
-        signal: controller1.signal
-      });
-      clearTimeout(timeoutId1);
-    } catch (error) {
-      clearTimeout(timeoutId1);
-      if (error.name === 'AbortError') {
-        console.error('Stockfish analysis timeout');
-        return null;
-      }
-      throw error;
-    }
 
-    if (!currentAnalysisResponse.ok) {
-      console.error('Stockfish API error:', currentAnalysisResponse.status);
-      return null;
-    }
+      const response = await callGPTWithTools(conversationHistory, OPENAI_API_KEY);
+      
+      const assistantMessage = response.choices[0].message;
+      conversationHistory.push(assistantMessage);
 
-    const currentAnalysis = await currentAnalysisResponse.json();
-    
-    console.log('Stockfish API response keys:', Object.keys(currentAnalysis));
-    console.log('Full response:', JSON.stringify(currentAnalysis).substring(0, 500));
-    
-    const bestMove = currentAnalysis.best_move || null;
-    
-    const topMoves = await getAlternativeMoves(fen, bestMove, currentAnalysis, HF_TOKEN);
-    
-    const principalVariation = topMoves[0]?.pv && topMoves[0].pv.length > 0 
-      ? topMoves[0].pv 
-      : (bestMove ? [bestMove] : []);
 
-    let afterSolutionAnalysis = null;
-    if (solutionMoves && solutionMoves.length > 0) {
-      const afterSolutionFen = applyMove(fen, solutionMoves[0]);
-      if (afterSolutionFen && afterSolutionFen !== fen) {
-        try {
-          const controller2 = new AbortController();
-          const timeoutId2 = setTimeout(() => {
-            controller2.abort();
-          }, 20000);
-
-          try {
-            const afterResponse = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${HF_TOKEN}`
-              },
-              body: JSON.stringify({ fen: afterSolutionFen, depth: 18 }),
-              signal: controller2.signal
-            });
-            clearTimeout(timeoutId2);
+      if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+        // Process tool calls
+        for (const toolCall of assistantMessage.tool_calls) {
+          if (toolCall.function.name === 'analyze_position') {
+            const args = JSON.parse(toolCall.function.arguments);
             
-            if (afterResponse.ok) {
-              afterSolutionAnalysis = await afterResponse.json();
-            }
-          } catch (error) {
-            clearTimeout(timeoutId2);
-            if (error.name === 'AbortError') {
-              console.error('After-solution analysis timeout');
-            } else {
-              throw error;
+            console.log(`GPT requested analysis:`, args);
+            
+            
+            const analysisResult = await analyzePosition({
+              fen: args.fen || fen,
+              depth: args.depth || 18,
+              multipv: args.multipv || 3,
+              purpose: args.purpose || 'main_position',
+              hfToken: HF_TOKEN
+            });
+
+            analysisSteps.push({
+              request: args,
+              result: analysisResult
+            });
+
+            
+            conversationHistory.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(analysisResult)
+            });
+
+            
+            if (!bestMove && analysisResult.bestMove) {
+              bestMove = analysisResult.bestMove;
             }
           }
-        } catch (error) {
-          console.error('Error analyzing after-solution position:', error);
         }
+      } else {
+        
+        finalExplanation = assistantMessage.content;
+        console.log('GPT returned final explanation');
+        break;
       }
+    } catch (error) {
+      console.error(`Error in iteration ${iteration}:`, error);
+      throw error;
+    }
+  }
+
+  
+  if (!finalExplanation) {
+    finalExplanation = solutionMoves[0] 
+      ? `The best move is ${solutionMoves[0]}. This appears to be a ${puzzleType || 'tactical'} puzzle.`
+      : 'Unable to generate explanation. Please try again.';
+  }
+
+  return {
+    explanation: finalExplanation,
+    analysisSteps: analysisSteps,
+    bestMove: bestMove || solutionMoves[0] || null
+  };
+}
+
+async function callGPTWithTools(messages, apiKey) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, 30000);
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: messages,
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'analyze_position',
+              description: 'Analyze a chess position using Stockfish engine. Use this to get evaluations, best moves, and principal variations.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  fen: {
+                    type: 'string',
+                    description: 'FEN string of the position to analyze'
+                  },
+                  depth: {
+                    type: 'integer',
+                    description: 'Search depth (default: 18)',
+                    default: 18,
+                    minimum: 10,
+                    maximum: 25
+                  },
+                  multipv: {
+                    type: 'integer',
+                    description: 'Number of alternative moves to return (default: 3)',
+                    default: 3,
+                    minimum: 1,
+                    maximum: 5
+                  },
+                  purpose: {
+                    type: 'string',
+                    enum: ['main_position', 'after_solution', 'alternative_move', 'verification'],
+                    description: 'Purpose of this analysis: main_position (initial analysis), after_solution (position after best move), alternative_move (checking an alternative), verification (double-checking a line)'
+                  }
+                },
+                required: ['purpose']
+              }
+            }
+          }
+        ],
+        tool_choice: 'auto',
+        temperature: 0.7,
+        max_tokens: 500
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('GPT API error:', errorText);
+      throw new Error(`GPT API request failed: ${response.status}`);
     }
 
+    return await response.json();
 
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('GPT API request timeout');
+    }
+    throw error;
+  }
+}
+
+
+async function analyzePosition({ fen, depth, multipv, purpose, hfToken }) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 25000);
+
+    const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${hfToken}`
+      },
+      body: JSON.stringify({ 
+        fen, 
+        depth: depth || 18,
+        multipv: multipv || 3
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Stockfish API error:', errorText);
+      throw new Error(`Stockfish API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    
+    const bestMove = data.best_move || null;
+    
+    
     let evaluation = null;
     let isMate = false;
     let mateIn = null;
     let evalScore = 0;
     
-    if (currentAnalysis.evaluation) {
-      if (currentAnalysis.evaluation.type === 'cp') {
-        evalScore = currentAnalysis.evaluation.value;
+    if (data.evaluation) {
+      if (data.evaluation.type === 'cp') {
+        evalScore = data.evaluation.value;
         evaluation = (evalScore / 100).toFixed(1);
         if (evalScore > 0) evaluation = '+' + evaluation;
-      } else if (currentAnalysis.evaluation.type === 'mate') {
+      } else if (data.evaluation.type === 'mate') {
         isMate = true;
-        mateIn = Math.abs(currentAnalysis.evaluation.value);
-        evaluation = currentAnalysis.evaluation.value > 0 ? `M${mateIn}` : `-M${mateIn}`;
-        evalScore = currentAnalysis.evaluation.value > 0 ? 10000 : -10000;
+        mateIn = Math.abs(data.evaluation.value);
+        evaluation = data.evaluation.value > 0 ? `M${mateIn}` : `-M${mateIn}`;
+        evalScore = data.evaluation.value > 0 ? 10000 : -10000;
       }
     }
 
+    
+    const principalVariation = data.pv || 
+                               data.principal_variation || 
+                               data.principalVariation || 
+                               [];
 
-    const tacticalTheme = identifyTacticalTheme(
-      fen,
-      solutionMoves,
-      currentAnalysis,
-      afterSolutionAnalysis
-    );
+    
+    let topMoves = [];
+    if (data.lines && Array.isArray(data.lines)) {
+      topMoves = data.lines.slice(0, multipv || 3).map(line => ({
+        move: line.move || line.best_move || bestMove,
+        evaluation: formatEval(line.evaluation || data.evaluation),
+        evalScore: parseEval(line.evaluation || data.evaluation),
+        pv: line.pv || line.principal_variation || line.principalVariation || []
+      }));
+    } else if (data.multipv && Array.isArray(data.multipv)) {
+      topMoves = data.multipv.slice(0, multipv || 3).map(line => ({
+        move: line.move || line.best_move || bestMove,
+        evaluation: formatEval(line.evaluation || data.evaluation),
+        evalScore: parseEval(line.evaluation || data.evaluation),
+        pv: line.pv || line.principal_variation || line.principalVariation || []
+      }));
+    } else {
+      
+      topMoves = [{
+        move: bestMove,
+        evaluation: formatEval(data.evaluation),
+        evalScore: parseEval(data.evaluation),
+        pv: principalVariation
+      }];
+    }
 
-    const result = {
+    return {
       bestMove,
       evaluation,
       evalScore,
       isMate,
       mateIn,
-      tacticalTheme,
-      principalVariation: principalVariation.slice(0, 8), 
       topMoves: topMoves.map(m => ({
         move: m.move,
-        evaluation: formatEval(m.evaluation),
-        evalScore: m.evalScore,
-        pv: m.pv.slice(0, 4) 
+        evaluation: m.evaluation,
+        pv: m.pv.slice(0, 6) 
       })),
-      opponentBestResponse: afterSolutionAnalysis?.best_move || null,
-      opponentEvalAfterSolution: afterSolutionAnalysis?.evaluation || null
+      principalVariation: principalVariation.slice(0, 8), // First 8 moves
+      purpose
     };
-    
-    console.log('Stockfish analysis result:');
-    console.log('- PV length:', result.principalVariation.length, 'moves:', result.principalVariation);
-    console.log('- Top moves count:', result.topMoves.length);
-    result.topMoves.forEach((m, i) => {
-      console.log(`  ${i+1}. ${m.move} (${m.evaluation}) - PV: ${m.pv.join(' ')}`);
-    });
-    
-    return result;
 
   } catch (error) {
     console.error('Stockfish analysis failed:', error);
-    return null;
-  }
-}
-
-
-async function generatePrincipalVariation(fen, bestMove, hfToken) {
-  if (!bestMove || bestMove.length < 4) return [];
-  
-  const pv = [bestMove];
-  let currentFen = fen;
-  let currentChess = new Chess(fen);
-  
-  try {
-    const from = bestMove.substring(0, 2);
-    const to = bestMove.substring(2, 4);
-    const promotion = bestMove.length > 4 ? bestMove.substring(4) : undefined;
-    
-    const moveObj = currentChess.move({ from, to, promotion: promotion || 'q' });
-    if (!moveObj) return [bestMove];
-    
-    currentFen = currentChess.fen();
-    
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-      
-      const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${hfToken}`
-        },
-        body: JSON.stringify({ fen: currentFen, depth: 15 }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.best_move) {
-          pv.push(data.best_move);
-          
-          const oppFrom = data.best_move.substring(0, 2);
-          const oppTo = data.best_move.substring(2, 4);
-          const oppPromotion = data.best_move.length > 4 ? data.best_move.substring(4) : undefined;
-          
-          const oppMove = currentChess.move({ from: oppFrom, to: oppTo, promotion: oppPromotion || 'q' });
-          if (oppMove && pv.length < 6) {
-            const nextFen = currentChess.fen();
-            
-            const controller2 = new AbortController();
-            const timeoutId2 = setTimeout(() => controller2.abort(), 12000);
-            
-            const response2 = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${hfToken}`
-              },
-              body: JSON.stringify({ fen: nextFen, depth: 15 }),
-              signal: controller2.signal
-            });
-            clearTimeout(timeoutId2);
-            
-            if (response2.ok) {
-              const data2 = await response2.json();
-              if (data2.best_move) {
-                pv.push(data2.best_move);
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error generating PV continuation:', error);
+    if (error.name === 'AbortError') {
+      throw new Error('Stockfish analysis timeout');
     }
-  } catch (error) {
-    console.error('Error generating PV:', error);
+    throw error;
   }
-  
-  return pv;
 }
 
-async function getAlternativeMoves(fen, bestMove, currentAnalysis, hfToken) {
-  const topMoves = [];
+
+function buildSystemPrompt(fen, solutionMoves, moveHistory, puzzleType) {
   
-  const bestEval = currentAnalysis.evaluation || { type: 'cp', value: 0 };
-  topMoves.push({
-    move: bestMove,
-    evaluation: bestEval,
-    evalScore: parseEval(bestEval),
-    pv: [] 
-  });
-  
-  if (!bestMove || bestMove.length < 4) return topMoves;
-  
-  const chess = new Chess(fen);
-  const legalMoves = chess.moves({ verbose: true });
-  
-  const alternativeMoves = legalMoves
-    .filter(m => {
-      const moveStr = m.from + m.to + (m.promotion || '');
-      return moveStr !== bestMove;
-    })
-    .slice(0, 5)
-    .map(m => m.from + m.to + (m.promotion || ''));
-  
-  const alternativePromises = alternativeMoves.map(async (move) => {
-    try {
-      const moveFen = applyMove(fen, move);
-      if (moveFen === fen) return null;
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-      
-      const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${hfToken}`
-        },
-        body: JSON.stringify({ fen: moveFen, depth: 15 }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        const data = await response.json();
-        return {
-          move: move,
-          evaluation: data.evaluation || { type: 'cp', value: 0 },
-          evalScore: parseEval(data.evaluation || { type: 'cp', value: 0 }),
-          pv: data.best_move ? [move, data.best_move] : [move]
-        };
-      }
-    } catch (error) {
-      console.error(`Error analyzing alternative move ${move}:`, error);
-      return null;
-    }
-    return null;
-  });
-  
-  const alternatives = (await Promise.all(alternativePromises))
-    .filter(m => m !== null)
-    .sort((a, b) => b.evalScore - a.evalScore) 
-    .slice(0, 2); 
-  
-  topMoves.push(...alternatives);
-  
-  if (topMoves[0] && topMoves[0].pv.length === 0) {
-    topMoves[0].pv = await generatePrincipalVariation(fen, bestMove, hfToken);
+  let afterSolutionFen = null;
+  if (solutionMoves && solutionMoves.length > 0) {
+    afterSolutionFen = applyMoveToFen(fen, solutionMoves[0]);
   }
-  
-  return topMoves;
+
+  return `You are an expert chess coach with access to Stockfish.  
+
+Use the "analyze_position" tool to gather engine evaluations as needed.
+
+Your reasoning steps:
+
+1. First analyze the main position (multipv=3).  
+2. If there is a provided best move/solution move, analyze the position after that move.  
+3. If uncertain, analyze alternatives with multipv or manual testing.  
+4. Once you have enough data to explain the position accurately, output the final explanation.
+
+Rules:
+- You MUST NOT invent moves, threats, tactics, or piece interactions. 
+- Only state what Stockfish explicitly shows.
+- Speak confidently even if the engine didn't give long variations.
+- Use concrete move sequences from the PV.
+- Max 4 sentences.
+
+When you need information, call "analyze_position".
+
+When ready, stop and output your final explanation.
+
+Current position (FEN): ${fen}
+${solutionMoves && solutionMoves.length > 0 ? `Solution move(s): ${solutionMoves.join(' ')}` : ''}
+${afterSolutionFen && afterSolutionFen !== fen ? `Position after solution (FEN): ${afterSolutionFen}` : ''}
+${puzzleType ? `Puzzle type: ${puzzleType}` : ''}
+${moveHistory ? `Move history: ${Array.isArray(moveHistory) ? moveHistory.join(' ') : moveHistory}` : ''}`;
 }
 
-function applyMove(fen, move) {
+
+function applyMoveToFen(fen, move) {
   try {
     const chess = new Chess(fen);
     
-
     if (move && move.length >= 4) {
       const from = move.substring(0, 2);
       const to = move.substring(2, 4);
@@ -408,70 +421,11 @@ function applyMove(fen, move) {
     
     return fen;
   } catch (error) {
-    console.error('Error applying move:', error);
+    console.error('Error applying move to FEN:', error);
     return fen;
   }
 }
 
-
-function identifyTacticalTheme(fen, solution, beforeAnalysis, afterAnalysis) {
-  if (!solution || solution.length === 0) {
-    return 'Positional';
-  }
-
-  const move = solution[0].toLowerCase();
-  
-
-  if (beforeAnalysis?.evaluation?.type === 'mate' && beforeAnalysis.evaluation.value > 0) {
-    return 'Forced Checkmate';
-  }
-  
-  if (move.includes('x')) {
-    try {
-      const chess = new Chess(fen);
-      const from = move.substring(0, 2);
-      const to = move.substring(2, 4);
-      const promotion = move.length > 4 ? move.substring(4) : undefined;
-      
-      const moveObj = chess.move({ from, to, promotion: promotion || 'q' });
-      if (moveObj && chess.in_check()) {
-        return 'Checking Capture';
-      }
-    } catch (e) {
-
-    }
-    
-
-    if (beforeAnalysis?.evaluation && afterAnalysis?.evaluation) {
-      const beforeEval = parseEval(beforeAnalysis.evaluation);
-      const afterEval = parseEval(afterAnalysis.evaluation);
-      const evalDiff = afterEval - beforeEval;
-      
-      if (evalDiff > 5) {
-        return 'Winning Material';
-      }
-    }
-    
-    return 'Tactical Capture';
-  }
-  
-
-  try {
-    const chess = new Chess(fen);
-    const from = move.substring(0, 2);
-    const to = move.substring(2, 4);
-    const promotion = move.length > 4 ? move.substring(4) : undefined;
-    
-    const moveObj = chess.move({ from, to, promotion: promotion || 'q' });
-    if (moveObj && chess.in_check()) {
-      return 'Check';
-    }
-  } catch (e) {
-
-  }
-  
-  return 'Tactical Shot';
-}
 
 function parseEval(evaluation) {
   if (!evaluation) return 0;
@@ -485,158 +439,6 @@ function parseEval(evaluation) {
   }
   
   return 0;
-}
-
-
-async function getGPTExplanation(fen, stockfishAnalysis, userQuestion, moveHistory, solutionMoves, puzzleType) {
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-  if (!OPENAI_API_KEY) {
-    console.log('No OpenAI API key');
-    return solutionMoves[0] 
-      ? `The best move is ${solutionMoves[0]}. This appears to be a ${puzzleType || 'tactical'} puzzle.`
-      : 'Unable to generate explanation. Please check API configuration.';
-  }
-
-
-  const systemPrompt = buildSystemPrompt();
-  const userPrompt = buildUserPrompt(fen, stockfishAnalysis, userQuestion, moveHistory, solutionMoves, puzzleType);
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 20000); 
-
-    let response;
-    try {
-      response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          temperature: 0.7,
-          max_tokens: 300
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
-        console.error('GPT API timeout');
-        throw new Error('GPT API request timeout');
-      }
-      throw error;
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('GPT API error:', errorText);
-      throw new Error('GPT API request failed');
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content || 'Unable to generate explanation.';
-
-  } catch (error) {
-    console.error('GPT explanation failed:', error);
-    return solutionMoves[0] 
-      ? `The best move is ${solutionMoves[0]}. This appears to be a ${puzzleType || 'tactical'} puzzle.`
-      : 'Unable to generate explanation at this time.';
-  }
-}
-
-function buildSystemPrompt() {
-  return `You are a chess coach explaining puzzles. You have Stockfish engine analysis.
-
-🚨 CRITICAL RULES - NEVER VIOLATE THESE:
-
-1. ONLY explain variations that appear in the "FORCED SEQUENCE" or "pv" data provided. If a move sequence is not in the data, DO NOT mention it.
-
-2. DO NOT invent moves, threats, or piece placements. If it's not in the Stockfish data or FEN, don't mention it.
-
-3. When mentioning piece locations, they must be from the FEN or confirmed by the provided data.
-
-4. If you don't have enough data to explain something, say "The engine shows this is best" instead of guessing or inventing details.
-
-5. If the user says something unrelated to chess, chat normally like a friendly person.
-
-LENGTH REQUIREMENT:
-- Maximum 4 sentences
-- Maximum 100 words
-- Get to the point: best move, why it works (using PV), why alternatives fail
-
-✅ GOOD (uses provided data):
-"The best move is 1.Be5 (-2.8). The forcing sequence is: 1.Be5 Qxe5 2.Rxd5+ Kh8 3.Rxd8, winning the rook. Alternative moves like 1.Rxd5 (+0.9) are much weaker because Black can defend better."
-
-❌ BAD (invented):
-"The queen is protecting d5, so we deflect it" (you don't know if queen is protecting d5!)
-"After Qxe5, the queen leaves its defense" (only say this if Qxe5 is in the PV!)
-
-REQUIRED FORMAT:
-1. State the best move and evaluation
-2. Show the forcing sequence from Stockfish's PV (if available) - use EXACT moves from the data
-3. Explain why alternatives are worse using their evaluations from the data
-4. Keep it 3-4 sentences MAX
-
-Now explain this puzzle using ONLY the Stockfish data provided. Do not invent variations.`;
-}
-
-function buildUserPrompt(fen, analysis, userQuestion, moveHistory, solutionMoves, puzzleType) {
-  if (!analysis) {
-    return `Position (FEN): ${fen}
-${solutionMoves[0] ? `Best Move: ${solutionMoves[0]}` : ''}
-Puzzle type: ${puzzleType || 'tactics'}
-${userQuestion ? `User question: ${userQuestion}` : 'Why is this the best move?'}
-
-Note: Stockfish analysis unavailable. Provide a general explanation based on the position and the best move provided.`;
-  }
-
-  const evalText = analysis.isMate 
-    ? `FORCED MATE IN ${analysis.mateIn} MOVES`
-    : `Evaluation: ${analysis.evaluation}`;
-
-  const pvText = analysis.principalVariation && analysis.principalVariation.length > 0
-    ? `- FORCED SEQUENCE: ${analysis.principalVariation.slice(0, 6).join(' ')}`
-    : analysis.bestMove 
-      ? `- Best Move: ${analysis.bestMove} (no continuation available)`
-      : '';
-
-  const alternativesText = analysis.topMoves && analysis.topMoves.length > 1
-    ? `\n- Alternative moves and why they're worse:\n${analysis.topMoves.slice(1).map((m, i) => 
-        `  ${i+2}. ${m.move} (${m.evaluation})${m.pv && m.pv.length > 0 ? ` - leads to ${m.pv.slice(0, 3).join(' ')}` : ''}`
-      ).join('\n')}`
-    : '\n- Note: Alternative moves analysis not available';
-
-  return `POSITION (FEN): ${fen}
-
-STOCKFISH ANALYSIS:
-- Best Move: ${analysis.bestMove || solutionMoves[0] || 'Unknown'}
-- ${evalText}
-${pvText}
-- Tactical Theme: ${analysis.tacticalTheme}${alternativesText}
-${analysis.opponentBestResponse ? `- Opponent's best response after solution: ${analysis.opponentBestResponse}` : ''}
-${analysis.opponentEvalAfterSolution ? `- Position evaluation after solution: ${formatEval(analysis.opponentEvalAfterSolution)}` : ''}
-
-${solutionMoves[0] ? `SOLUTION MOVE: ${solutionMoves[0]}` : ''}
-${puzzleType ? `PUZZLE TYPE: ${puzzleType}` : ''}
-${moveHistory ? `MOVE HISTORY:\n${Array.isArray(moveHistory) ? moveHistory.join(' ') : moveHistory}` : ''}
-
-USER QUESTION: ${userQuestion || 'Why is this the best move?'}
-
-Explain the solution using ONLY the Stockfish data above. 
-- Use the FORCED SEQUENCE exactly as shown (do not invent moves)
-- Compare alternatives using their evaluations
-- Maximum 4 sentences, 100 words
-- Do not mention piece placements or threats unless they appear in the data`;
 }
 
 function formatEval(evaluation) {
