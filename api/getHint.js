@@ -1,5 +1,31 @@
 import { Chess } from 'chess.js';
 
+function isValidFENPiecePlacement(fen) {
+  const placement = fen.split(" ")[0];
+  
+  const allowed = /^[rnbqkpRNBQKP1-8\/]+$/;
+  
+  if (!allowed.test(placement)) return false;
+  
+  const rows = placement.split("/");
+  
+  if (rows.length !== 8) return false;
+  
+  for (const row of rows) {
+    let count = 0;
+    for (const char of row) {
+      if (!isNaN(char)) {
+        count += parseInt(char);
+      } else {
+        count += 1;
+      }
+    }
+    if (count !== 8) return false;
+  }
+  
+  return true;
+}
+
 function isInCheck(chess) {
   if (typeof chess.in_check === "function") return chess.in_check();
   if (typeof chess.inCheck === "function") return chess.inCheck();
@@ -1223,6 +1249,7 @@ Do not explain anything - only request tool calls.`
 
   let iteration = 0;
   let bestMove = null;
+  const seenIllegalMoves = new Set();
 
   while (iteration < maxIterations) {
     iteration++;
@@ -1262,36 +1289,58 @@ Do not explain anything - only request tool calls.`
               content: JSON.stringify(recoveredResult)
             });
 
-            if (!bestMove && recoveredResult.bestMove) {
-              const candidateBestMove = recoveredResult.bestMove;
-              
+            if (!bestMove) {
               const analyzedFen = args.fen || fen;
-              const sanitizedMove = sanitizeMove(candidateBestMove);
-              const from = sanitizedMove?.substring(0, 2);
-              const to = sanitizedMove?.substring(2, 4);
+              let foundLegalMove = false;
               
-              let moveIsLegal = false;
+              const candidatesToCheck = [
+                recoveredResult.bestMove,
+                ...(recoveredResult.topMoves || []).map(m => m.move).filter(Boolean)
+              ].filter(Boolean);
               
-              if (from && to && from.length === 2 && to.length === 2) {
-                try {
-                  const testChess = new Chess(analyzedFen);
-                  const legalMoves = testChess.moves({ verbose: true });
-                  moveIsLegal = legalMoves.some(m => m.from === from && m.to === to);
-                } catch (error) {
-                  moveIsLegal = false;
+              for (const candidateBestMove of candidatesToCheck) {
+                const sanitizedMove = sanitizeMove(candidateBestMove);
+                const from = sanitizedMove?.substring(0, 2);
+                const to = sanitizedMove?.substring(2, 4);
+                
+                let moveIsLegal = false;
+                
+                if (from && to && from.length === 2 && to.length === 2) {
+                  try {
+                    const testChess = new Chess(analyzedFen);
+                    const legalMoves = testChess.moves({ verbose: true });
+                    moveIsLegal = legalMoves.some(m => m.from === from && m.to === to);
+                  } catch (error) {
+                    moveIsLegal = false;
+                  }
+                }
+                
+                if (moveIsLegal) {
+                  bestMove = candidateBestMove;
+                  foundLegalMove = true;
+                  
+                  const factsForPosition = computeFullPositionFacts(analyzedFen, [], true);
+                  
+                  if ((args.purpose === 'main_position' || !args.fen || args.fen === fen) && iteration === 1) {
+                    positionFacts = factsForPosition;
+                  }
+                  
+                  break;
                 }
               }
               
-              if (moveIsLegal) {
-                bestMove = candidateBestMove;
-                
-                const factsForPosition = computeFullPositionFacts(analyzedFen, [], true);
-                
-                if ((args.purpose === 'main_position' || !args.fen || args.fen === fen) && iteration === 1) {
-                  positionFacts = factsForPosition;
+              if (!foundLegalMove && candidatesToCheck.length > 0) {
+                const allIllegal = candidatesToCheck.every(m => seenIllegalMoves.has(m));
+                for (const move of candidatesToCheck) {
+                  seenIllegalMoves.add(move);
                 }
-              } else {
-                console.warn(`Best move ${candidateBestMove} is not legal in position ${analyzedFen}`);
+                
+                if (allIllegal && seenIllegalMoves.size > 3) {
+                  console.warn(`Multiple illegal moves detected. Stopping search to prevent loop.`);
+                  break;
+                } else {
+                  console.warn(`No legal move found in Stockfish results. Tried: ${candidatesToCheck.join(', ')}`);
+                }
               }
             }
           }
@@ -1373,9 +1422,14 @@ Do not explain anything - only request tool calls.`
   if (!finalExplanation || !verifyExplanation(finalExplanation, positionFacts, legalSquares)) {
     console.warn('Explanation failed verification or is empty');
     if (latestAnalysis && finalBestMove) {
-      finalExplanation = `The best move is ${finalBestMove} with an evaluation of ${latestAnalysis.evaluation}. Principal variation: ${latestAnalysis.principalVariation.join(' ')}.`;
+      const pvText = latestAnalysis.principalVariation && latestAnalysis.principalVariation.length > 0
+        ? latestAnalysis.principalVariation.join(' ')
+        : 'No principal variation available';
+      finalExplanation = `The best move is ${finalBestMove} with an evaluation of ${latestAnalysis.evaluation}. Principal variation: ${pvText}.`;
     } else if (finalBestMove) {
       finalExplanation = `The best move is ${finalBestMove}.`;
+    } else if (solutionMoves && solutionMoves.length > 0) {
+      finalExplanation = `The best move is ${solutionMoves[0]}.`;
     } else {
       finalExplanation = 'Insufficient data to explain safely.';
     }
@@ -1415,6 +1469,10 @@ export default async function handler(req, res) {
       if (!fen) {
         return res.status(400).json({ error: 'FEN is required' });
       }
+
+  if (!isValidFENPiecePlacement(fen)) {
+    return res.status(400).json({ error: 'Invalid piece placement in FEN' });
+  }
 
   try {
     const testChess = new Chess(fen);
