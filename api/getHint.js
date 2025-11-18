@@ -683,6 +683,88 @@ function filterFactsForSideToMove(positionFacts, turn) {
   };
 }
 
+function getAllLegalSquares() {
+  const squares = [];
+  for (let r = 1; r <= 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      squares.push(coordsToSquare(f, r));
+    }
+  }
+  return squares;
+}
+
+function extractTacticsFromFacts(positionFacts) {
+  const tactics = {
+    forks: [],
+    pins: [],
+    skewers: [],
+    hanging: [],
+    overloaded: []
+  };
+  
+  if (!positionFacts.pieces) return tactics;
+  
+  for (const piece of positionFacts.pieces) {
+    if (piece.forks && piece.forks.length > 0) {
+      tactics.forks.push(`${piece.color} ${piece.type} on ${piece.square}: ${piece.forks.join(', ')}`);
+    }
+    if (piece.pinned) {
+      tactics.pins.push(`${piece.color} ${piece.type} on ${piece.square}`);
+    }
+    if (piece.skewer) {
+      tactics.skewers.push(`${piece.color} ${piece.type} on ${piece.square}`);
+    }
+    if (piece.hanging) {
+      tactics.hanging.push(`${piece.color} ${piece.type} on ${piece.square}`);
+    }
+    if (piece.overloaded) {
+      tactics.overloaded.push(`${piece.color} ${piece.type} on ${piece.square}`);
+    }
+  }
+  
+  return tactics;
+}
+
+function buildAllowedPieceDescriptors(positionFacts) {
+  if (!positionFacts || !Array.isArray(positionFacts.pieces)) return [];
+  
+  return positionFacts.pieces.map(p => {
+    return `${p.color} ${p.type} on ${p.square}`.toLowerCase();
+  });
+}
+
+function buildLegalSquares(positionFacts, latestAnalysis) {
+  const sqSet = new Set();
+  
+  if (positionFacts?.pieces) {
+    for (const p of positionFacts.pieces) {
+      sqSet.add(p.square.toLowerCase());
+      for (const a of p.attacks || []) sqSet.add(a.toLowerCase());
+      for (const d of p.defends || []) sqSet.add(d.toLowerCase());
+    }
+  }
+  
+  const addMoveSquares = (moves) => {
+    if (!Array.isArray(moves)) return;
+    for (const mv of moves) {
+      const m = sanitizeMove(mv);
+      if (m.length >= 4) {
+        sqSet.add(m.substring(0, 2).toLowerCase());
+        sqSet.add(m.substring(2, 4).toLowerCase());
+      }
+    }
+  };
+  
+  if (latestAnalysis) {
+    addMoveSquares(latestAnalysis.principalVariation);
+    for (const line of latestAnalysis.topMoves || []) {
+      addMoveSquares(line.pv || []);
+    }
+  }
+  
+  return Array.from(sqSet);
+}
+
 function buildSystemPrompt(fen, solutionMoves, moveHistory, puzzleType, positionFacts, bestMoveFromStockfish = null) {
   const turn = positionFacts.turn || 'white';
   const filteredFacts = filterFactsForSideToMove(positionFacts, turn);
@@ -704,6 +786,135 @@ FACTS (${turn} to move):
 ${factsJson}
 
 Use analyze_position for engine data.`;
+}
+
+function buildSafeSystemPrompt(legalSquares, legalPieces, tactics, allowedPieceDescriptors) {
+  return `YOU ARE NOT ALLOWED TO INVENT ANYTHING.
+
+You may ONLY produce an explanation by choosing from the structured data provided.
+
+SAFETY RULES:
+1. ONLY use squares that are in legal_squares.
+2. ONLY use pieces mentioned in legal_pieces.
+3. ONLY use tactics listed under facts.tactics.
+4. ONLY refer to pieces using EXACTLY one of these descriptors:
+${allowedPieceDescriptors.map(d => `   - ${d}`).join('\n')}
+5. If any needed detail is missing, respond with: "Insufficient data to explain safely."
+6. You may NOT invent positions, threats, captures, checks, or squares.
+7. You may NOT describe any piece interactions that are not explicitly in facts.
+
+Build the explanation ONLY from the provided structured facts.
+
+Available tactics:
+${JSON.stringify(tactics, null, 2)}
+
+Legal squares: ${legalSquares.join(', ')}
+Legal pieces: ${legalPieces.join(', ')}`;
+}
+
+async function safeGPT(messages, apiKey) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, 30000);
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: messages,
+        temperature: 0.0,
+        max_tokens: 300,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "explanation",
+            schema: {
+              type: "object",
+              properties: {
+                explanation: { type: "string" }
+              },
+              required: ["explanation"]
+            }
+          }
+        }
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Safe GPT API error:', errorText);
+      throw new Error(`Safe GPT API request failed: ${response.status}`);
+    }
+
+    return await response.json();
+
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Safe GPT API request timeout');
+    }
+    throw error;
+  }
+}
+
+function verifyExplanation(text, facts, legalSquares) {
+  if (!text) return false;
+  
+  // 1) Squares check
+  const squarePattern = /\b[a-h][1-8]\b/g;
+  const usedSquares = [...text.matchAll(squarePattern)].map(m => m[0].toLowerCase());
+  
+  for (const sq of usedSquares) {
+    if (!legalSquares.includes(sq)) {
+      console.warn(`Hallucinated square detected: ${sq}`);
+      return false;
+    }
+  }
+  
+  // 2) Piece type words check
+  const piecePattern = /\b(pawn|knight|bishop|rook|queen|king)\b/gi;
+  const usedPieces = [...text.matchAll(piecePattern)].map(m => m[0].toLowerCase());
+  const legalPieces = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king'];
+  
+  for (const piece of usedPieces) {
+    if (!legalPieces.includes(piece)) {
+      console.warn(`Invalid piece mentioned: ${piece}`);
+      return false;
+    }
+  }
+  
+  // 3) Cross-check actual "color piece on square" mentions
+  const descriptorPattern = /\b(white|black)\s+(pawn|knight|bishop|rook|queen|king)\s+on\s+([a-h][1-8])\b/gi;
+  const mentionedDescriptors = [];
+  let match;
+  
+  while ((match = descriptorPattern.exec(text)) !== null) {
+    const color = match[1].toLowerCase();
+    const type = match[2].toLowerCase();
+    const square = match[3].toLowerCase();
+    mentionedDescriptors.push(`${color} ${type} on ${square}`);
+  }
+  
+  if (mentionedDescriptors.length > 0) {
+    const allowedDescriptors = buildAllowedPieceDescriptors(facts);
+    for (const desc of mentionedDescriptors) {
+      if (!allowedDescriptors.includes(desc.toLowerCase())) {
+        console.warn(`Hallucinated piece descriptor: ${desc}`);
+        return false;
+      }
+    }
+  }
+  
+  return true;
 }
 
 function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false, recursionDepth = 0) {
@@ -994,16 +1205,23 @@ async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, pu
   const conversationHistory = [
     {
       role: 'system',
-      content: buildSystemPrompt(fen, solutionMoves, moveHistory, puzzleType, positionFacts, null)
+      content: `Your ONLY job is to decide which analyze_position tool calls to make.
+
+You are NOT allowed to generate any chess explanation.
+You are NOT allowed to reason about tactics, squares, or pieces.
+Never mention any chess content.
+Only say which tool call you want to make next.
+
+Use the analyze_position tool to get Stockfish analysis data.
+Do not explain anything - only request tool calls.`
     },
     {
       role: 'user',
-      content: userQuestion || 'Why is this the best move?'
+      content: JSON.stringify({ fen, question: userQuestion || 'Why is this the best move?' })
     }
   ];
 
   let iteration = 0;
-  let finalExplanation = null;
   let bestMove = null;
 
   while (iteration < maxIterations) {
@@ -1071,40 +1289,6 @@ async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, pu
                 
                 if ((args.purpose === 'main_position' || !args.fen || args.fen === fen) && iteration === 1) {
                   positionFacts = factsForPosition;
-                  const updatedPrompt = buildSystemPrompt(analyzedFen, solutionMoves, moveHistory, puzzleType, positionFacts, bestMove);
-                  
-                  const systemOverrideIndex = conversationHistory.findIndex(m => m.role === 'system');
-                  if (systemOverrideIndex >= 0) {
-                    conversationHistory[systemOverrideIndex] = {
-                      role: 'system',
-                      content: updatedPrompt
-                    };
-                  } else {
-                    conversationHistory.unshift({
-                      role: 'system',
-                      content: updatedPrompt
-                    });
-                  }
-                  
-                  if (bestMove) {
-                    const bestMoveMessageIndex = conversationHistory.findIndex(m => 
-                      m.role === 'assistant' && 
-                      m.content && 
-                      m.content.includes('Stockfish analysis indicates')
-                    );
-                    
-                    if (bestMoveMessageIndex >= 0) {
-                      conversationHistory[bestMoveMessageIndex] = {
-                        role: 'assistant',
-                        content: `Stockfish analysis indicates the best move is: ${bestMove}`
-                      };
-                    } else {
-                      conversationHistory.push({
-                        role: 'assistant',
-                        content: `Stockfish analysis indicates the best move is: ${bestMove}`
-                      });
-                    }
-                  }
                 }
               } else {
                 console.warn(`Best move ${candidateBestMove} is not legal in position ${analyzedFen}`);
@@ -1113,21 +1297,9 @@ async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, pu
           }
         }
         
-        if (analysisSteps.length > 0 && bestMove) {
-          console.log('Forcing GPT to explain move with analysis data available');
-          const forceExplanationResponse = await callGPTWithTools(conversationHistory, OPENAI_API_KEY);
-          const forceExplanationMessage = forceExplanationResponse.choices[0].message;
-          
-          if (forceExplanationMessage.content) {
-            finalExplanation = forceExplanationMessage.content;
-            console.log('GPT returned forced explanation');
-            break;
-          }
-        }
       } else {
-        finalExplanation = assistantMessage.content;
-        console.log('GPT returned final explanation');
-        break;
+        console.log('GPT returned non-tool response, continuing to collect analysis');
+        continue;
       }
     } catch (error) {
       console.error(`Error in iteration ${iteration}:`, error);
@@ -1135,14 +1307,80 @@ async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, pu
     }
   }
 
-  if (!finalExplanation) {
-    finalExplanation = solutionMoves[0] 
-      ? `The best move is ${solutionMoves[0]}. This appears to be a ${puzzleType || 'tactical'} puzzle.`
-      : 'Unable to generate explanation. Please try again.';
+  // --------------------------------------
+  // FINAL SAFE EXPLANATION
+  // --------------------------------------
+  
+  let latestAnalysis = null;
+  if (analysisSteps.length > 0) {
+    latestAnalysis = analysisSteps[analysisSteps.length - 1].result;
   }
-
-  const finalBestMove = solutionMoves[0] || bestMove || null;
-
+  
+  const finalBestMove = bestMove || solutionMoves[0] || null;
+  const legalPieces = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king'];
+  const tactics = extractTacticsFromFacts(positionFacts);
+  const allowedPieceDescriptors = buildAllowedPieceDescriptors(positionFacts);
+  const legalSquares = buildLegalSquares(positionFacts, latestAnalysis);
+  
+  const structuredData = {
+    bestMove: finalBestMove,
+    eval: latestAnalysis?.evaluation || null,
+    pv: latestAnalysis?.principalVariation || [],
+    topMoves: latestAnalysis?.topMoves || [],
+    analysis: analysisSteps,
+    facts: positionFacts,
+    tactics: tactics,
+    legal_squares: legalSquares,
+    legal_pieces: legalPieces,
+    allowed_piece_descriptors: allowedPieceDescriptors
+  };
+  
+  const safeSystem = buildSafeSystemPrompt(legalSquares, legalPieces, tactics, allowedPieceDescriptors);
+  const safeUser = JSON.stringify(structuredData, null, 2);
+  
+  const safeMessages = [
+    { role: 'system', content: safeSystem },
+    { role: 'user', content: safeUser }
+  ];
+  
+  let safeResponse = null;
+  try {
+    console.log('Calling safeGPT for final explanation');
+    safeResponse = await safeGPT(safeMessages, OPENAI_API_KEY);
+  } catch (err) {
+    console.error('safeGPT failed:', err);
+    safeResponse = null;
+  }
+  
+  let finalExplanation = '';
+  
+  if (safeResponse?.choices?.[0]?.message?.content) {
+    const safeContent = safeResponse.choices[0].message.content;
+    
+    if (typeof safeContent === 'string') {
+      try {
+        const parsed = JSON.parse(safeContent);
+        finalExplanation = parsed.explanation || safeContent;
+      } catch {
+        finalExplanation = safeContent;
+      }
+    } else {
+      finalExplanation = safeContent;
+    }
+  }
+  
+  // Safety: verify hallucinations
+  if (!finalExplanation || !verifyExplanation(finalExplanation, positionFacts, legalSquares)) {
+    console.warn('Explanation failed verification or is empty');
+    if (latestAnalysis && finalBestMove) {
+      finalExplanation = `The best move is ${finalBestMove} with an evaluation of ${latestAnalysis.evaluation}. Principal variation: ${latestAnalysis.principalVariation.join(' ')}.`;
+    } else if (finalBestMove) {
+      finalExplanation = `The best move is ${finalBestMove}.`;
+    } else {
+      finalExplanation = 'Insufficient data to explain safely.';
+    }
+  }
+  
   return {
     explanation: finalExplanation,
     analysisSteps: analysisSteps,
@@ -1195,7 +1433,7 @@ export default async function handler(req, res) {
       bestMove: result.bestMove || 'Unknown',
       puzzleType: puzzleType,
       analysisSteps: result.analysisSteps,
-      method: 'Agentic GPT + Stockfish',
+      method: 'Agentic GPT + SafeGPT + Stockfish',
       timestamp: new Date().toISOString()
     });
 
