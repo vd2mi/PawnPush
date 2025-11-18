@@ -826,7 +826,7 @@ async function safeGPT(messages, apiKey) {
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'gpt-4',
+        model: "gpt-4.1-mini",
         messages: messages,
         temperature: 0.0,
         max_tokens: 300,
@@ -1113,7 +1113,7 @@ async function callGPTWithTools(messages, apiKey) {
         'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+        model: "gpt-4.1-mini",
         messages: messages,
         tools: [
           {
