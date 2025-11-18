@@ -2,10 +2,29 @@ import { Chess } from 'chess.js';
 
 function sanitizeMove(move) {
   if (!move) return "";
-  return move
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-h1-8=qrnb]/g, ""); // remove symbols except UCI characters
+  let cleaned = move.toLowerCase().trim();
+  
+  if (cleaned.includes('=')) {
+    const parts = cleaned.split('=');
+    if (parts.length === 2) {
+      const movePart = parts[0].replace(/[^a-h1-8]/g, "");
+      const promoPart = parts[1].replace(/[^qrnb]/g, "");
+      if (movePart.length >= 4 && promoPart.length === 1) {
+        cleaned = movePart + promoPart;
+      }
+    }
+  }
+  
+  cleaned = cleaned.replace(/[^a-h1-8=qrnb]/g, "");
+  cleaned = cleaned.replace(/=+/g, "");
+  
+  if (cleaned.length > 4) {
+    const base = cleaned.substring(0, 4);
+    const promo = cleaned.substring(4).replace(/[^qrnb]/g, "");
+    cleaned = base + (promo ? promo[0] : "");
+  }
+  
+  return cleaned;
 }
 
 
@@ -135,6 +154,29 @@ async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, pu
               hfToken: HF_TOKEN
             });
 
+            
+            if (analysisResult.principalVariation.length === 0 || 
+                analysisResult.principalVariation[0] === undefined) {
+              
+              if (analysisResult.topMoves?.[0]?.pv?.length > 0) {
+                analysisResult.principalVariation = analysisResult.topMoves[0].pv;
+                console.log("PV recovered from topMoves[0].pv");
+              } else {
+                console.log("PV missing — requesting deeper analysis for recovery");
+
+                const recovery = await analyzePosition({
+                  fen: args.fen || fen,
+                  depth: 22,
+                  multipv: 1,
+                  purpose: "pv_recovery",
+                  hfToken: HF_TOKEN
+                });
+
+                analysisResult.principalVariation = recovery.principalVariation;
+                analysisResult.topMoves = recovery.topMoves;
+              }
+            }
+
             analysisSteps.push({
               request: args,
               result: analysisResult
@@ -147,51 +189,52 @@ async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, pu
             });
 
             if (!bestMove && analysisResult.bestMove) {
-              bestMove = analysisResult.bestMove;
+              const candidateBestMove = analysisResult.bestMove;
               
-              // Recompute FACTS for the position being analyzed (might differ from initial FEN)
               const analyzedFen = args.fen || fen;
-              const factsForPosition = computeFullPositionFacts(analyzedFen, [bestMove], true);
-              
-              // Validate move legality, not just from-square existence
-              const sanitizedMove = sanitizeMove(bestMove);
+              const sanitizedMove = sanitizeMove(candidateBestMove);
               const from = sanitizedMove?.substring(0, 2);
               const to = sanitizedMove?.substring(2, 4);
               
               let moveIsLegal = false;
-              let pieceExists = false;
               
               if (from && to && from.length === 2 && to.length === 2) {
-                pieceExists = factsForPosition.pieces.some(p => p.square.toLowerCase().trim() === from);
-                
-                // Check if move is actually legal
                 try {
                   const testChess = new Chess(analyzedFen);
-                  const promotion = sanitizedMove.length > 4 ? sanitizedMove.substring(4) : undefined;
-                  const moveObj = testChess.move({ from, to, promotion: promotion || 'q' });
-                  moveIsLegal = !!moveObj;
+                  const legalMoves = testChess.moves({ verbose: true });
+                  moveIsLegal = legalMoves.some(m => m.from === from && m.to === to);
                 } catch (error) {
                   moveIsLegal = false;
                 }
               }
               
-              // Update positionFacts if this is the main position analysis
-              if (args.purpose === 'main_position' || !args.fen || args.fen === fen) {
-                positionFacts = factsForPosition;
-                // Update system prompt with new FACTS and bestMove
-                const updatedPrompt = buildSystemPrompt(analyzedFen, solutionMoves, moveHistory, puzzleType, positionFacts, bestMove);
+              if (moveIsLegal) {
+                bestMove = candidateBestMove;
                 
-                // ISSUE 1 FIX: Clear previous assistant/user messages when updating system prompt
-                // Keep only the initial system prompt and user question, remove all tool calls and responses
-                const initialUserMessage = conversationHistory.find(m => m.role === 'user' && !m.tool_call_id);
-                conversationHistory.length = 0;
-                conversationHistory.push({
-                  role: 'system',
-                  content: updatedPrompt
-                });
-                if (initialUserMessage) {
-                  conversationHistory.push(initialUserMessage);
+                const factsForPosition = computeFullPositionFacts(analyzedFen, [], true);
+                
+                if (args.purpose === 'main_position' || !args.fen || args.fen === fen) {
+                  positionFacts = factsForPosition;
+                  const updatedPrompt = buildSystemPrompt(analyzedFen, solutionMoves, moveHistory, puzzleType, positionFacts, bestMove);
+                  
+                  const lastUserMessage = [...conversationHistory].reverse().find(m => m.role === 'user' && !m.tool_call_id);
+                  conversationHistory.length = 0;
+                  conversationHistory.push({
+                    role: 'system',
+                    content: updatedPrompt
+                  });
+                  if (lastUserMessage) {
+                    conversationHistory.push(lastUserMessage);
+                  }
+                  if (bestMove) {
+                    conversationHistory.push({
+                      role: 'assistant',
+                      content: `Stockfish analysis indicates the best move is: ${bestMove}`
+                    });
+                  }
                 }
+              } else {
+                console.warn(`Best move ${candidateBestMove} is not legal in position ${analyzedFen}`);
               }
             }
           }
@@ -303,6 +346,60 @@ async function callGPTWithTools(messages, apiKey) {
 }
 
 
+function validateMove(fen, move) {
+  if (!move) return null;
+  
+  try {
+    const sanitizedMove = sanitizeMove(move);
+    if (sanitizedMove.length < 4) return null;
+    
+    const from = sanitizedMove.substring(0, 2);
+    const to = sanitizedMove.substring(2, 4);
+    const promotion = sanitizedMove.length > 4 ? sanitizedMove.substring(4) : undefined;
+    
+    if (from.length !== 2 || to.length !== 2) return null;
+    
+    const chess = new Chess(fen);
+    const legalMoves = chess.moves({ verbose: true });
+    const isLegal = legalMoves.some(m => m.from === from && m.to === to);
+    
+    return isLegal ? sanitizedMove : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function validatePVMoves(fen, pvMoves) {
+  if (!Array.isArray(pvMoves) || pvMoves.length === 0) return [];
+  
+  const validated = [];
+  let currentFen = fen;
+  
+  for (const move of pvMoves) {
+    const validatedMove = validateMove(currentFen, move);
+    if (!validatedMove) break;
+    
+    validated.push(validatedMove);
+    
+    try {
+      const chess = new Chess(currentFen);
+      const from = validatedMove.substring(0, 2);
+      const to = validatedMove.substring(2, 4);
+      const promotion = validatedMove.length > 4 ? validatedMove.substring(4) : undefined;
+      const moveObj = chess.move({ from, to, promotion: promotion || 'q' });
+      if (moveObj) {
+        currentFen = chess.fen();
+      } else {
+        break;
+      }
+    } catch (error) {
+      break;
+    }
+  }
+  
+  return validated;
+}
+
 async function analyzePosition({ fen, depth, multipv, purpose, hfToken }) {
   try {
     const controller = new AbortController();
@@ -360,42 +457,50 @@ async function analyzePosition({ fen, depth, multipv, purpose, hfToken }) {
                                data.principalVariation || 
                                [];
 
-    const clampedPV = principalVariation.slice(0, Math.min(principalVariation.length, 4));
+    const validatedPV = validatePVMoves(fen, principalVariation);
+    const clampedPV = validatedPV.slice(0, Math.min(validatedPV.length, 4));
 
     let topMoves = [];
     if (data.lines && Array.isArray(data.lines)) {
       topMoves = data.lines.slice(0, multipv || 3).map(line => {
         const linePV = line.pv || line.principal_variation || line.principalVariation || [];
-        const clampedLinePV = linePV.slice(0, Math.min(linePV.length, 4));
+        const validatedLinePV = validatePVMoves(fen, linePV);
+        const clampedLinePV = validatedLinePV.slice(0, Math.min(validatedLinePV.length, 4));
+        const validatedMove = validateMove(fen, line.move || line.best_move || bestMove);
         return {
-          move: line.move || line.best_move || bestMove,
+          move: validatedMove,
           evaluation: formatEval(line.evaluation || data.evaluation),
           evalScore: parseEval(line.evaluation || data.evaluation),
           pv: clampedLinePV
         };
-      });
+      }).filter(m => m.move);
     } else if (data.multipv && Array.isArray(data.multipv)) {
       topMoves = data.multipv.slice(0, multipv || 3).map(line => {
         const linePV = line.pv || line.principal_variation || line.principalVariation || [];
-        const clampedLinePV = linePV.slice(0, Math.min(linePV.length, 4));
+        const validatedLinePV = validatePVMoves(fen, linePV);
+        const clampedLinePV = validatedLinePV.slice(0, Math.min(validatedLinePV.length, 4));
+        const validatedMove = validateMove(fen, line.move || line.best_move || bestMove);
         return {
-          move: line.move || line.best_move || bestMove,
+          move: validatedMove,
           evaluation: formatEval(line.evaluation || data.evaluation),
           evalScore: parseEval(line.evaluation || data.evaluation),
           pv: clampedLinePV
         };
-      });
+      }).filter(m => m.move);
     } else {
-      topMoves = [{
-        move: bestMove,
+      const validatedBestMove = validateMove(fen, bestMove);
+      topMoves = validatedBestMove ? [{
+        move: validatedBestMove,
         evaluation: formatEval(data.evaluation),
         evalScore: parseEval(data.evaluation),
         pv: clampedPV
-      }];
+      }] : [];
     }
 
+    const validatedBestMove = validateMove(fen, bestMove);
+
     return {
-      bestMove,
+      bestMove: validatedBestMove || bestMove,
       evaluation,
       evalScore,
       isMate,
@@ -495,7 +600,6 @@ FINAL REQUIREMENT: Ground explanations in Stockfish data and FACTS. Do not inven
 }
 
 function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false, recursionDepth = 0) {
-  // ISSUE 2 FIX: Guard against infinite recursion
   if (recursionDepth > 2) {
     console.warn('computeFullPositionFacts recursion depth exceeded');
     return {
@@ -527,8 +631,7 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false, rec
       const color = piece.color === 'w' ? 'white' : 'black';
       const type = getPieceName(piece.type);
       
-      // ISSUE 3 FIX: Use legal moves instead of ray-tracing for accurate attack detection
-      const attackedSquares = getAttackedSquaresLegal(chess, square);
+      const attackedSquares = getAttackedSquaresPseudoLegal(chess, square);
       
       const attackedPieces = attackedSquares
         .map(sq => {
@@ -651,14 +754,19 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false, rec
         
         try {
           const afterChess = new Chess(fen);
-          const moveObj = afterChess.move({ from, to, promotion: promotion || 'q' });
+          const legalMoves = afterChess.moves({ verbose: true });
+          const isLegal = legalMoves.some(m => m.from === from && m.to === to);
           
-          if (moveObj) {
-            const afterFacts = computeFullPositionFacts(afterChess.fen(), [], true, recursionDepth + 1);
-            facts.afterMove = {
-              move: sanitizedMove,
-              position: afterFacts
-            };
+          if (isLegal) {
+            const moveObj = afterChess.move({ from, to, promotion: promotion || 'q' });
+            
+            if (moveObj) {
+              const afterFacts = computeFullPositionFacts(afterChess.fen(), [], true, recursionDepth + 1);
+              facts.afterMove = {
+                move: sanitizedMove,
+                position: afterFacts
+              };
+            }
           }
         } catch (error) {
           console.error('Error computing afterMove facts:', error);
@@ -766,12 +874,79 @@ function getSquareBehind(square, direction) {
   return getNextSquare(square, reverseDir);
 }
 
-function getAttackedSquaresLegal(chess, square) {
-  // ISSUE 3 FIX: Use legal moves to get accurate attack squares (respects pins, blockers, etc.)
+function getAttackedSquaresPseudoLegal(chess, square) {
   try {
-    const moves = chess.moves({ square, verbose: true });
-    const attackedSquares = moves.map(m => m.to);
-    return [...new Set(attackedSquares)];
+    const piece = chess.get(square);
+    if (!piece) return [];
+    
+    const attackedSquares = new Set();
+    const pieceType = piece.type;
+    const pieceColor = piece.color;
+    const file = square.charCodeAt(0) - 97;
+    const rank = parseInt(square[1]);
+    
+    if (pieceType === 'p') {
+      const direction = pieceColor === 'w' ? 1 : -1;
+      const leftFile = file - 1;
+      const rightFile = file + 1;
+      const newRank = rank + direction;
+      
+      if (leftFile >= 0 && newRank >= 1 && newRank <= 8) {
+        attackedSquares.add(String.fromCharCode(97 + leftFile) + newRank);
+      }
+      if (rightFile <= 7 && newRank >= 1 && newRank <= 8) {
+        attackedSquares.add(String.fromCharCode(97 + rightFile) + newRank);
+      }
+    }
+    else if (pieceType === 'n') {
+      const knightMoves = [
+        [-2, -1], [-2, 1], [-1, -2], [-1, 2],
+        [1, -2], [1, 2], [2, -1], [2, 1]
+      ];
+      for (const [df, dr] of knightMoves) {
+        const newFile = file + df;
+        const newRank = rank + dr;
+        if (newFile >= 0 && newFile <= 7 && newRank >= 1 && newRank <= 8) {
+          attackedSquares.add(String.fromCharCode(97 + newFile) + newRank);
+        }
+      }
+    }
+    else if (pieceType === 'k') {
+      for (let df = -1; df <= 1; df++) {
+        for (let dr = -1; dr <= 1; dr++) {
+          if (df === 0 && dr === 0) continue;
+          const newFile = file + df;
+          const newRank = rank + dr;
+          if (newFile >= 0 && newFile <= 7 && newRank >= 1 && newRank <= 8) {
+            attackedSquares.add(String.fromCharCode(97 + newFile) + newRank);
+          }
+        }
+      }
+    }
+    else {
+      const directions = [];
+      if (pieceType === 'r' || pieceType === 'q') {
+        directions.push([0, 1], [0, -1], [1, 0], [-1, 0]);
+      }
+      if (pieceType === 'b' || pieceType === 'q') {
+        directions.push([1, 1], [1, -1], [-1, 1], [-1, -1]);
+      }
+      
+      for (const [df, dr] of directions) {
+        for (let i = 1; i < 8; i++) {
+          const newFile = file + df * i;
+          const newRank = rank + dr * i;
+          if (newFile < 0 || newFile > 7 || newRank < 1 || newRank > 8) break;
+          
+          const targetSquare = String.fromCharCode(97 + newFile) + newRank;
+          attackedSquares.add(targetSquare);
+          
+          if (chess.get(targetSquare)) break;
+        }
+      }
+    }
+    
+    return Array.from(attackedSquares);
   } catch (error) {
     return [];
   }
@@ -787,59 +962,49 @@ function isPinned(chess, square, pieceColor) {
   const piece = chess.get(square);
   if (!piece || piece.type === 'k') return false;
   
+  const direction = getDirection(square, kingSquare);
+  if (!direction) return false;
+  
   const testChess = new Chess(chess.fen());
+  const oppositeDir = getOppositeDirection(direction);
+  if (!oppositeDir) return false;
   
-  const directions = [
-    'up', 'down', 'left', 'right',
-    'up-right', 'up-left', 'down-right', 'down-left'
-  ];
+  let attackerSquare = null;
+  let current = getNextSquare(square, oppositeDir);
+  let piecesBetween = 0;
   
-  for (const dir of directions) {
-    const direction = getDirection(square, kingSquare);
-    if (direction !== dir) continue;
-    
-    const oppositeDir = getOppositeDirection(dir);
-    if (!oppositeDir) continue;
-    
-    let attackerSquare = null;
-    let current = getNextSquare(square, oppositeDir);
-    
-    while (current) {
-      const p = testChess.get(current);
-      if (p) {
-        if (p.color === pieceColor) {
-          break;
-        }
-        attackerSquare = current;
-        break;
+  while (current) {
+    const p = testChess.get(current);
+    if (p) {
+      if (p.color === pieceColor) {
+        return false;
       }
-      current = getNextSquare(current, oppositeDir);
+      attackerSquare = current;
+      break;
     }
-    
-    if (!attackerSquare) continue;
-    
-    const attacker = testChess.get(attackerSquare);
-    if (!attacker || attacker.color === pieceColor) continue;
-    
-    const attackerType = attacker.type;
-    const isLinePiece = attackerType === 'r' || attackerType === 'b' || attackerType === 'q';
-    if (!isLinePiece) continue;
-    
-    const canAttackAlongLine = 
-      (attackerType === 'r' && (dir === 'up' || dir === 'down' || dir === 'left' || dir === 'right')) ||
-      (attackerType === 'b' && (dir === 'up-right' || dir === 'up-left' || dir === 'down-right' || dir === 'down-left')) ||
-      (attackerType === 'q');
-    
-    if (canAttackAlongLine) {
-      testChess.remove(square);
-      const wouldBeInCheck = testChess.in_check();
-      if (wouldBeInCheck) {
-        return true;
-      }
-    }
+    piecesBetween++;
+    current = getNextSquare(current, oppositeDir);
   }
   
-  return false;
+  if (!attackerSquare) return false;
+  
+  const attacker = testChess.get(attackerSquare);
+  if (!attacker || attacker.color === pieceColor) return false;
+  
+  const attackerType = attacker.type;
+  const isLinePiece = attackerType === 'r' || attackerType === 'b' || attackerType === 'q';
+  if (!isLinePiece) return false;
+  
+  const canAttackAlongLine = 
+    (attackerType === 'r' && (direction === 'up' || direction === 'down' || direction === 'left' || direction === 'right')) ||
+    (attackerType === 'b' && (direction === 'up-right' || direction === 'up-left' || direction === 'down-right' || direction === 'down-left')) ||
+    (attackerType === 'q');
+  
+  if (!canAttackAlongLine) return false;
+  
+  testChess.remove(square);
+  const wouldBeInCheck = testChess.in_check();
+  return wouldBeInCheck;
 }
 
 function getOppositeDirection(dir) {
@@ -911,7 +1076,6 @@ function canCaptureSquare(chess, fromSquare, toSquare, pieceColor) {
 }
 
 function detectSkewer(chess, piece, allPieces) {
-  // ISSUE 6 FIX: Improved skewer detection - handles all line pieces and value comparisons correctly
   if (piece.type === 'pawn' || piece.type === 'knight' || piece.type === 'king') {
     return false;
   }
@@ -930,7 +1094,6 @@ function detectSkewer(chess, piece, allPieces) {
   if (!direction) return false;
   
   const attackedValue = getPieceValue(attackedPiece.type);
-  // High-value piece must be in front (queen, rook, or king)
   if (attackedValue < 5 && attackedPiece.type !== 'king') return false;
   
   const oppositeDir = getOppositeDirection(direction);
@@ -942,11 +1105,9 @@ function detectSkewer(chess, piece, allPieces) {
     if (p) {
       if (p.color === attackedPiece.color) {
         const behindValue = getPieceValue(p.type);
-        // Behind piece must be less valuable (or king behind non-king)
         if (behindValue < attackedValue || (p.type === 'king' && attackedPiece.type !== 'king')) {
           return true;
         }
-        // Also handle reverse: king in front, piece behind
         if (attackedPiece.type === 'king' && behindValue > 0) {
           return true;
         }
