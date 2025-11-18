@@ -34,325 +34,6 @@ function sanitizeMove(move) {
   return cleaned;
 }
 
-
-export default async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-    if (req.method === 'OPTIONS') {
-      return res.status(200).end();
-    }
-  
-
-  let fen, userQuestion, solutionMoves, moveHistory, puzzleType;
-  
-  if (req.method === 'GET') {
-    fen = req.query.fen;
-    userQuestion = req.query.question;
-    solutionMoves = req.query.solutionMove ? [req.query.solutionMove] : [];
-    puzzleType = req.query.puzzleType;
-    moveHistory = null;
-  } else if (req.method === 'POST') {
-    ({ fen, userQuestion, solutionMoves, moveHistory } = req.body);
-    puzzleType = req.body.puzzleType;
-  } else {
-      return res.status(405).json({ error: 'Method not allowed' });
-    }
-  
-      if (!fen) {
-        return res.status(400).json({ error: 'FEN is required' });
-      }
-  
-
-  try {
-    const testChess = new Chess(fen);
-  } catch (error) {
-    return res.status(400).json({ error: 'Invalid FEN format' });
-  }
-
-  try {
-    const result = await runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, puzzleType);
-    
-
-    return res.status(200).json({
-      success: true,
-      hint: result.explanation,
-      explanation: result.explanation,
-      bestMove: result.bestMove || 'Unknown',
-      puzzleType: puzzleType,
-      analysisSteps: result.analysisSteps,
-      method: 'Agentic GPT + Stockfish',
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('Agentic coach error:', error);
-    
-        return res.status(200).json({
-          success: true,
-      hint: solutionMoves[0] 
-        ? `The best move is ${solutionMoves[0]}. This appears to be a ${puzzleType || 'tactical'} puzzle.`
-        : 'Error occurred, but try looking for tactical patterns like checks, captures, and threats.',
-      bestMove: solutionMoves[0] || 'Unknown',
-      explanation: 'API temporarily unavailable',
-      analysisSteps: []
-    });
-  }
-}
-
-
-async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, puzzleType) {
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-  const HF_TOKEN = process.env.HF_TOKEN;
-
-  if (!OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY not configured');
-  }
-
-  if (!HF_TOKEN) {
-    throw new Error('HF_TOKEN not configured');
-  }
-
-  const maxIterations = 5;
-  const analysisSteps = [];
-  
-  let positionFacts = computeFullPositionFacts(fen, solutionMoves);
-  
-  const conversationHistory = [
-    {
-      role: 'system',
-      content: buildSystemPrompt(fen, solutionMoves, moveHistory, puzzleType, positionFacts, null)
-    },
-    {
-      role: 'user',
-      content: userQuestion || 'Why is this the best move?'
-    }
-  ];
-
-  let iteration = 0;
-  let finalExplanation = null;
-  let bestMove = null;
-
-  while (iteration < maxIterations) {
-    iteration++;
-    console.log(`Agent iteration ${iteration}/${maxIterations}`);
-
-    try {
-
-      const response = await callGPTWithTools(conversationHistory, OPENAI_API_KEY);
-      
-      const assistantMessage = response.choices[0].message;
-      conversationHistory.push(assistantMessage);
-
-
-      if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-        for (const toolCall of assistantMessage.tool_calls) {
-          if (toolCall.function.name === 'analyze_position') {
-            const args = JSON.parse(toolCall.function.arguments);
-            
-            console.log(`GPT requested analysis:`, args);
-            
-            const analysisResult = await analyzePosition({
-              fen: args.fen || fen,
-              depth: args.depth || 18,
-              multipv: args.multipv || 3,
-              purpose: args.purpose || 'main_position',
-              hfToken: HF_TOKEN
-            });
-
-            
-            if (analysisResult.principalVariation.length === 0 || 
-                analysisResult.principalVariation[0] === undefined) {
-              
-              if (analysisResult.topMoves?.[0]?.pv?.length > 0) {
-                analysisResult.principalVariation = analysisResult.topMoves[0].pv;
-                console.log("PV recovered from topMoves[0].pv");
-              } else {
-                console.log("PV missing — requesting deeper analysis for recovery");
-
-                const recovery = await analyzePosition({
-                  fen: args.fen || fen,
-                  depth: 22,
-                  multipv: 1,
-                  purpose: "pv_recovery",
-                  hfToken: HF_TOKEN
-                });
-
-                analysisResult.principalVariation = recovery.principalVariation;
-                analysisResult.topMoves = recovery.topMoves;
-              }
-            }
-
-            analysisSteps.push({
-              request: args,
-              result: analysisResult
-            });
-
-            conversationHistory.push({
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              content: JSON.stringify(analysisResult)
-            });
-
-            if (!bestMove && analysisResult.bestMove) {
-              const candidateBestMove = analysisResult.bestMove;
-              
-              const analyzedFen = args.fen || fen;
-              const sanitizedMove = sanitizeMove(candidateBestMove);
-              const from = sanitizedMove?.substring(0, 2);
-              const to = sanitizedMove?.substring(2, 4);
-              
-              let moveIsLegal = false;
-              
-              if (from && to && from.length === 2 && to.length === 2) {
-                try {
-                  const testChess = new Chess(analyzedFen);
-                  const legalMoves = testChess.moves({ verbose: true });
-                  moveIsLegal = legalMoves.some(m => m.from === from && m.to === to);
-                } catch (error) {
-                  moveIsLegal = false;
-                }
-              }
-              
-              if (moveIsLegal) {
-                bestMove = candidateBestMove;
-                
-                const factsForPosition = computeFullPositionFacts(analyzedFen, [], true);
-                
-                if (args.purpose === 'main_position' || !args.fen || args.fen === fen) {
-                  positionFacts = factsForPosition;
-                  const updatedPrompt = buildSystemPrompt(analyzedFen, solutionMoves, moveHistory, puzzleType, positionFacts, bestMove);
-                  
-                  const lastUserMessage = [...conversationHistory].reverse().find(m => m.role === 'user' && !m.tool_call_id);
-                  conversationHistory.length = 0;
-                  conversationHistory.push({
-                    role: 'system',
-                    content: updatedPrompt
-                  });
-                  if (lastUserMessage) {
-                    conversationHistory.push(lastUserMessage);
-                  }
-                  if (bestMove) {
-                    conversationHistory.push({
-                      role: 'assistant',
-                      content: `Stockfish analysis indicates the best move is: ${bestMove}`
-                    });
-                  }
-                }
-              } else {
-                console.warn(`Best move ${candidateBestMove} is not legal in position ${analyzedFen}`);
-              }
-            }
-          }
-        }
-      } else {
-        finalExplanation = assistantMessage.content;
-        console.log('GPT returned final explanation');
-        break;
-      }
-    } catch (error) {
-      console.error(`Error in iteration ${iteration}:`, error);
-      throw error;
-    }
-  }
-
-  if (!finalExplanation) {
-    finalExplanation = solutionMoves[0] 
-      ? `The best move is ${solutionMoves[0]}. This appears to be a ${puzzleType || 'tactical'} puzzle.`
-      : 'Unable to generate explanation. Please try again.';
-  }
-
-  const finalBestMove = solutionMoves[0] || bestMove || null;
-
-  return {
-    explanation: finalExplanation,
-    analysisSteps: analysisSteps,
-    bestMove: finalBestMove
-  };
-}
-
-async function callGPTWithTools(messages, apiKey) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, 30000);
-
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4',
-        messages: messages,
-        tools: [
-          {
-            type: 'function',
-            function: {
-              name: 'analyze_position',
-              description: 'Analyze a chess position using Stockfish engine. Use this to get evaluations, best moves, and principal variations.',
-              parameters: {
-                type: 'object',
-                properties: {
-                  fen: {
-                    type: 'string',
-                    description: 'FEN string of the position to analyze'
-                  },
-                  depth: {
-                    type: 'integer',
-                    description: 'Search depth (default: 18)',
-                    default: 18,
-                    minimum: 10,
-                    maximum: 25
-                  },
-                  multipv: {
-                    type: 'integer',
-                    description: 'Number of alternative moves to return (default: 3)',
-                    default: 3,
-                    minimum: 1,
-                    maximum: 5
-                  },
-                  purpose: {
-                    type: 'string',
-                    enum: ['main_position', 'after_solution', 'alternative_move', 'verification'],
-                    description: 'Purpose of this analysis: main_position (initial analysis), after_solution (position after best move), alternative_move (checking an alternative), verification (double-checking a line)'
-                  }
-                },
-                required: ['purpose']
-              }
-            }
-          }
-        ],
-        tool_choice: 'auto',
-        temperature: 0.0,
-        max_tokens: 400
-      }),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('GPT API error:', errorText);
-      throw new Error(`GPT API request failed: ${response.status}`);
-    }
-
-    return await response.json();
-
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error.name === 'AbortError') {
-      throw new Error('GPT API request timeout');
-    }
-    throw error;
-  }
-}
-
-
 function validateMove(fen, move) {
   if (!move) return null;
   
@@ -362,7 +43,6 @@ function validateMove(fen, move) {
     
     const from = sanitizedMove.substring(0, 2);
     const to = sanitizedMove.substring(2, 4);
-    const promotion = sanitizedMove.length > 4 ? sanitizedMove.substring(4) : undefined;
     
     if (from.length !== 2 || to.length !== 2) return null;
     
@@ -407,6 +87,424 @@ function validatePVMoves(fen, pvMoves) {
   return validated;
 }
 
+function getPieceName(pieceType) {
+  const names = {
+    'p': 'pawn',
+    'r': 'rook',
+    'n': 'knight',
+    'b': 'bishop',
+    'q': 'queen',
+    'k': 'king'
+  };
+  return names[pieceType] || 'piece';
+}
+
+function getPieceValue(pieceType) {
+  const values = {
+    'pawn': 1,
+    'knight': 3,
+    'bishop': 3,
+    'rook': 5,
+    'queen': 9,
+    'king': 100
+  };
+  return values[pieceType] || 0;
+}
+
+function squareToCoords(square) {
+  const file = square.charCodeAt(0) - 97;
+  const rank = parseInt(square[1]);
+  return { file, rank };
+}
+
+function coordsToSquare(file, rank) {
+  if (file < 0 || file > 7 || rank < 1 || rank > 8) return null;
+  return String.fromCharCode(97 + file) + rank;
+}
+
+function buildPseudoLegalAttackMap(chess) {
+  const attackMap = new Map();
+  const allSquares = [];
+  
+  for (let r = 1; r <= 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      allSquares.push(coordsToSquare(f, r));
+    }
+  }
+  
+  for (const square of allSquares) {
+    const piece = chess.get(square);
+    if (!piece) continue;
+    
+    const attackedSquares = getPseudoLegalAttacks(chess, square, piece);
+    
+    for (const targetSquare of attackedSquares) {
+      if (!attackMap.has(targetSquare)) {
+        attackMap.set(targetSquare, []);
+      }
+      attackMap.get(targetSquare).push({
+        square,
+        color: piece.color === 'w' ? 'white' : 'black',
+        type: getPieceName(piece.type)
+      });
+    }
+  }
+  
+  return attackMap;
+}
+
+function getPseudoLegalAttacks(chess, square, piece) {
+  const attackedSquares = new Set();
+  const { file, rank } = squareToCoords(square);
+  const pieceType = piece.type;
+  const pieceColor = piece.color;
+  
+  if (pieceType === 'p') {
+    const direction = pieceColor === 'w' ? 1 : -1;
+    const leftFile = file - 1;
+    const rightFile = file + 1;
+    const newRank = rank + direction;
+    
+    if (leftFile >= 0 && newRank >= 1 && newRank <= 8) {
+      attackedSquares.add(coordsToSquare(leftFile, newRank));
+    }
+    if (rightFile <= 7 && newRank >= 1 && newRank <= 8) {
+      attackedSquares.add(coordsToSquare(rightFile, newRank));
+    }
+  } else if (pieceType === 'n') {
+    const knightMoves = [
+      [-2, -1], [-2, 1], [-1, -2], [-1, 2],
+      [1, -2], [1, 2], [2, -1], [2, 1]
+    ];
+    for (const [df, dr] of knightMoves) {
+      const targetSquare = coordsToSquare(file + df, rank + dr);
+      if (targetSquare) attackedSquares.add(targetSquare);
+    }
+  } else if (pieceType === 'k') {
+    for (let df = -1; df <= 1; df++) {
+      for (let dr = -1; dr <= 1; dr++) {
+        if (df === 0 && dr === 0) continue;
+        const targetSquare = coordsToSquare(file + df, rank + dr);
+        if (targetSquare) attackedSquares.add(targetSquare);
+      }
+    }
+  } else {
+    const directions = [];
+    if (pieceType === 'r' || pieceType === 'q') {
+      directions.push([0, 1], [0, -1], [1, 0], [-1, 0]);
+    }
+    if (pieceType === 'b' || pieceType === 'q') {
+      directions.push([1, 1], [1, -1], [-1, 1], [-1, -1]);
+    }
+    
+    for (const [df, dr] of directions) {
+      for (let i = 1; i < 8; i++) {
+        const targetSquare = coordsToSquare(file + df * i, rank + dr * i);
+        if (!targetSquare) break;
+        
+        attackedSquares.add(targetSquare);
+        
+        if (chess.get(targetSquare)) break;
+      }
+    }
+  }
+  
+  return Array.from(attackedSquares).filter(Boolean);
+}
+
+function getKingSquare(chess, color) {
+  const board = chess.board();
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const piece = board[r][c];
+      if (piece && piece.type === 'k' && piece.color === color) {
+        return coordsToSquare(c, 8 - r);
+      }
+    }
+  }
+  return null;
+}
+
+function isSquareAttackedByColor(chess, square, attackerColor, attackMap) {
+  const attackers = attackMap.get(square) || [];
+  return attackers.some(a => a.color === attackerColor);
+}
+
+function isPinned(chess, square, pieceColor, attackMap) {
+  try {
+    const kingColor = pieceColor === 'white' ? 'w' : 'b';
+    const kingSquare = getKingSquare(chess, kingColor);
+    if (!kingSquare) return false;
+    
+    const originalPiece = chess.get(square);
+    if (!originalPiece || originalPiece.type === 'k') return false;
+    
+    const test = new Chess(chess.fen());
+    const attackerColor = pieceColor === 'white' ? 'black' : 'white';
+    
+    const kingAttackedBefore = isSquareAttackedByColor(test, kingSquare, attackerColor, attackMap);
+    
+    test.remove(square);
+    const testAttackMap = buildPseudoLegalAttackMap(test);
+    const kingAttackedAfter = isSquareAttackedByColor(test, kingSquare, attackerColor, testAttackMap);
+    
+    return !kingAttackedBefore && kingAttackedAfter;
+  } catch (error) {
+    return false;
+  }
+}
+
+function detectForks(chess, piece, attackMap) {
+  const forks = [];
+  
+  if (piece.attacksPieces.length < 2) return forks;
+  
+  const attackedPieces = piece.attacksPieces.map(desc => {
+    const match = desc.match(/(\w+) (\w+) on (\w+)/);
+    if (match) {
+      return { color: match[1], type: match[2], square: match[3] };
+    }
+    return null;
+  }).filter(Boolean);
+  
+  if (attackedPieces.length < 2) return forks;
+  
+  for (let i = 0; i < attackedPieces.length; i++) {
+    for (let j = i + 1; j < attackedPieces.length; j++) {
+      const p1 = attackedPieces[i];
+      const p2 = attackedPieces[j];
+      
+      const canCapture1 = piece.attacks.includes(p1.square.toLowerCase());
+      const canCapture2 = piece.attacks.includes(p2.square.toLowerCase());
+      
+      if (canCapture1 && canCapture2) {
+        forks.push(`${p1.color} ${p1.type} on ${p1.square}`, `${p2.color} ${p2.type} on ${p2.square}`);
+      }
+    }
+  }
+  
+  return forks;
+}
+
+function detectSkewer(chess, piece, allPieces) {
+  if (piece.type === 'pawn' || piece.type === 'knight' || piece.type === 'king') {
+    return false;
+  }
+  
+  if (piece.attacksPieces.length !== 1) return false;
+  
+  const attackedDesc = piece.attacksPieces[0];
+  const match = attackedDesc.match(/(\w+) (\w+) on (\w+)/);
+  if (!match) return false;
+  
+  const attackedSquare = match[3].toLowerCase().trim();
+  const attackedPiece = allPieces.find(p => p.square.toLowerCase().trim() === attackedSquare);
+  if (!attackedPiece) return false;
+  
+  const direction = getDirection(piece.square, attackedSquare);
+  if (!direction) return false;
+  
+  const attackedValue = getPieceValue(attackedPiece.type);
+  if (attackedValue < 5 && attackedPiece.type !== 'king') return false;
+  
+  const oppositeDir = getOppositeDirection(direction);
+  if (!oppositeDir) return false;
+  
+  let current = getNextSquare(attackedSquare, oppositeDir);
+  while (current) {
+    const p = chess.get(current);
+    if (p) {
+      if (p.color === attackedPiece.color) {
+        const behindValue = getPieceValue(p.type);
+        if (behindValue < attackedValue || (p.type === 'king' && attackedPiece.type !== 'king')) {
+          return true;
+        }
+        if (attackedPiece.type === 'king' && behindValue > 0) {
+          return true;
+        }
+      }
+      break;
+    }
+    current = getNextSquare(current, oppositeDir);
+  }
+  
+  return false;
+}
+
+function isOverloaded(chess, piece, attackMap, defenseMap) {
+  if (piece.type === 'king') return false;
+  
+  const criticalThreats = [];
+  
+  const defenders = defenseMap.get(piece.square) || [];
+  const attackers = attackMap.get(piece.square) || [];
+  const enemyAttackers = attackers.filter(a => a.color !== piece.color);
+  
+  for (const defender of defenders) {
+    const defendedSquare = defender.square;
+    const defendersOfDefended = defenseMap.get(defendedSquare) || [];
+    const attackersOfDefended = attackMap.get(defendedSquare) || [];
+    const enemyAttackersOfDefended = attackersOfDefended.filter(a => a.color !== piece.color);
+    
+    if (enemyAttackersOfDefended.length > defendersOfDefended.length) {
+      criticalThreats.push(defendedSquare);
+    }
+  }
+  
+  for (const pieceDesc of piece.defendsPieces) {
+    const match = pieceDesc.match(/(\w+) (\w+) on (\w+)/);
+    if (match) {
+      const defendedSquare = match[3];
+      const defendersOfDefended = defenseMap.get(defendedSquare) || [];
+      const attackersOfDefended = attackMap.get(defendedSquare) || [];
+      const enemyAttackersOfDefended = attackersOfDefended.filter(a => a.color !== piece.color);
+      
+      if (enemyAttackersOfDefended.length > defendersOfDefended.length) {
+        criticalThreats.push(defendedSquare);
+      }
+    }
+  }
+  
+  if (criticalThreats.length < 2) return false;
+  
+  const testChess = new Chess(chess.fen());
+  testChess.remove(piece.square);
+  const testAttackMap = buildPseudoLegalAttackMap(testChess);
+  
+  let undefendedAfterRemoval = 0;
+  for (const threatSquare of criticalThreats) {
+    const defendersAfter = defenseMap.get(threatSquare)?.filter(d => d.square !== piece.square) || [];
+    const attackersAfter = testAttackMap.get(threatSquare) || [];
+    const enemyAttackersAfter = attackersAfter.filter(a => a.color !== piece.color);
+    
+    if (enemyAttackersAfter.length > defendersAfter.length) {
+      undefendedAfterRemoval++;
+    }
+  }
+  
+  return undefendedAfterRemoval >= 2;
+}
+
+function getDirection(from, to) {
+  const fromCoords = squareToCoords(from);
+  const toCoords = squareToCoords(to);
+  
+  const fileDiff = toCoords.file - fromCoords.file;
+  const rankDiff = toCoords.rank - fromCoords.rank;
+  
+  if (fileDiff === 0 && rankDiff !== 0) {
+    return rankDiff > 0 ? 'up' : 'down';
+  } else if (rankDiff === 0 && fileDiff !== 0) {
+    return fileDiff > 0 ? 'right' : 'left';
+  } else if (Math.abs(fileDiff) === Math.abs(rankDiff)) {
+    if (fileDiff > 0 && rankDiff > 0) return 'up-right';
+    if (fileDiff > 0 && rankDiff < 0) return 'down-right';
+    if (fileDiff < 0 && rankDiff > 0) return 'up-left';
+    if (fileDiff < 0 && rankDiff < 0) return 'down-left';
+  }
+  
+  return null;
+}
+
+function getNextSquare(square, direction) {
+  const { file, rank } = squareToCoords(square);
+  
+  let newFile = file;
+  let newRank = rank;
+  
+  if (direction === 'up') newRank++;
+  else if (direction === 'down') newRank--;
+  else if (direction === 'right') newFile++;
+  else if (direction === 'left') newFile--;
+  else if (direction === 'up-right') { newFile++; newRank++; }
+  else if (direction === 'up-left') { newFile--; newRank++; }
+  else if (direction === 'down-right') { newFile++; newRank--; }
+  else if (direction === 'down-left') { newFile--; newRank--; }
+  
+  return coordsToSquare(newFile, newRank);
+}
+
+function getSquareBetween(from, to, chess) {
+  const direction = getDirection(from, to);
+  if (!direction) return null;
+  
+  let current = getNextSquare(from, direction);
+  while (current && current !== to) {
+    const piece = chess.get(current);
+    if (piece) return current;
+    current = getNextSquare(current, direction);
+  }
+  
+  return null;
+}
+
+function getOppositeDirection(dir) {
+  const opposites = {
+    'up': 'down',
+    'down': 'up',
+    'left': 'right',
+    'right': 'left',
+    'up-right': 'down-left',
+    'up-left': 'down-right',
+    'down-right': 'up-left',
+    'down-left': 'up-right'
+  };
+  return opposites[dir] || null;
+}
+
+function parseEval(evaluation) {
+  if (!evaluation) return 0;
+  
+  if (evaluation.type === 'mate') {
+    return evaluation.value > 0 ? 10000 : -10000;
+  }
+  
+  if (evaluation.type === 'cp') {
+    return evaluation.value / 100;
+  }
+  
+  return 0;
+}
+
+function formatEval(evaluation) {
+  if (!evaluation) return 'Unknown';
+  
+  if (evaluation.type === 'mate') {
+    const mateIn = Math.abs(evaluation.value);
+    return evaluation.value > 0 ? `M${mateIn}` : `-M${mateIn}`;
+  }
+  
+  if (evaluation.type === 'cp') {
+    const score = (evaluation.value / 100).toFixed(1);
+    return evaluation.value > 0 ? `+${score}` : score;
+  }
+  
+  return 'Unknown';
+}
+
+function recoverPV(analysisResult, fen, hfToken) {
+  if (analysisResult.principalVariation.length > 0 && analysisResult.principalVariation[0] !== undefined) {
+    return Promise.resolve(analysisResult);
+  }
+  
+  if (analysisResult.topMoves?.[0]?.pv?.length > 0) {
+    analysisResult.principalVariation = analysisResult.topMoves[0].pv;
+    return Promise.resolve(analysisResult);
+  }
+  
+  return analyzePosition({
+    fen,
+    depth: 20,
+    multipv: 1,
+    purpose: "pv_recovery",
+    hfToken
+  }).then(recovery => {
+    analysisResult.principalVariation = recovery.principalVariation;
+    analysisResult.topMoves = recovery.topMoves;
+    return analysisResult;
+  });
+}
+
 async function analyzePosition({ fen, depth, multipv, purpose, hfToken }) {
   try {
     const controller = new AbortController();
@@ -438,7 +536,8 @@ async function analyzePosition({ fen, depth, multipv, purpose, hfToken }) {
 
     const data = await response.json();
     
-    const bestMove = data.best_move || null;
+    const bestMoveRaw = data.best_move || null;
+    const bestMove = validateMove(fen, bestMoveRaw);
     
     let evaluation = null;
     let isMate = false;
@@ -458,7 +557,6 @@ async function analyzePosition({ fen, depth, multipv, purpose, hfToken }) {
       }
     }
 
-    
     const principalVariation = data.pv || 
                                data.principal_variation || 
                                data.principalVariation || 
@@ -473,7 +571,7 @@ async function analyzePosition({ fen, depth, multipv, purpose, hfToken }) {
         const linePV = line.pv || line.principal_variation || line.principalVariation || [];
         const validatedLinePV = validatePVMoves(fen, linePV);
         const clampedLinePV = validatedLinePV.slice(0, Math.min(validatedLinePV.length, 4));
-        const validatedMove = validateMove(fen, line.move || line.best_move || bestMove);
+        const validatedMove = validateMove(fen, line.move || line.best_move || bestMoveRaw);
         return {
           move: validatedMove,
           evaluation: formatEval(line.evaluation || data.evaluation),
@@ -486,7 +584,7 @@ async function analyzePosition({ fen, depth, multipv, purpose, hfToken }) {
         const linePV = line.pv || line.principal_variation || line.principalVariation || [];
         const validatedLinePV = validatePVMoves(fen, linePV);
         const clampedLinePV = validatedLinePV.slice(0, Math.min(validatedLinePV.length, 4));
-        const validatedMove = validateMove(fen, line.move || line.best_move || bestMove);
+        const validatedMove = validateMove(fen, line.move || line.best_move || bestMoveRaw);
         return {
           move: validatedMove,
           evaluation: formatEval(line.evaluation || data.evaluation),
@@ -495,19 +593,16 @@ async function analyzePosition({ fen, depth, multipv, purpose, hfToken }) {
         };
       }).filter(m => m.move);
     } else {
-      const validatedBestMove = validateMove(fen, bestMove);
-      topMoves = validatedBestMove ? [{
-        move: validatedBestMove,
+      topMoves = bestMove ? [{
+        move: bestMove,
         evaluation: formatEval(data.evaluation),
         evalScore: parseEval(data.evaluation),
         pv: clampedPV
       }] : [];
     }
 
-    const validatedBestMove = validateMove(fen, bestMove);
-
     return {
-      bestMove: validatedBestMove || bestMove,
+      bestMove: bestMove || bestMoveRaw,
       evaluation,
       evalScore,
       isMate,
@@ -530,7 +625,6 @@ async function analyzePosition({ fen, depth, multipv, purpose, hfToken }) {
     throw error;
   }
 }
-
 
 function buildSystemPrompt(fen, solutionMoves, moveHistory, puzzleType, positionFacts, bestMoveFromStockfish = null) {
   const factsJson = JSON.stringify(positionFacts, null, 2);
@@ -618,18 +712,18 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false, rec
   
   try {
     const chess = new Chess(fen);
-    const allSquares = ['a1', 'b1', 'c1', 'd1', 'e1', 'f1', 'g1', 'h1',
-                       'a2', 'b2', 'c2', 'd2', 'e2', 'f2', 'g2', 'h2',
-                       'a3', 'b3', 'c3', 'd3', 'e3', 'f3', 'g3', 'h3',
-                       'a4', 'b4', 'c4', 'd4', 'e4', 'f4', 'g4', 'h4',
-                       'a5', 'b5', 'c5', 'd5', 'e5', 'f5', 'g5', 'h5',
-                       'a6', 'b6', 'c6', 'd6', 'e6', 'f6', 'g6', 'h6',
-                       'a7', 'b7', 'c7', 'd7', 'e7', 'f7', 'g7', 'h7',
-                       'a8', 'b8', 'c8', 'd8', 'e8', 'f8', 'g8', 'h8'];
+    const allSquares = [];
+    
+    for (let r = 1; r <= 8; r++) {
+      for (let f = 0; f < 8; f++) {
+        allSquares.push(coordsToSquare(f, r));
+      }
+    }
+    
+    const attackMap = buildPseudoLegalAttackMap(chess);
+    const defenseMap = new Map();
     
     const pieces = [];
-    const attackMap = new Map();
-    const defenseMap = new Map();
     
     for (const square of allSquares) {
       const piece = chess.get(square);
@@ -638,7 +732,7 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false, rec
       const color = piece.color === 'w' ? 'white' : 'black';
       const type = getPieceName(piece.type);
       
-      const attackedSquares = getAttackedSquaresPseudoLegal(chess, square);
+      const attackedSquares = getPseudoLegalAttacks(chess, square, piece);
       
       const attackedPieces = attackedSquares
         .map(sq => {
@@ -681,11 +775,6 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false, rec
       
       pieces.push(pieceData);
       
-      for (const sq of pieceData.attacks) {
-        if (!attackMap.has(sq)) attackMap.set(sq, []);
-        attackMap.get(sq).push({ square: pieceData.square, color, type });
-      }
-      
       for (const sq of pieceData.defends) {
         if (!defenseMap.has(sq)) defenseMap.set(sq, []);
         defenseMap.get(sq).push({ square: pieceData.square, color, type });
@@ -700,14 +789,14 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false, rec
       piece.hanging = enemyAttackers.length > 0 && defenders.length === 0;
       
       if (piece.type !== 'king') {
-        piece.pinned = isPinned(chess, piece.square, piece.color);
+        piece.pinned = isPinned(chess, piece.square, piece.color, attackMap);
       }
       
-      piece.overloaded = isOverloaded(chess, piece, pieces, attackMap, defenseMap);
+      piece.overloaded = isOverloaded(chess, piece, attackMap, defenseMap);
     }
     
     for (const piece of pieces) {
-      const forks = detectForks(chess, piece, pieces);
+      const forks = detectForks(chess, piece, attackMap);
       if (forks.length >= 2) {
         piece.forks = forks;
       }
@@ -783,7 +872,7 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false, rec
     
     return facts;
   
-    } catch (error) {
+  } catch (error) {
     console.error('Error computing full position facts:', error);
     return {
       pieces: [],
@@ -793,458 +882,328 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false, rec
   }
 }
 
-function getPieceName(pieceType) {
-  const names = {
-    'p': 'pawn',
-    'r': 'rook',
-    'n': 'knight',
-    'b': 'bishop',
-    'q': 'queen',
-    'k': 'king'
-  };
-  return names[pieceType] || 'piece';
-}
+async function callGPTWithTools(messages, apiKey) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, 30000);
 
-function getDirection(from, to) {
-  const fromFile = from.charCodeAt(0) - 97;
-  const fromRank = parseInt(from[1]);
-  const toFile = to.charCodeAt(0) - 97;
-  const toRank = parseInt(to[1]);
-  
-  const fileDiff = toFile - fromFile;
-  const rankDiff = toRank - fromRank;
-  
-  if (fileDiff === 0 && rankDiff !== 0) {
-    return rankDiff > 0 ? 'up' : 'down';
-  } else if (rankDiff === 0 && fileDiff !== 0) {
-    return fileDiff > 0 ? 'right' : 'left';
-  } else if (Math.abs(fileDiff) === Math.abs(rankDiff)) {
-    if (fileDiff > 0 && rankDiff > 0) return 'up-right';
-    if (fileDiff > 0 && rankDiff < 0) return 'down-right';
-    if (fileDiff < 0 && rankDiff > 0) return 'up-left';
-    if (fileDiff < 0 && rankDiff < 0) return 'down-left';
-  }
-  
-  return null;
-}
-
-function getNextSquare(square, direction) {
-  const file = square.charCodeAt(0) - 97;
-  const rank = parseInt(square[1]);
-  
-  let newFile = file;
-  let newRank = rank;
-  
-  if (direction === 'up') newRank++;
-  else if (direction === 'down') newRank--;
-  else if (direction === 'right') newFile++;
-  else if (direction === 'left') newFile--;
-  else if (direction === 'up-right') { newFile++; newRank++; }
-  else if (direction === 'up-left') { newFile--; newRank++; }
-  else if (direction === 'down-right') { newFile++; newRank--; }
-  else if (direction === 'down-left') { newFile--; newRank--; }
-  
-  if (newFile < 0 || newFile > 7 || newRank < 1 || newRank > 8) {
-    return null;
-  }
-  
-  return String.fromCharCode(97 + newFile) + newRank;
-}
-
-function getSquareBetween(from, to, chess) {
-  const direction = getDirection(from, to);
-  if (!direction) return null;
-  
-  let current = getNextSquare(from, direction);
-  while (current && current !== to) {
-    const piece = chess.get(current);
-    if (piece) return current;
-    current = getNextSquare(current, direction);
-  }
-  
-  return null;
-}
-
-function getSquareBehind(square, direction) {
-  const reverseDirections = {
-    'up': 'down',
-    'down': 'up',
-    'left': 'right',
-    'right': 'left',
-    'up-right': 'down-left',
-    'up-left': 'down-right',
-    'down-right': 'up-left',
-    'down-left': 'up-right'
-  };
-  const reverseDir = reverseDirections[direction];
-  if (!reverseDir) return null;
-  return getNextSquare(square, reverseDir);
-}
-
-function getAttackedSquaresPseudoLegal(chess, square) {
   try {
-    const piece = chess.get(square);
-    if (!piece) return [];
-    
-    const attackedSquares = new Set();
-    const pieceType = piece.type;
-    const pieceColor = piece.color;
-    const file = square.charCodeAt(0) - 97;
-    const rank = parseInt(square[1]);
-    
-    if (pieceType === 'p') {
-      const direction = pieceColor === 'w' ? 1 : -1;
-      const leftFile = file - 1;
-      const rightFile = file + 1;
-      const newRank = rank + direction;
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
+        messages: messages,
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'analyze_position',
+              description: 'Analyze a chess position using Stockfish engine. Use this to get evaluations, best moves, and principal variations.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  fen: {
+                    type: 'string',
+                    description: 'FEN string of the position to analyze'
+                  },
+                  depth: {
+                    type: 'integer',
+                    description: 'Search depth (default: 18)',
+                    default: 18,
+                    minimum: 10,
+                    maximum: 25
+                  },
+                  multipv: {
+                    type: 'integer',
+                    description: 'Number of alternative moves to return (default: 3)',
+                    default: 3,
+                    minimum: 1,
+                    maximum: 5
+                  },
+                  purpose: {
+                    type: 'string',
+                    enum: ['main_position', 'after_solution', 'alternative_move', 'verification'],
+                    description: 'Purpose of this analysis: main_position (initial analysis), after_solution (position after best move), alternative_move (checking an alternative), verification (double-checking a line)'
+                  }
+                },
+                required: ['purpose']
+              }
+            }
+          }
+        ],
+        tool_choice: 'auto',
+        temperature: 0.0,
+        max_tokens: 400
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('GPT API error:', errorText);
+      throw new Error(`GPT API request failed: ${response.status}`);
+    }
+
+    return await response.json();
+
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('GPT API request timeout');
+    }
+    throw error;
+  }
+}
+
+async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, puzzleType) {
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+  const HF_TOKEN = process.env.HF_TOKEN;
+
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY not configured');
+  }
+
+  if (!HF_TOKEN) {
+    throw new Error('HF_TOKEN not configured');
+  }
+
+  const maxIterations = 5;
+  const analysisSteps = [];
+  
+  let positionFacts;
+  try {
+    positionFacts = computeFullPositionFacts(fen, solutionMoves);
+  } catch (e) {
+      console.error("FACTS ERROR:", e);
+      positionFacts = { pieces: [], check: false, turn: "white" };
+  }
+  
+  const conversationHistory = [
+    {
+      role: 'system',
+      content: buildSystemPrompt(fen, solutionMoves, moveHistory, puzzleType, positionFacts, null)
+    },
+    {
+      role: 'user',
+      content: userQuestion || 'Why is this the best move?'
+    }
+  ];
+
+  let iteration = 0;
+  let finalExplanation = null;
+  let bestMove = null;
+
+  while (iteration < maxIterations) {
+    iteration++;
+    console.log(`Agent iteration ${iteration}/${maxIterations}`);
+
+    try {
+      const response = await callGPTWithTools(conversationHistory, OPENAI_API_KEY);
       
-      if (leftFile >= 0 && newRank >= 1 && newRank <= 8) {
-        attackedSquares.add(String.fromCharCode(97 + leftFile) + newRank);
-      }
-      if (rightFile <= 7 && newRank >= 1 && newRank <= 8) {
-        attackedSquares.add(String.fromCharCode(97 + rightFile) + newRank);
-      }
-    }
-    else if (pieceType === 'n') {
-      const knightMoves = [
-        [-2, -1], [-2, 1], [-1, -2], [-1, 2],
-        [1, -2], [1, 2], [2, -1], [2, 1]
-      ];
-      for (const [df, dr] of knightMoves) {
-        const newFile = file + df;
-        const newRank = rank + dr;
-        if (newFile >= 0 && newFile <= 7 && newRank >= 1 && newRank <= 8) {
-          attackedSquares.add(String.fromCharCode(97 + newFile) + newRank);
-        }
-      }
-    }
-    else if (pieceType === 'k') {
-      for (let df = -1; df <= 1; df++) {
-        for (let dr = -1; dr <= 1; dr++) {
-          if (df === 0 && dr === 0) continue;
-          const newFile = file + df;
-          const newRank = rank + dr;
-          if (newFile >= 0 && newFile <= 7 && newRank >= 1 && newRank <= 8) {
-            attackedSquares.add(String.fromCharCode(97 + newFile) + newRank);
+      const assistantMessage = response.choices[0].message;
+      conversationHistory.push(assistantMessage);
+
+      if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+        for (const toolCall of assistantMessage.tool_calls) {
+          if (toolCall.function.name === 'analyze_position') {
+            const args = JSON.parse(toolCall.function.arguments);
+            
+            console.log(`GPT requested analysis:`, args);
+            
+            const analysisResult = await analyzePosition({
+              fen: args.fen || fen,
+              depth: args.depth || 18,
+              multipv: args.multipv || 3,
+              purpose: args.purpose || 'main_position',
+              hfToken: HF_TOKEN
+            });
+
+            const recoveredResult = await recoverPV(analysisResult, args.fen || fen, HF_TOKEN);
+
+            analysisSteps.push({
+              request: args,
+              result: recoveredResult
+            });
+
+            conversationHistory.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(recoveredResult)
+            });
+
+            if (!bestMove && recoveredResult.bestMove) {
+              const candidateBestMove = recoveredResult.bestMove;
+              
+              const analyzedFen = args.fen || fen;
+              const sanitizedMove = sanitizeMove(candidateBestMove);
+              const from = sanitizedMove?.substring(0, 2);
+              const to = sanitizedMove?.substring(2, 4);
+              
+              let moveIsLegal = false;
+              
+              if (from && to && from.length === 2 && to.length === 2) {
+                try {
+                  const testChess = new Chess(analyzedFen);
+                  const legalMoves = testChess.moves({ verbose: true });
+                  moveIsLegal = legalMoves.some(m => m.from === from && m.to === to);
+                } catch (error) {
+                  moveIsLegal = false;
+                }
+              }
+              
+              if (moveIsLegal) {
+                bestMove = candidateBestMove;
+                
+                const factsForPosition = computeFullPositionFacts(analyzedFen, [], true);
+                
+                if (args.purpose === 'main_position' || !args.fen || args.fen === fen) {
+                  positionFacts = factsForPosition;
+                  const updatedPrompt = buildSystemPrompt(analyzedFen, solutionMoves, moveHistory, puzzleType, positionFacts, bestMove);
+                  
+                  const systemOverrideIndex = conversationHistory.findIndex(m => m.role === 'system');
+                  if (systemOverrideIndex >= 0) {
+                    conversationHistory[systemOverrideIndex] = {
+                      role: 'system',
+                      content: updatedPrompt
+                    };
+                  } else {
+                    conversationHistory.unshift({
+                      role: 'system',
+                      content: updatedPrompt
+                    });
+                  }
+                  
+                  if (bestMove) {
+                    const bestMoveMessageIndex = conversationHistory.findIndex(m => 
+                      m.role === 'assistant' && 
+                      m.content && 
+                      m.content.includes('Stockfish analysis indicates')
+                    );
+                    
+                    if (bestMoveMessageIndex >= 0) {
+                      conversationHistory[bestMoveMessageIndex] = {
+                        role: 'assistant',
+                        content: `Stockfish analysis indicates the best move is: ${bestMove}`
+                      };
+                    } else {
+                      conversationHistory.push({
+                        role: 'assistant',
+                        content: `Stockfish analysis indicates the best move is: ${bestMove}`
+                      });
+                    }
+                  }
+                }
+              } else {
+                console.warn(`Best move ${candidateBestMove} is not legal in position ${analyzedFen}`);
+              }
+            }
           }
         }
-      }
-    }
-    else {
-      const directions = [];
-      if (pieceType === 'r' || pieceType === 'q') {
-        directions.push([0, 1], [0, -1], [1, 0], [-1, 0]);
-      }
-      if (pieceType === 'b' || pieceType === 'q') {
-        directions.push([1, 1], [1, -1], [-1, 1], [-1, -1]);
-      }
-      
-      for (const [df, dr] of directions) {
-        for (let i = 1; i < 8; i++) {
-          const newFile = file + df * i;
-          const newRank = rank + dr * i;
-          if (newFile < 0 || newFile > 7 || newRank < 1 || newRank > 8) break;
+        
+        if (analysisSteps.length > 0 && bestMove) {
+          console.log('Forcing GPT to explain move with analysis data available');
+          const forceExplanationResponse = await callGPTWithTools(conversationHistory, OPENAI_API_KEY);
+          const forceExplanationMessage = forceExplanationResponse.choices[0].message;
           
-          const targetSquare = String.fromCharCode(97 + newFile) + newRank;
-          attackedSquares.add(targetSquare);
-          
-          if (chess.get(targetSquare)) break;
+          if (forceExplanationMessage.content) {
+            finalExplanation = forceExplanationMessage.content;
+            console.log('GPT returned forced explanation');
+            break;
+          }
         }
+      } else {
+        finalExplanation = assistantMessage.content;
+        console.log('GPT returned final explanation');
+        break;
       }
-    }
-    
-    return Array.from(attackedSquares);
-  } catch (error) {
-    return [];
-  }
-}
-
-function getKingSquare(chess, color) {
-  const board = chess.board();
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      const piece = board[r][c];
-      if (piece && piece.type === 'k' && piece.color === color) {
-        return String.fromCharCode(97 + c) + (8 - r);
-      }
+    } catch (error) {
+      console.error(`Error in iteration ${iteration}:`, error);
+      throw error;
     }
   }
-  return null;
-}
 
-function isPinned(chess, square, pieceColor) {
-  const kingColor = pieceColor === 'white' ? 'w' : 'b';
-  const kingSquare = getKingSquare(chess, kingColor);
-  if (!kingSquare) return false;
-  
-  const piece = chess.get(square);
-  if (!piece || piece.type === 'k') return false;
-  
-  const direction = getDirection(square, kingSquare);
-  if (!direction) return false;
-  
-  const testChess = new Chess(chess.fen());
-  const oppositeDir = getOppositeDirection(direction);
-  if (!oppositeDir) return false;
-  
-  let attackerSquare = null;
-  let current = getNextSquare(square, oppositeDir);
-  let piecesBetween = 0;
-  
-  while (current) {
-    const p = testChess.get(current);
-    if (p) {
-      if (p.color === pieceColor) {
-        return false;
-      }
-      attackerSquare = current;
-      break;
-    }
-    piecesBetween++;
-    current = getNextSquare(current, oppositeDir);
+  if (!finalExplanation) {
+    finalExplanation = solutionMoves[0] 
+      ? `The best move is ${solutionMoves[0]}. This appears to be a ${puzzleType || 'tactical'} puzzle.`
+      : 'Unable to generate explanation. Please try again.';
   }
-  
-  if (!attackerSquare) return false;
-  
-  const attacker = testChess.get(attackerSquare);
-  if (!attacker || attacker.color === pieceColor) return false;
-  
-  const attackerType = attacker.type;
-  const isLinePiece = attackerType === 'r' || attackerType === 'b' || attackerType === 'q';
-  if (!isLinePiece) return false;
-  
-  const canAttackAlongLine = 
-    (attackerType === 'r' && (direction === 'up' || direction === 'down' || direction === 'left' || direction === 'right')) ||
-    (attackerType === 'b' && (direction === 'up-right' || direction === 'up-left' || direction === 'down-right' || direction === 'down-left')) ||
-    (attackerType === 'q');
-  
-  if (!canAttackAlongLine) return false;
-  
-  testChess.remove(square);
-  const wouldBeInCheck = isInCheck(testChess);
-  return wouldBeInCheck;
-}
 
-function getOppositeDirection(dir) {
-  const opposites = {
-    'up': 'down',
-    'down': 'up',
-    'left': 'right',
-    'right': 'left',
-    'up-right': 'down-left',
-    'up-left': 'down-right',
-    'down-right': 'up-left',
-    'down-left': 'up-right'
+  const finalBestMove = solutionMoves[0] || bestMove || null;
+
+  return {
+    explanation: finalExplanation,
+    analysisSteps: analysisSteps,
+    bestMove: finalBestMove
   };
-  return opposites[dir] || null;
 }
 
-function getPieceValue(pieceType) {
-  const values = {
-    'pawn': 1,
-    'knight': 3,
-    'bishop': 3,
-    'rook': 5,
-    'queen': 9,
-    'king': 100
-  };
-  return values[pieceType] || 0;
-}
-
-function detectForks(chess, piece, allPieces) {
-  const forks = [];
+export default async function handler(req, res) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
-  if (piece.attacksPieces.length < 2) return forks;
-  
-  const attackedPieces = piece.attacksPieces.map(desc => {
-    const match = desc.match(/(\w+) (\w+) on (\w+)/);
-    if (match) {
-      return { color: match[1], type: match[2], square: match[3] };
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
     }
-    return null;
-  }).filter(Boolean);
+
+  let fen, userQuestion, solutionMoves, moveHistory, puzzleType;
   
-  if (attackedPieces.length < 2) return forks;
+  if (req.method === 'GET') {
+    fen = req.query.fen;
+    userQuestion = req.query.question;
+    solutionMoves = req.query.solutionMove ? [req.query.solutionMove] : [];
+    puzzleType = req.query.puzzleType;
+    moveHistory = null;
+  } else if (req.method === 'POST') {
+    ({ fen, userQuestion, solutionMoves, moveHistory } = req.body);
+    puzzleType = req.body.puzzleType;
+  } else {
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
   
-  for (let i = 0; i < attackedPieces.length; i++) {
-    for (let j = i + 1; j < attackedPieces.length; j++) {
-      const p1 = attackedPieces[i];
-      const p2 = attackedPieces[j];
-      
-      const canCapture1 = canCaptureSquare(chess, piece.square, p1.square, piece.color);
-      const canCapture2 = canCaptureSquare(chess, piece.square, p2.square, piece.color);
-      
-      if (canCapture1 && canCapture2) {
-        forks.push(`${p1.color} ${p1.type} on ${p1.square}`, `${p2.color} ${p2.type} on ${p2.square}`);
+      if (!fen) {
+        return res.status(400).json({ error: 'FEN is required' });
       }
-    }
-  }
-  
-  return forks;
-}
 
-function canCaptureSquare(chess, fromSquare, toSquare, pieceColor) {
   try {
-    const testChess = new Chess(chess.fen());
-    const moves = testChess.moves({ square: fromSquare, verbose: true });
-    return moves.some(m => m.to === toSquare && m.captured);
-  } catch {
-    return false;
-  }
-}
-
-function detectSkewer(chess, piece, allPieces) {
-  if (piece.type === 'pawn' || piece.type === 'knight' || piece.type === 'king') {
-    return false;
-  }
-  
-  if (piece.attacksPieces.length !== 1) return false;
-  
-  const attackedDesc = piece.attacksPieces[0];
-  const match = attackedDesc.match(/(\w+) (\w+) on (\w+)/);
-  if (!match) return false;
-  
-  const attackedSquare = match[3].toLowerCase().trim();
-  const attackedPiece = allPieces.find(p => p.square.toLowerCase().trim() === attackedSquare);
-  if (!attackedPiece) return false;
-  
-  const direction = getDirection(piece.square, attackedSquare);
-  if (!direction) return false;
-  
-  const attackedValue = getPieceValue(attackedPiece.type);
-  if (attackedValue < 5 && attackedPiece.type !== 'king') return false;
-  
-  const oppositeDir = getOppositeDirection(direction);
-  if (!oppositeDir) return false;
-  
-  let current = getNextSquare(attackedSquare, oppositeDir);
-  while (current) {
-    const p = chess.get(current);
-    if (p) {
-      if (p.color === attackedPiece.color) {
-        const behindValue = getPieceValue(p.type);
-        if (behindValue < attackedValue || (p.type === 'king' && attackedPiece.type !== 'king')) {
-          return true;
-        }
-        if (attackedPiece.type === 'king' && behindValue > 0) {
-          return true;
-        }
-      }
-      break;
-    }
-    current = getNextSquare(current, oppositeDir);
-  }
-  
-  return false;
-}
-
-function isOverloaded(chess, piece, allPieces, attackMap, defenseMap) {
-  if (piece.type === 'king') return false;
-  
-  const criticalThreats = [];
-  
-  const defenders = defenseMap.get(piece.square) || [];
-  const attackers = attackMap.get(piece.square) || [];
-  const enemyAttackers = attackers.filter(a => a.color !== piece.color);
-  
-  for (const defender of defenders) {
-    const defendedSquare = defender.square;
-    const defendersOfDefended = defenseMap.get(defendedSquare) || [];
-    const attackersOfDefended = attackMap.get(defendedSquare) || [];
-    const enemyAttackersOfDefended = attackersOfDefended.filter(a => a.color !== piece.color);
-    
-    if (enemyAttackersOfDefended.length > defendersOfDefended.length) {
-      criticalThreats.push(defendedSquare);
-    }
-  }
-  
-  for (const pieceDesc of piece.defendsPieces) {
-    const match = pieceDesc.match(/(\w+) (\w+) on (\w+)/);
-    if (match) {
-      const defendedSquare = match[3];
-      const defendersOfDefended = defenseMap.get(defendedSquare) || [];
-      const attackersOfDefended = attackMap.get(defendedSquare) || [];
-      const enemyAttackersOfDefended = attackersOfDefended.filter(a => a.color !== piece.color);
-      
-      if (enemyAttackersOfDefended.length > defendersOfDefended.length) {
-        criticalThreats.push(defendedSquare);
-      }
-    }
-  }
-  
-  if (criticalThreats.length < 2) return false;
-  
-  const testChess = new Chess(chess.fen());
-  testChess.remove(piece.square);
-  
-  let undefendedAfterRemoval = 0;
-  for (const threatSquare of criticalThreats) {
-    const defendersAfter = defenseMap.get(threatSquare)?.filter(d => d.square !== piece.square) || [];
-    const attackersAfter = attackMap.get(threatSquare) || [];
-    const enemyAttackersAfter = attackersAfter.filter(a => a.color !== piece.color);
-    
-    if (enemyAttackersAfter.length > defendersAfter.length) {
-      undefendedAfterRemoval++;
-    }
-  }
-  
-  return undefendedAfterRemoval >= 2;
-}
-
-function applyMoveToFen(fen, move) {
-  try {
-    const chess = new Chess(fen);
-    
-    if (move && move.length >= 4) {
-      const from = move.substring(0, 2);
-      const to = move.substring(2, 4);
-      const promotion = move.length > 4 ? move.substring(4) : undefined;
-      
-      const moveObj = chess.move({
-        from: from,
-        to: to,
-        promotion: promotion || 'q'
-      });
-      
-      if (moveObj) {
-        return chess.fen();
-      }
-    }
-    
-    return fen;
+    const testChess = new Chess(fen);
   } catch (error) {
-    console.error('Error applying move to FEN:', error);
-    return fen;
+    return res.status(400).json({ error: 'Invalid FEN format' });
   }
-}
 
+  try {
+    const result = await runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, puzzleType);
+    
 
-function parseEval(evaluation) {
-  if (!evaluation) return 0;
-  
-  if (evaluation.type === 'mate') {
-    return evaluation.value > 0 ? 10000 : -10000;
-  }
-  
-  if (evaluation.type === 'cp') {
-    return evaluation.value / 100;
-  }
-  
-  return 0;
-}
+    return res.status(200).json({
+      success: true,
+      hint: result.explanation,
+      explanation: result.explanation,
+      bestMove: result.bestMove || 'Unknown',
+      puzzleType: puzzleType,
+      analysisSteps: result.analysisSteps,
+      method: 'Agentic GPT + Stockfish',
+      timestamp: new Date().toISOString()
+    });
 
-function formatEval(evaluation) {
-  if (!evaluation) return 'Unknown';
-  
-  if (evaluation.type === 'mate') {
-    const mateIn = Math.abs(evaluation.value);
-    return evaluation.value > 0 ? `M${mateIn}` : `-M${mateIn}`;
+  } catch (error) {
+    console.error('Agentic coach error:', error);
+    
+        return res.status(200).json({
+          success: true,
+      hint: solutionMoves[0] 
+        ? `The best move is ${solutionMoves[0]}. This appears to be a ${puzzleType || 'tactical'} puzzle.`
+        : 'Error occurred, but try looking for tactical patterns like checks, captures, and threats.',
+      bestMove: solutionMoves[0] || 'Unknown',
+      explanation: 'API temporarily unavailable',
+      analysisSteps: []
+    });
   }
-  
-  if (evaluation.type === 'cp') {
-    const score = (evaluation.value / 100).toFixed(1);
-    return evaluation.value > 0 ? `+${score}` : score;
-  }
-  
-  return 'Unknown';
 }
