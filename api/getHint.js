@@ -952,11 +952,22 @@ function getAttackedSquaresPseudoLegal(chess, square) {
   }
 }
 
+function getKingSquare(chess, color) {
+  const board = chess.board();
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const piece = board[r][c];
+      if (piece && piece.type === 'k' && piece.color === color) {
+        return String.fromCharCode(97 + c) + (8 - r);
+      }
+    }
+  }
+  return null;
+}
+
 function isPinned(chess, square, pieceColor) {
-  if (pieceColor === 'w' && !chess.kings.w) return false;
-  if (pieceColor === 'b' && !chess.kings.b) return false;
-  
-  const kingSquare = pieceColor === 'w' ? chess.kings.w : chess.kings.b;
+  const kingColor = pieceColor === 'white' ? 'w' : 'b';
+  const kingSquare = getKingSquare(chess, kingColor);
   if (!kingSquare) return false;
   
   const piece = chess.get(square);
