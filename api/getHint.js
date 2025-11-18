@@ -1,5 +1,12 @@
 import { Chess } from 'chess.js';
 
+function isInCheck(chess) {
+  if (typeof chess.in_check === "function") return chess.in_check();
+  if (typeof chess.inCheck === "function") return chess.inCheck();
+  if (typeof chess.isCheck === "function") return chess.isCheck();
+  return false;
+}
+
 function sanitizeMove(move) {
   if (!move) return "";
   let cleaned = move.toLowerCase().trim();
@@ -736,7 +743,7 @@ function computeFullPositionFacts(fen, solutionMoves, skipAfterMove = false, rec
     }
     
     const turn = chess.turn() === 'w' ? 'white' : 'black';
-    const inCheck = chess.in_check();
+    const inCheck = isInCheck(chess);
     
     const facts = {
       pieces: pieces,
@@ -1014,7 +1021,7 @@ function isPinned(chess, square, pieceColor) {
   if (!canAttackAlongLine) return false;
   
   testChess.remove(square);
-  const wouldBeInCheck = testChess.in_check();
+  const wouldBeInCheck = isInCheck(testChess);
   return wouldBeInCheck;
 }
 
