@@ -14,103 +14,498 @@
   <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
   <link rel="stylesheet" href="style.css">
   <script src="audio-manager.js"></script>
+  <style>
+      :root {
+          --primary-color: #9900ff;
+          --secondary-color: #ff8c00;
+          --bg-card: rgba(26, 26, 26, 0.8);
+          --border-color: rgba(153, 0, 255, 0.3);
+          --text-muted: #cccccc;
+      }
+
+      body.review-page {
+          background-color: #121212;
+          color: #ffffff;
+          height: 100vh;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+      }
+
+      header {
+          background: linear-gradient(135deg, #121212, #1a1a1a);
+          padding: 1rem;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          flex-shrink: 0;
+      }
+
+      .header-content {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          max-width: 1600px;
+          margin: 0 auto;
+          width: 100%;
+      }
+
+      h1 {
+          font-size: 1.5rem;
+          margin: 0;
+          color: var(--secondary-color) !important; 
+      }
+
+      .tagline {
+          margin: 0;
+          font-size: 0.9rem;
+          color: var(--text-muted);
+      }
+
+      .back-btn {
+          margin-top: 0;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      main {
+          flex: 1;
+          display: flex;
+          padding: 1rem;
+          gap: 1.5rem;
+          max-width: 1600px;
+          margin: 0 auto;
+          width: 100%;
+          overflow: hidden;
+          align-items: stretch; 
+      }
+
+      .game-review-container {
+          display: grid;
+          grid-template-columns: 320px minmax(400px, 1fr) 320px; 
+          gap: 2rem;
+          width: 100%;
+          height: 100%;
+          justify-content: center;
+      }
+
+      .panel {
+          background: var(--bg-card);
+          border: 1px solid var(--border-color);
+          border-radius: 12px;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          backdrop-filter: blur(10px);
+          box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      }
+
+      .panel-header {
+          padding: 1rem;
+          border-bottom: 1px solid rgba(255,255,255,0.1);
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          background: rgba(0,0,0,0.2);
+      }
+
+      .panel-header h3 {
+          margin: 0;
+          font-size: 1.1rem;
+          color: var(--primary-color);
+      }
+
+      .panel-content {
+          padding: 1rem;
+          overflow-y: auto;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+      }
+
+      .controls-panel {
+          grid-column: 1;
+      }
+
+      .input-group label {
+          color: var(--text-muted);
+          font-size: 0.85rem;
+          margin-bottom: 0.5rem;
+          display: block;
+      }
+
+      textarea, input[type="text"] {
+          background: rgba(0,0,0,0.3);
+          border: 1px solid rgba(255,255,255,0.1);
+          color: white;
+          font-family: monospace;
+          border-radius: 6px;
+      }
+      
+      textarea:focus, input:focus {
+          border-color: var(--primary-color);
+      }
+
+      .btn {
+          font-weight: bold;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          font-size: 0.85rem;
+      }
+
+      .btn-primary {
+          background: linear-gradient(135deg, #9900ff, #7c00cc);
+          color: white;
+      }
+
+      .btn-secondary {
+          background: rgba(255,255,255,0.1);
+          color: white;
+      }
+
+      .chesscom-btn {
+          background: linear-gradient(135deg, #7fa650, #5d7c3a); 
+          color: white;
+      }
+
+      .analysis-display {
+          background: rgba(0,0,0,0.4);
+          border-radius: 8px;
+          padding: 1rem;
+          font-family: monospace;
+          min-height: 150px;
+          color: #ddd;
+          line-height: 1.5;
+      }
+
+      .board-section {
+          grid-column: 2;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: transparent;
+          border: none;
+          box-shadow: none;
+          width: 100%;
+      }
+
+      .board-wrapper {
+          width: 80vw;
+          max-width: 600px;
+          aspect-ratio: 1/1;
+          background-color: #2B2B2B;
+          border-radius: 12px;
+          border: 2px solid #FF3C00;
+          margin: 0 auto;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      }
+
+      #board {
+          width: 100%;
+          height: 100%;
+      }
+
+      .chess-board .square.white-1e1e1e {
+          background-color: #F0EBD8 !important;
+      }
+
+      .chess-board .square.black-3c3c3c {
+          background-color: #2B2B2B !important;
+      }
+
+      .eval-bar-container {
+          width: 100%;
+          max-width: 600px; 
+          height: 16px;
+          background: #333;
+          margin-bottom: 10px;
+          border-radius: 99px;
+          position: relative;
+          overflow: hidden;
+          display: flex;
+      }
+
+      .eval-fill {
+          height: 100%;
+          background: #fff;
+          width: 50%;
+          transition: width 0.5s ease;
+      }
+
+      .eval-text {
+          position: absolute;
+          width: 100%;
+          text-align: center;
+          line-height: 16px;
+          font-size: 10px;
+          color: #000;
+          font-weight: bold;
+          text-shadow: 0 0 2px rgba(255,255,255,0.8);
+          z-index: 2;
+          mix-blend-mode: normal;
+          pointer-events: none;
+      }
+
+      .top-lines-panel {
+          background: rgba(0,0,0,0.2);
+          border-bottom: 1px solid rgba(255,255,255,0.1);
+          padding: 0.5rem;
+          font-family: monospace;
+          font-size: 0.85rem;
+          display: none; 
+      }
+      .top-line-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 4px 0;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+      }
+      .top-line-row:last-child { border-bottom: none; }
+      .line-score { font-weight: bold; width: 50px; text-align: right; margin-right: 10px; }
+      .line-move { color: #aaa; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .line-best .line-score { color: #2ecc71; }
+      
+      #arrowOverlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 10;
+      }
+
+      .move-list-panel {
+          grid-column: 3;
+      }
+
+      .move-list {
+          display: grid;
+          grid-template-columns: 1fr 1fr; 
+          gap: 2px;
+          font-family: monospace;
+          font-size: 0.95rem;
+          align-content: start;
+      }
+
+      .move-item {
+          padding: 4px 8px;
+          cursor: pointer;
+          display: flex;
+          justify-content: space-between;
+          background: rgba(255,255,255,0.03);
+      }
+
+      .move-item:hover { background: rgba(255,255,255,0.1); }
+      .move-item.active { background: rgba(153, 0, 255, 0.3); border-left: 2px solid #9900ff; }
+
+      .move-eval {
+          font-size: 0.8rem;
+      }
+
+      .move-brilliant { color: #26c281; text-shadow: 0 0 5px rgba(38,194,129,0.5); } 
+      .move-best { color: #2ecc71; } 
+      .move-excellent { color: #90be6d; }
+      .move-good { color: #95a5a6; }
+      .move-inaccuracy { color: #f1c40f; } 
+      .move-mistake { color: #e67e22; } 
+      .move-blunder { color: #e74c3c; font-weight: bold; } 
+
+      .nav-controls {
+          display: flex;
+          gap: 0.5rem;
+          margin-top: auto;
+          padding-top: 1rem;
+      }
+
+      .nav-btn {
+          flex: 1;
+          background: rgba(255,255,255,0.1);
+          border: none;
+          color: white;
+          padding: 0.75rem;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 1.2rem;
+      }
+      .nav-btn:hover { background: rgba(255,255,255,0.2); }
+
+      .best-move-src, .best-move-dst {
+          background-color: rgba(153, 0, 255, 0.4) !important; 
+          box-shadow: inset 0 0 0 2px #9900ff;
+      }
+
+      @media (max-width: 1200px) {
+          .game-review-container {
+              grid-template-columns: 1fr 1fr;
+              grid-template-rows: auto auto;
+          }
+          .controls-panel { grid-column: 1; grid-row: 2; }
+          .move-list-panel { grid-column: 2; grid-row: 2; }
+          .board-section { grid-column: 1 / span 2; grid-row: 1; }
+      }
+
+      @media (max-width: 768px) {
+          .game-review-container {
+              display: flex;
+              flex-direction: column;
+          }
+          .board-wrapper { max-width: 100%; }
+          main { padding: 0.5rem; height: auto; overflow-y: auto; }
+          body.review-page { overflow-y: auto; height: auto; }
+      }
+  </style>
 </head>
 <body class="review-page">
 
 <header>
   <div class="header-content">
-    <div style="display: flex; align-items: center; gap: 12px;">
-      <img src="icons/pawnpushicon.png" alt="PawnPush Logo" style="width: 100px; height: 80px; object-fit: contain;">
-      <h1>PawnPush</h1>
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <img src="icons/pawnpushicon.png" alt="PawnPush Logo" style="width: 48px; height: 48px; object-fit: contain;">
+      <div>
+          <h1>PawnPush</h1>
+          <p class="tagline">Game Review</p>
+      </div>
     </div>
-    <p class="tagline">Game Review with Stockfish Analysis</p>
-    <a href="index.html" class="back-btn">← Back to Menu</a>
+    <a href="index.html" class="back-btn">← Main Menu</a>
   </div>
 </header>
 
 <main>
   <div class="game-review-container">
-    <div class="controls-panel">
-
-      <div class="section">
-        <div class="section-header">
-          <div class="section-icon">🔧</div>
-          <h3>Engine Status</h3>
-        </div>
-        <div class="engine-status">
-          <div id="statusDot" class="status-dot"></div>
-          <div id="statusText" class="status-text">Loading Stockfish...</div>
-        </div>
+    <div class="panel controls-panel">
+      <div class="panel-header">
+        <div class="section-icon">⚙️</div>
+        <h3>Tools</h3>
       </div>
+      <div class="panel-content">
+        <div class="engine-status">
+          <div id="statusDot" class="status-dot" style="background: #f44336; width: 10px; height: 10px; border-radius: 50%;"></div>
+          <span id="statusText" style="font-size: 0.9rem; margin-left: 8px;">Engine Loading...</span>
+        </div>
 
-
-      <div class="section">
-        <div class="section-header">
-          <div class="section-icon">📋</div>
-          <h3>Load Game</h3>
+        <div class="input-group">
+          <label>PGN / Move List</label>
+          <textarea id="pgnInput" rows="3" placeholder="1. e4 e5 ..."></textarea>
         </div>
         <div class="input-group">
-          <label for="pgnInput">Paste PGN or enter moves:</label>
-          <textarea id="pgnInput" rows="4" placeholder="1. e4 e5 2. Nf3 Nc6 3. Bb5 a6..."></textarea>
+          <label>FEN</label>
+          <input type="text" id="fenInput" placeholder="rnbqkbnr/...">
         </div>
-        <div class="input-group">
-          <label for="fenInput">Or load from FEN:</label>
-          <input type="text" id="fenInput" placeholder="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1">
-        </div>
+
         <div class="button-grid">
-          <button class="btn btn-primary" id="loadGameBtn">Load Game</button>
+          <button class="btn btn-primary" id="loadGameBtn">Load</button>
           <button class="btn btn-secondary" id="clearBtn">Clear</button>
-          <button class="btn btn-primary chesscom-btn" id="chesscomBtn">
-            <span>♞</span> Load from Chess.com
+          <button class="btn chesscom-btn" id="chesscomBtn" style="grid-column: span 2;">
+            Import from Chess.com
           </button>
         </div>
-        <button class="btn btn-primary" id="analyzeBtn">
-          <span class="btn-icon">🧠</span>
-          <span class="btn-text">Analyze</span>
+
+        <style>
+          .button-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+          }
+          .button-grid button {
+            padding: 0.75rem;
+            white-space: nowrap;
+          }
+          .game-selector-modal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 2000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+          }
+          .selector-content {
+            background: #1e1e1e;
+            padding: 1.5rem;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            border: 1px solid #444;
+          }
+          .game-list {
+            overflow-y: auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+          }
+          .game-option {
+            background: rgba(255,255,255,0.05);
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+          }
+          .game-option:hover {
+            background: rgba(255,255,255,0.15);
+          }
+          .game-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 0.9rem;
+          }
+          .game-players { font-weight: bold; color: #ddd; }
+          .game-result { color: #aaa; font-size: 0.8rem; }
+          .close-btn {
+            background: #444; color: white; border: none; padding: 0.5rem;
+            border-radius: 4px; cursor: pointer; margin-top: 0.5rem;
+          }
+        </style>
+
+        <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); width: 100%; margin: 1rem 0;">
+
+        <button class="btn btn-primary" id="analyzeBtn" style="padding: 1rem;">
+          <span class="btn-icon">✨</span> Run Analysis
         </button>
-      </div>
 
-
-      <div class="section">
-        <div class="section-header">
-          <div class="section-icon">🧠</div>
-          <h3>Analysis</h3>
-        </div>
         <div id="analysisDisplay" class="analysis-display">
-          Load a game and click "Analyze All Moves" to see Stockfish analysis for every move...
+          <div style="opacity: 0.6; font-style: italic; text-align: center; padding-top: 2rem;">
+            Load a game to start...
+          </div>
         </div>
       </div>
     </div>
 
     <div class="board-section">
-      <div class="board-eval-section">
-        <div class="board-eval-wrapper">
-          <div id="evalScoreBoard" class="eval-score-board">+0.00</div>
-          <div id="evalBarBoard" class="evaluation-bar-board">
-            <div id="evalBarFill" class="evaluation-fill-board"></div>
-          </div>
-        </div>
+      <div class="eval-bar-container">
+        <div id="evalScoreBoard" class="eval-text">+0.00</div>
+        <div id="evalBarFill" class="eval-fill"></div>
       </div>
       <div class="board-wrapper">
         <div id="board"></div>
+        <svg id="arrowOverlay" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
       </div>
     </div>
 
-    <div class="move-list-panel">
-      <div class="section">
-        <div class="section-header">
-          <div class="section-icon">📋</div>
-          <h3>Move List</h3>
-        </div>
+    <div class="panel move-list-panel">
+      <div class="panel-header">
+        <div class="section-icon">📝</div>
+        <h3>Game Moves</h3>
+      </div>
+      <div id="topLinesPanel" class="top-lines-panel">
+      </div>
+      <div class="panel-content" style="padding: 0;">
+        <div id="performanceOverview" style="padding: 1rem;"></div>
         <div id="moveList" class="move-list">
-          No game loaded
         </div>
       </div>
-      <div class="board-nav-controls">
-        <button class="move-btn board-nav-btn" id="firstBtn" title="First move">⏮️</button>
-        <button class="move-btn board-nav-btn" id="prevBtn" title="Previous move">⏪</button>
-        <button class="move-btn board-nav-btn" id="nextBtn" title="Next move">⏩</button>
-        <button class="move-btn board-nav-btn" id="lastBtn" title="Last move">⏭️</button>
+      <div class="nav-controls" style="padding: 1rem; border-top: 1px solid rgba(255,255,255,0.1);">
+        <button class="nav-btn" id="firstBtn">⏮</button>
+        <button class="nav-btn" id="prevBtn">◀</button>
+        <button class="nav-btn" id="nextBtn">▶</button>
+        <button class="nav-btn" id="lastBtn">⏭</button>
       </div>
     </div>
   </div>
