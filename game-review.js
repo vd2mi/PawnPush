@@ -240,7 +240,7 @@ class StockfishEngine {
 
     async analyzePositionRemote(fen, depth = CONFIG.DEPTH) {
         try {
-            const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze', {
+            const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fen, depth }),
@@ -312,12 +312,24 @@ const Reviewer = {
         state.isAnalyzing = true;
         UI.showLoading(true);
         
-        // Initialize engine on first use (lazy loading)
+        // Initialize engine on first use (lazy loading) and WAIT for it
         if (!engine.initDone && !engine.initInProgress) {
-            console.log('First analysis - initializing engine...');
+            console.log('First analysis - initializing engine, please wait...');
+            UI.updateProgress(0, 1);
             engine.init();
-            // Give engine a moment to start initializing
-            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Wait up to 10 seconds for engine to be ready
+            const maxWait = 10000;
+            const startWait = Date.now();
+            while (!engine.isReady && (Date.now() - startWait) < maxWait) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+            
+            if (engine.isReady) {
+                console.log('Engine ready! Starting analysis with local Stockfish.');
+            } else {
+                console.warn('Engine not ready after 10s, will use API fallback for analysis.');
+            }
         }
         
         state.moveAnalyses = new Array(state.history.length).fill(null);
