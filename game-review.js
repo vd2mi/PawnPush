@@ -88,10 +88,7 @@ class StockfishEngine {
                     if (!this.isReady) {
                         clearInterval(check);
                         console.warn("WASM startup timeout, but proceeding if engine is responsive.");
-                        // We don't reject/resolve false here immediately because worker might just be slow
-                        // resolve(false); 
-                        // Instead we let it keep running or rely on later interactions
-                        resolve(true); // Optimistically resolve
+                        resolve(true); 
                     }
                 }, 15000);
 
@@ -183,11 +180,16 @@ class StockfishEngine {
              if (cached.depth >= depth) return cached;
         }
 
-        if (!this.engine) {
-             return { score: 0, depth: 0, error: 'No Engine' };
+        if (!this.engine || !this.isReady) {
+             return { score: 0, depth: 0, error: 'Engine not ready' };
         }
         
         return this.evaluateWasm(fen, depth);
+    }
+
+    async evaluateApi(fen, depth) {
+        // Deprecated or removed
+        return { score: 0, depth: 0, error: 'API Failed' };
     }
 
     async evaluateWasm(fen, depth) {
@@ -408,13 +410,13 @@ const UI = {
             console.log('Engine initialized');
         });
 
-            state.board = Chessboard('board', {
-                position: 'start',
-                draggable: false,
-                pieceTheme: (piece) => {
-                    return 'https://chessboardjs.com/img/chesspieces/wikipedia/' + piece + '.png';
-                }
-            });
+                state.board = Chessboard('board', {
+                    position: 'start',
+                    draggable: false,
+                    pieceTheme: (piece) => {
+                        return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png';
+                    }
+                });
     },
 
     showGameSelector: (games) => {

@@ -3,12 +3,14 @@ export async function createEngine() {
         console.warn('SharedArrayBuffer is not available. Performance may be limited.');
     }
 
-    const worker = new Worker('/engine/worker.js', { type: 'module' });
+    const worker = new Worker('/engine/worker.js');
 
     // Wait for worker to initialize
     await new Promise((resolve, reject) => {
         const handler = (e) => {
-            if (e.data === 'worker_ready') {
+            // Check for explicit ready signal OR standard engine output that indicates life
+            if (e.data === 'worker_ready' || 
+                (typeof e.data === 'string' && (e.data.includes('Stockfish') || e.data.includes('id name') || e.data === 'uciok'))) {
                 worker.removeEventListener('message', handler);
                 resolve();
             }
@@ -21,7 +23,7 @@ export async function createEngine() {
             // We resolve anyway to avoid blocking, but log a warning
             console.warn('Engine worker init timed out or started without signal. Check console for worker errors.');
             resolve();
-        }, 15000); // Increased to 15s for extremely slow initializations
+        }, 15000);
     });
 
     return {
