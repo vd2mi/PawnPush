@@ -514,16 +514,5 @@
 </main>
 
 <script src="game-review.js"></script>
-<script>
-  // Load Stockfish AFTER the page is fully loaded and interactive
-  window.addEventListener('load', () => {
-    console.log('Page loaded, now loading Stockfish...');
-    window.STOCKFISH = { WASM_PATH: "./engine/stockfish.wasm" };
-    const script = document.createElement('script');
-    script.src = './engine/stockfish.js';
-    script.async = true;
-    document.head.appendChild(script);
-  });
-</script>
 </body>
 </html>

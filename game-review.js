@@ -82,15 +82,9 @@ class StockfishEngine {
 
     async analyzePositionCloudflare(fen, depth = CONFIG.CLOUDFLARE_DEPTH) {
         try {
-            const response = await fetch('https://chess-api.com/v1', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    fen, 
-                    depth,
-                    mode: 'best'
-                }),
-                signal: AbortSignal.timeout(10000)
+            const response = await fetch(`https://stockfish.online/api/s/v2.php?fen=${encodeURIComponent(fen)}&depth=${depth}&mode=bestmove`, {
+                method: 'GET',
+                signal: AbortSignal.timeout(15000)
             });
 
             if (!response.ok) {
@@ -99,12 +93,22 @@ class StockfishEngine {
 
             const data = await response.json();
             
+            let score = 0;
+            let mate = null;
+            
+            if (data.mate !== null && data.mate !== undefined) {
+                mate = data.mate;
+                score = mate > 0 ? 10000 : -10000;
+            } else if (data.evaluation !== null && data.evaluation !== undefined) {
+                score = Math.round(data.evaluation * 100);
+            }
+            
             return {
-                score: data.score || 0,
-                mate: data.mate || null,
+                score: score,
+                mate: mate,
                 depth: data.depth || depth,
-                bestMove: data.move || data.bestMove || null,
-                multiPV: data.lines || []
+                bestMove: data.bestmove || null,
+                multiPV: []
             };
         } catch (error) {
             console.error('Cloudflare API failed:', error);
@@ -165,6 +169,11 @@ const Reviewer = {
 
                 const evalBefore = await engine.evaluate(fenBefore, CONFIG.CLOUDFLARE_DEPTH, false);
                 const evalAfter = await engine.evaluate(fenAfter, CONFIG.CLOUDFLARE_DEPTH, false);
+
+                if (!evalBefore || !evalAfter || evalBefore.error || evalAfter.error) {
+                    console.warn(`Skipping move ${i} - API failed`);
+                    continue;
+                }
 
                 const turn = new Chess(fenBefore).turn(); 
                 
