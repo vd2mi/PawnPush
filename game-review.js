@@ -87,41 +87,48 @@ class StockfishEngine {
 
     startEngineInit() {
         // Use requestIdleCallback or setTimeout to ensure non-blocking
-        const initFn = async () => {
+        const initFn = () => {
             try {
                 console.log('Loading Stockfish WASM...');
-                this.engine = await Stockfish();
-
-                if (!this.engine) {
-                    console.warn('Stockfish() returned null, using API');
-                    this.initInProgress = false;
-                    return;
-                }
-
-                console.log('Stockfish loaded, setting up listener...');
-
-                // Use addMessageListener (this is the Emscripten interface)
-                this.engine.addMessageListener((line) => {
-                    this.handleMessage(line);
-                });
-
-                // Send UCI command
-                this.engine.postMessage('uci');
-
-                // Wait for uciok with timeout
-                const startTime = Date.now();
-                const check = setInterval(() => {
-                    if (this.isReady) {
-                        clearInterval(check);
-                        this.initDone = true;
+                
+                // Call Stockfish() and handle the promise separately
+                Stockfish().then(engine => {
+                    if (!engine) {
+                        console.warn('Stockfish() returned null, using API');
                         this.initInProgress = false;
-                        console.log('Engine ready!');
-                    } else if (Date.now() - startTime > 5000) {
-                        clearInterval(check);
-                        this.initInProgress = false;
-                        console.warn('UCI handshake timeout, will use API fallback');
+                        return;
                     }
-                }, 100);
+
+                    this.engine = engine;
+                    console.log('Stockfish loaded, setting up listener...');
+
+                    // Use addMessageListener (this is the Emscripten interface)
+                    this.engine.addMessageListener((line) => {
+                        this.handleMessage(line);
+                    });
+
+                    // Send UCI command
+                    this.engine.postMessage('uci');
+
+                    // Wait for uciok with timeout
+                    const startTime = Date.now();
+                    const check = setInterval(() => {
+                        if (this.isReady) {
+                            clearInterval(check);
+                            this.initDone = true;
+                            this.initInProgress = false;
+                            console.log('Engine ready!');
+                        } else if (Date.now() - startTime > 5000) {
+                            clearInterval(check);
+                            this.initInProgress = false;
+                            console.warn('UCI handshake timeout, will use API fallback');
+                        }
+                    }, 100);
+
+                }).catch(err => {
+                    console.error('Stockfish init failed:', err);
+                    this.initInProgress = false;
+                });
 
             } catch (err) {
                 console.error('Stockfish init failed:', err);
@@ -408,6 +415,8 @@ function findMoveSan(fenFrom, fenTo) {
 
 const UI = {
     init: () => {
+        console.log('UI.init() started');
+        
         const els = {
             loadBtn: document.getElementById('loadGameBtn'),
             clearBtn: document.getElementById('clearBtn'),
@@ -422,6 +431,8 @@ const UI = {
                 last: document.getElementById('lastBtn'),
             }
         };
+
+        console.log('Setting up event listeners...');
 
         els.loadBtn.addEventListener('click', UI.loadGame);
         els.clearBtn.addEventListener('click', UI.clearGame);
@@ -475,17 +486,8 @@ const UI = {
             });
         }
 
-        // Initialize engine in background (completely non-blocking)
-        engine.init().then((success) => {
-            if (success) {
-                console.log('Engine initialized successfully');
-            } else {
-                console.warn('Engine initialization failed, will use API fallback');
-            }
-        }).catch(err => {
-            console.error('Engine init error:', err);
-        });
-
+        console.log('Initializing chessboard...');
+        
         state.board = Chessboard('board', {
             position: 'start',
             draggable: false,
@@ -493,6 +495,23 @@ const UI = {
                 return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png';
             }
         });
+
+        console.log('Chessboard initialized');
+        console.log('UI.init() completed - page should be ready now');
+
+        // Initialize engine AFTER a delay to ensure UI is fully loaded
+        setTimeout(() => {
+            console.log('Starting engine init (delayed)...');
+            engine.init().then((success) => {
+                if (success) {
+                    console.log('Engine initialized successfully');
+                } else {
+                    console.warn('Engine initialization failed, will use API fallback');
+                }
+            }).catch(err => {
+                console.error('Engine init error:', err);
+            });
+        }, 1000);
     },
 
     showGameSelector: (games) => {
