@@ -1,4 +1,4 @@
-import { createEngine } from '/public/engine/engine-wrapper.js';
+import { createEngine } from '/engine/engine-wrapper.js';
 
 const CONFIG = {
     DEPTH: 18,
@@ -72,7 +72,6 @@ class StockfishEngine {
 
                 this.engine.onMessage((line) => this.handleMessage(line));
 
-                // Begin UCI
                 this.engine.send("uci");
 
                 const check = setInterval(() => {
@@ -86,7 +85,6 @@ class StockfishEngine {
                     if (!this.isReady) {
                         clearInterval(check);
                         console.warn("WASM startup timeout");
-                        // Fallback logic could go here if we had another engine
                         resolve(false);
                     }
                 }, 10000);
@@ -98,15 +96,11 @@ class StockfishEngine {
         });
     }
 
-    // enableFallback() removed - user wants to use local WASM primarily
-    // If we wanted to keep API fallback, we'd need to re-implement it using fetch here.
-    // For now, focusing on the "integrate this WASM engine" request.
-
     handleMessage(line) {
         if (line === 'uciok') {
             this.isReady = true;
             this.engine.send('setoption name MultiPV value 3');
-            this.engine.send('setoption name Threads value 4'); // Use more threads if available
+            this.engine.send('setoption name Threads value 4');
             this.engine.send('setoption name Use NNUE value true');
             this.engine.send('isready');
             UI.updateStatus('Stockfish WASM (Local)', true);
@@ -219,8 +213,6 @@ class StockfishEngine {
             this.engine.send(`go depth ${depth}`);
         });
     }
-    
-    // evaluateApi removed as we are replacing it with WASM
     
     stop() {
         if (this.engine) {

@@ -1,4 +1,4 @@
-import { createEngine } from '/public/engine/engine-wrapper.js';
+import { createEngine } from '/engine/engine-wrapper.js';
 
 function playSound(soundName) {
   if (window.audioManager) {
@@ -377,6 +377,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  coachBtn.addEventListener('click', toggleChat);
+
   let engine = null;
   async function getEngine() {
     if (!engine) engine = await createEngine();
@@ -435,8 +437,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       return null;
     }
   }
-
-  coachBtn.addEventListener('click', toggleChat);
 
   chatSend.addEventListener('click', async () => {
     const question = chatInput.value.trim();

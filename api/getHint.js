@@ -895,7 +895,6 @@ async function safeGPT(messages, apiKey) {
 function verifyExplanation(text, facts, legalSquares) {
   if (!text) return false;
   
-  // 1) Squares check
   const squarePattern = /\b[a-h][1-8]\b/g;
   const usedSquares = [...text.matchAll(squarePattern)].map(m => m[0].toLowerCase());
   
@@ -906,7 +905,6 @@ function verifyExplanation(text, facts, legalSquares) {
     }
   }
   
-  // 2) Piece type words check
   const piecePattern = /\b(pawn|knight|bishop|rook|queen|king)\b/gi;
   const usedPieces = [...text.matchAll(piecePattern)].map(m => m[0].toLowerCase());
   const legalPieces = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king'];
@@ -918,7 +916,6 @@ function verifyExplanation(text, facts, legalSquares) {
     }
   }
   
-  // 3) Cross-check actual "color piece on square" mentions
   const descriptorPattern = /\b(white|black)\s+(pawn|knight|bishop|rook|queen|king)\s+on\s+([a-h][1-8])\b/gi;
   const mentionedDescriptors = [];
   let match;
@@ -1136,7 +1133,7 @@ async function callGPTWithTools(messages, apiKey) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
         model: "gpt-4.1-mini",
@@ -1270,11 +1267,9 @@ Do not explain anything - only request tool calls.`
             
             let analysisResult;
 
-            // If client provided analysis and it matches the request (main position), use it
             if (clientAnalysis && (args.purpose === 'main_position' || !args.purpose || args.fen === fen || !args.fen)) {
                  console.log('Using client-side analysis');
                  analysisResult = clientAnalysis;
-                 // Ensure format matches what analyzePosition returns
                  if (!analysisResult.bestMove) analysisResult.bestMove = clientAnalysis.bestMove; 
             } else {
                 analysisResult = await analyzePosition({
@@ -1286,13 +1281,6 @@ Do not explain anything - only request tool calls.`
                 });
             }
 
-            // recoverPV might still be needed if client analysis is partial, 
-            // but usually local engine gives full PV.
-            // ... (rest of code)
-            
-            // For now, let's just use analysisResult. 
-            // If clientAnalysis is good, recoverPV should be fast or skipped.
-            
             const recoveredResult = clientAnalysis && analysisResult === clientAnalysis 
                 ? analysisResult 
                 : await recoverPV(analysisResult, args.fen || fen, HF_TOKEN);
@@ -1375,10 +1363,6 @@ Do not explain anything - only request tool calls.`
     }
   }
 
-  // --------------------------------------
-  // FINAL SAFE EXPLANATION
-  // --------------------------------------
-  
   let latestAnalysis = null;
   if (analysisSteps.length > 0) {
     latestAnalysis = analysisSteps[analysisSteps.length - 1].result;
@@ -1437,7 +1421,6 @@ Do not explain anything - only request tool calls.`
     }
   }
   
-  // Safety: verify hallucinations
   if (!finalExplanation || !verifyExplanation(finalExplanation, positionFacts, legalSquares)) {
     console.warn('Explanation failed verification or is empty');
     if (latestAnalysis && finalBestMove) {

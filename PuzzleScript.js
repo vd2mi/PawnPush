@@ -1,4 +1,4 @@
-import { createEngine } from '/public/engine/engine-wrapper.js';
+import { createEngine } from '/engine/engine-wrapper.js';
 
 function playSound(soundName) {
   if (window.audioManager) {
@@ -456,18 +456,13 @@ function toggleChat() {
   async function analyzeLocal(fen) {
     try {
       const eng = await getEngine();
-      // Simple analysis: depth 18, multipv 3
-      // We need to parse the output similar to game-review but return the structure getHint expects
       
       return new Promise((resolve) => {
           let bestMove = null;
-          let multiPV = [];
           let pendingMultiPV = [];
           
           const onMessage = (line) => {
              if (line.startsWith('info') && line.includes('score') && line.includes('multipv')) {
-                 // ... parsing logic (simplified) ...
-                 // Actually, let's reuse logic or write simple parser
                  const parts = line.split(' ');
                  const getVal = (k) => { const i = parts.indexOf(k); return i>=0 ? parts[i+1] : null; };
                  const mpv = parseInt(getVal('multipv'));
@@ -531,7 +526,6 @@ function toggleChat() {
     try {
       const fen = chess.fen();
       
-      // Run local analysis first
       const analysis = await analyzeLocal(fen);
       
       const res = await fetch('/api/getHint', {
