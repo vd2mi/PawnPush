@@ -79,23 +79,6 @@ const Analysis = {
     }
 };
 
-function getHfToken() {
-    if (typeof process !== 'undefined' && process?.env?.HF_TOKEN) {
-        return process.env.HF_TOKEN;
-    }
-    if (typeof window !== 'undefined' && window?.HF_TOKEN) {
-        return window.HF_TOKEN;
-    }
-    return '';
-}
-
-function buildHfHeaders() {
-    const headers = { 'Content-Type': 'application/json' };
-    const token = getHfToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    return headers;
-}
-
 class ApiEngine {
     makeKey(fen) {
         return fen.split(' ').slice(0, 4).join(' ');
@@ -177,9 +160,9 @@ class ApiEngine {
 
     async analyzePositionHF(fen) {
         try {
-            const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
+            const response = await fetch('/api/analyzePosition', {
                 method: 'POST',
-                headers: buildHfHeaders(),
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     fen,
                     depth: CONFIG.HF_DEPTH,
