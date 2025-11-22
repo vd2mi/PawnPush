@@ -67,43 +67,61 @@ class StockfishEngine {
     async init() {
         if (this.initDone) return true;
 
+        // Safety check
+        if (typeof Stockfish === 'undefined') {
+            console.warn('Stockfish not loaded, using API only');
+            return false;
+        }
+
         try {
-            this.engine = await Stockfish({
-                locateFile: (path) => {
-                    if (path.endsWith('.wasm')) return '/engine/stockfish.wasm';
-                    return path;
-                }
+            console.log('Starting Stockfish initialization...');
+            
+            // Stockfish() is async and returns a promise
+            const initPromise = Stockfish();
+            
+            // Race between initialization and timeout
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Init timeout')), 8000);
             });
 
-            if (this.engine.addMessageListener) {
-                this.engine.addMessageListener((line) => {
-                    this.handleMessage(line);
-                });
+            this.engine = await Promise.race([initPromise, timeoutPromise]);
+
+            if (!this.engine) {
+                console.warn('Stockfish() returned null, using API');
+                return false;
             }
 
-            if (this.engine.postMessage) {
-                this.engine.postMessage('uci');
-            } else if (typeof this.engine === 'function') {
-                this.engine('uci');
-            }
+            console.log('Stockfish loaded, setting up listener...');
 
+            // Use addMessageListener (this is the Emscripten interface)
+            this.engine.addMessageListener((line) => {
+                this.handleMessage(line);
+            });
+
+            // Send UCI command
+            this.engine.postMessage('uci');
+
+            // Wait for uciok
             return await new Promise((resolve) => {
                 const check = setInterval(() => {
                     if (this.isReady) {
                         clearInterval(check);
                         this.initDone = true;
+                        console.log('Engine ready!');
                         resolve(true);
                     }
                 }, 100);
 
+                // Timeout for UCI handshake
                 setTimeout(() => {
+                    clearInterval(check);
                     if (!this.isReady) {
-                        clearInterval(check);
-                        console.warn('WASM startup timeout, proceeding anyway.');
-                        resolve(true);
+                        console.warn('UCI handshake timeout, will use API fallback');
+                        resolve(false);
                     }
-                }, 15000);
+                }, 5000);
             });
+
         } catch (err) {
             console.error('Stockfish init failed:', err);
             return false;
@@ -114,9 +132,9 @@ class StockfishEngine {
         if (line === 'uciok') {
             this.isReady = true;
             if (this.engine) {
-                this.engine.postMessage ? this.engine.postMessage('setoption name MultiPV value 3') : this.engine('setoption name MultiPV value 3');
-                this.engine.postMessage ? this.engine.postMessage('setoption name Threads value 1') : this.engine('setoption name Threads value 1');
-                this.engine.postMessage ? this.engine.postMessage('isready') : this.engine('isready');
+                this.engine.postMessage('setoption name MultiPV value 3');
+                this.engine.postMessage('setoption name Threads value 1');
+                this.engine.postMessage('isready');
             }
             UI.updateStatus('Stockfish WASM (Local)', true);
             return;
@@ -133,8 +151,13 @@ class StockfishEngine {
 
                 const mpv = parseInt(getVal('multipv'));
                 const depth = parseInt(getVal('depth'));
-                const scoreType = getVal('score');
-                let rawScore = parseInt(parts[parts.indexOf(scoreType) + 1]);
+                
+                // FIX: Find score type correctly (avoid matching "cp" in move names like "rcp7b1")
+                const scoreIdx = parts.findIndex((p, i) => (p === 'cp' || p === 'mate') && i > 0 && parts[i - 1] === 'score');
+                if (scoreIdx === -1) return;
+                
+                const scoreType = parts[scoreIdx];
+                let rawScore = parseInt(parts[scoreIdx + 1]);
 
                 let score = rawScore;
                 let mate = null;
@@ -192,16 +215,43 @@ class StockfishEngine {
             if (cached.depth >= depth) return cached;
         }
 
+        // Fallback to API if engine not ready
         if (!this.engine || !this.isReady) {
-            return { score: 0, depth: 0, error: 'Engine not ready' };
+            return await this.analyzePositionRemote(fen, depth);
         }
 
         return this.evaluateWasm(fen, depth);
     }
 
-    async evaluateWasm(fen, depth) {
-        this.currentMultiPV = [];
+    async analyzePositionRemote(fen, depth = CONFIG.DEPTH) {
+        try {
+            const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fen, depth }),
+                signal: AbortSignal.timeout(15000)
+            });
 
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            
+            return {
+                score: data.score || 0,
+                mate: data.mate || null,
+                depth: data.depth || depth,
+                bestMove: data.bestMove || data.best_move || null,
+                multiPV: data.multiPV || data.lines || []
+            };
+        } catch (error) {
+            console.error('Remote API failed:', error);
+            return { score: 0, depth: 0, error: 'API unavailable' };
+        }
+    }
+
+    async evaluateWasm(fen, depth) {
         return new Promise((resolve) => {
             if (this.pendingResolve) {
                 this.pendingResolve.resolve({ score: 0, depth: 0, error: 'Interrupted' });
@@ -225,29 +275,19 @@ class StockfishEngine {
 
             this.pendingResolve = pending;
 
-            const cmdPos = 'position fen ' + fen;
-            const cmdGo = `go depth ${depth}`;
+            // FIX: Reset multiPV array to prevent ghost lines
+            this.currentMultiPV = [null, null, null];
 
-            if (this.engine.postMessage) {
-                this.engine.postMessage(cmdPos);
-                this.engine.postMessage(cmdGo);
-            } else if (typeof this.engine === 'function') {
-                this.engine(cmdPos);
-                this.engine(cmdGo);
-            }
+            this.engine.postMessage('position fen ' + fen);
+            this.engine.postMessage(`go depth ${depth}`);
         });
     }
 
     stop() {
         if (!this.engine) return;
-        if (this.engine.postMessage) {
-            this.engine.postMessage('stop');
-        } else if (typeof this.engine === 'function') {
-            this.engine('stop');
-        }
+        this.engine.postMessage('stop');
     }
 }
-
 
 const engine = new StockfishEngine();
 
@@ -277,7 +317,8 @@ const Reviewer = {
                 const turn = new Chess(fenBefore).turn(); 
                 
                 const scoreBefore = evalBefore.score; 
-                const scoreAfter = -evalAfter.score; 
+                // FIX: Don't double-invert the score
+                const scoreAfter = evalAfter.score; 
                 
                 let cpl = 0;
                 if (Math.abs(scoreBefore) < 9000 && Math.abs(scoreAfter) < 9000) {
@@ -426,17 +467,26 @@ const UI = {
             });
         }
 
-        engine.init().then(() => {
-            console.log('Engine initialized');
-        });
+        // Initialize engine in background (non-blocking)
+        setTimeout(() => {
+            engine.init().then((success) => {
+                if (success) {
+                    console.log('Engine initialized successfully');
+                } else {
+                    console.warn('Engine initialization failed, will use API fallback');
+                }
+            }).catch(err => {
+                console.error('Engine init error:', err);
+            });
+        }, 100);
 
-                state.board = Chessboard('board', {
-                    position: 'start',
-                    draggable: false,
-                    pieceTheme: (piece) => {
-                        return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png';
-                    }
-                });
+        state.board = Chessboard('board', {
+            position: 'start',
+            draggable: false,
+            pieceTheme: (piece) => {
+                return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png';
+            }
+        });
     },
 
     showGameSelector: (games) => {
@@ -676,7 +726,6 @@ const UI = {
             let sanLine = '';
             if (line.uciLine) {
                 try {
-                    const tmp = new Chess(state.chess.fen()); 
                     const fen = state.history[state.moveIndex];
                     const dummy = new Chess(fen);
                     const moves = line.uciLine.split(' ');
@@ -740,6 +789,18 @@ const UI = {
             evalSpan.className = `move-eval ${analysis.quality.class}`;
             evalSpan.title = `${analysis.quality.label} (CPL: ${analysis.cpl})`;
         }
+    },
+
+    updateStats: (stats) => {
+        const whiteAccuracy = document.getElementById('whiteAccuracy');
+        const blackAccuracy = document.getElementById('blackAccuracy');
+        const whiteRating = document.getElementById('whiteRating');
+        const blackRating = document.getElementById('blackRating');
+        
+        if (whiteAccuracy) whiteAccuracy.textContent = `${stats.white.accuracy.toFixed(1)}%`;
+        if (blackAccuracy) blackAccuracy.textContent = `${stats.black.accuracy.toFixed(1)}%`;
+        if (whiteRating) whiteRating.textContent = `~${stats.white.rating}`;
+        if (blackRating) blackRating.textContent = `~${stats.black.rating}`;
     },
 
     updateEvalBar: (cp, mate, turn) => {

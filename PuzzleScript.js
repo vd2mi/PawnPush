@@ -1,5 +1,3 @@
-import { createEngine } from '/engine/engine-wrapper.js';
-
 function playSound(soundName) {
   if (window.audioManager) {
     window.audioManager.playSound(soundName);
@@ -448,66 +446,6 @@ function toggleChat() {
     }
 }
 
-  let engine = null;
-  async function getEngine() {
-    if (!engine) engine = await createEngine();
-    return engine;
-  }
-
-  async function analyzeLocal(fen) {
-    try {
-      const eng = await getEngine();
-      
-      return new Promise((resolve) => {
-          let bestMove = null;
-          let pendingMultiPV = [];
-          
-          const onMessage = (line) => {
-             if (line.startsWith('info') && line.includes('score') && line.includes('multipv')) {
-                 const parts = line.split(' ');
-                 const getVal = (k) => { const i = parts.indexOf(k); return i>=0 ? parts[i+1] : null; };
-                 const mpv = parseInt(getVal('multipv'));
-                 const scoreType = getVal('score');
-                 let val = parseInt(parts[parts.indexOf(scoreType)+1]);
-                 let mate = null;
-                 if (scoreType === 'mate') { mate = val; val = mate > 0 ? 10000 : -10000; }
-                 
-                 const pvIdx = parts.indexOf('pv');
-                 const pv = pvIdx >= 0 ? parts.slice(pvIdx+1) : [];
-                 const move = pv[0];
-                 
-                 pendingMultiPV[mpv-1] = {
-                     move: move,
-                     evaluation: mate ? (mate>0?`M${mate}`:`-M${Math.abs(mate)}`) : (val/100).toFixed(2),
-                     evalScore: val,
-                     pv: pv
-                 };
-             }
-             if (line.startsWith('bestmove')) {
-                 bestMove = line.split(' ')[1];
-                 const result = {
-                     bestMove: bestMove,
-                     topMoves: pendingMultiPV.filter(x=>x),
-                     evaluation: pendingMultiPV[0]?.evaluation || '0.00',
-                     principalVariation: pendingMultiPV[0]?.pv || []
-                 };
-                 resolve(result);
-             }
-          };
-          
-          eng.onMessage(onMessage);
-          eng.send('stop');
-          eng.send('ucinewgame');
-          eng.send('position fen ' + fen);
-          eng.send('setoption name MultiPV value 3');
-          eng.send('go depth 18');
-      });
-    } catch (e) {
-      console.error('Local analysis failed', e);
-      return null;
-    }
-  }
-
   coachBtn.addEventListener('click', toggleChat);
 
   chatSend.addEventListener('click', async () => {
@@ -526,8 +464,6 @@ function toggleChat() {
     chatMessages.scrollTop = chatMessages.scrollHeight;
     try {
       const fen = chess.fen();
-      
-      const analysis = await analyzeLocal(fen);
       
       const res = await fetch('/api/getHint', {
         method: 'POST',
