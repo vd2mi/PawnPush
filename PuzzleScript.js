@@ -142,6 +142,7 @@ async function getRandomPuzzleFromDatabase() {
   let solutionIndex = 0;
   let suppressRightDrag = false;
   let selectedSquare = null;
+  let hintLevel = 0;
 
   function initBoardIfNeeded(){
     if (board) return

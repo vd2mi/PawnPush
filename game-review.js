@@ -70,7 +70,10 @@ class StockfishEngine {
             try {
                 this.engine = await createEngine();
 
-                this.engine.onMessage((line) => this.handleMessage(line));
+                this.engine.onMessage((line) => {
+                    // console.log('Engine:', line); // Uncomment for debug
+                    this.handleMessage(line);
+                });
 
                 this.engine.send("uci");
 
@@ -402,13 +405,13 @@ const UI = {
             console.log('Engine initialized');
         });
 
-        state.board = Chessboard('board', {
-            position: 'start',
-            draggable: false,
-            pieceTheme: (piece) => {
-                return 'https://assets-themes.chess.com/image/ejgfv/150/' + piece.toLowerCase() + '.png';
-            }
-        });
+            state.board = Chessboard('board', {
+                position: 'start',
+                draggable: false,
+                pieceTheme: (piece) => {
+                    return 'https://chessboardjs.com/img/chesspieces/wikipedia/' + piece + '.png';
+                }
+            });
     },
 
     showGameSelector: (games) => {
