@@ -1,6 +1,7 @@
 import Stockfish from './stockfish.js';
 
 let engine = null;
+let isReady = false;
 
 async function init() {
     try {
@@ -13,6 +14,12 @@ async function init() {
             print: (line) => {
                 // Forward standard output as messages
                 postMessage(line);
+                
+                // If we see the banner, we know the engine is actually running
+                if (!isReady && line.includes('Stockfish')) {
+                    isReady = true;
+                    postMessage('worker_ready');
+                }
             },
             printErr: (line) => {
                 console.warn('Stockfish stderr:', line);
@@ -32,7 +39,10 @@ async function init() {
         // IMPORTANT: Emscripten might not await the runtime init if not structured specifically.
         // If engine is just the module object, we might need to check if it's ready.
         
-        postMessage('worker_ready');
+        if (!isReady) {
+            isReady = true;
+            postMessage('worker_ready');
+        }
     } catch (error) {
         console.error('Worker: Stockfish initialization failed', error);
     }

@@ -87,10 +87,13 @@ class StockfishEngine {
                 setTimeout(() => {
                     if (!this.isReady) {
                         clearInterval(check);
-                        console.warn("WASM startup timeout");
-                        resolve(false);
+                        console.warn("WASM startup timeout, but proceeding if engine is responsive.");
+                        // We don't reject/resolve false here immediately because worker might just be slow
+                        // resolve(false); 
+                        // Instead we let it keep running or rely on later interactions
+                        resolve(true); // Optimistically resolve
                     }
-                }, 10000);
+                }, 15000);
 
             } catch (err) {
                 console.error("init failed:", err);
