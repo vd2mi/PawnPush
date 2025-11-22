@@ -62,69 +62,77 @@ class StockfishEngine {
         this.pendingResolve = null;
         this.currentMultiPV = [];
         this.initDone = false;
+        this.initInProgress = false;
     }
 
-    async init() {
-        if (this.initDone) return true;
+    init() {
+        if (this.initDone || this.initInProgress) return Promise.resolve(this.isReady);
+        this.initInProgress = true;
 
         // Safety check
         if (typeof Stockfish === 'undefined') {
             console.warn('Stockfish not loaded, using API only');
-            return false;
+            this.initInProgress = false;
+            return Promise.resolve(false);
         }
 
-        try {
-            console.log('Starting Stockfish initialization...');
-            
-            // Stockfish() is async and returns a promise
-            const initPromise = Stockfish();
-            
-            // Race between initialization and timeout
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Init timeout')), 8000);
-            });
+        console.log('Starting Stockfish initialization...');
+        
+        // Start initialization but resolve immediately to not block UI
+        this.startEngineInit();
+        
+        // Return immediately - engine will become ready asynchronously
+        return Promise.resolve(false);
+    }
 
-            this.engine = await Promise.race([initPromise, timeoutPromise]);
+    startEngineInit() {
+        // Use requestIdleCallback or setTimeout to ensure non-blocking
+        const initFn = async () => {
+            try {
+                console.log('Loading Stockfish WASM...');
+                this.engine = await Stockfish();
 
-            if (!this.engine) {
-                console.warn('Stockfish() returned null, using API');
-                return false;
-            }
+                if (!this.engine) {
+                    console.warn('Stockfish() returned null, using API');
+                    this.initInProgress = false;
+                    return;
+                }
 
-            console.log('Stockfish loaded, setting up listener...');
+                console.log('Stockfish loaded, setting up listener...');
 
-            // Use addMessageListener (this is the Emscripten interface)
-            this.engine.addMessageListener((line) => {
-                this.handleMessage(line);
-            });
+                // Use addMessageListener (this is the Emscripten interface)
+                this.engine.addMessageListener((line) => {
+                    this.handleMessage(line);
+                });
 
-            // Send UCI command
-            this.engine.postMessage('uci');
+                // Send UCI command
+                this.engine.postMessage('uci');
 
-            // Wait for uciok
-            return await new Promise((resolve) => {
+                // Wait for uciok with timeout
+                const startTime = Date.now();
                 const check = setInterval(() => {
                     if (this.isReady) {
                         clearInterval(check);
                         this.initDone = true;
+                        this.initInProgress = false;
                         console.log('Engine ready!');
-                        resolve(true);
+                    } else if (Date.now() - startTime > 5000) {
+                        clearInterval(check);
+                        this.initInProgress = false;
+                        console.warn('UCI handshake timeout, will use API fallback');
                     }
                 }, 100);
 
-                // Timeout for UCI handshake
-                setTimeout(() => {
-                    clearInterval(check);
-                    if (!this.isReady) {
-                        console.warn('UCI handshake timeout, will use API fallback');
-                        resolve(false);
-                    }
-                }, 5000);
-            });
+            } catch (err) {
+                console.error('Stockfish init failed:', err);
+                this.initInProgress = false;
+            }
+        };
 
-        } catch (err) {
-            console.error('Stockfish init failed:', err);
-            return false;
+        if (window.requestIdleCallback) {
+            requestIdleCallback(initFn);
+        } else {
+            setTimeout(initFn, 100);
         }
     }
 
@@ -467,18 +475,16 @@ const UI = {
             });
         }
 
-        // Initialize engine in background (non-blocking)
-        setTimeout(() => {
-            engine.init().then((success) => {
-                if (success) {
-                    console.log('Engine initialized successfully');
-                } else {
-                    console.warn('Engine initialization failed, will use API fallback');
-                }
-            }).catch(err => {
-                console.error('Engine init error:', err);
-            });
-        }, 100);
+        // Initialize engine in background (completely non-blocking)
+        engine.init().then((success) => {
+            if (success) {
+                console.log('Engine initialized successfully');
+            } else {
+                console.warn('Engine initialization failed, will use API fallback');
+            }
+        }).catch(err => {
+            console.error('Engine init error:', err);
+        });
 
         state.board = Chessboard('board', {
             position: 'start',

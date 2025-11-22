@@ -729,8 +729,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             fen,
             userQuestion: question,
             solutionMoves: [currentPuzzle.puzzle.solution[solutionIndex]],
-            puzzleType: currentPuzzle.puzzle.themes,
-            clientAnalysis: analysis
+            puzzleType: currentPuzzle.puzzle.themes
         })
       });
       
