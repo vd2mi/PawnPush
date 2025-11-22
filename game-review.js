@@ -1,8 +1,9 @@
+import { createEngine } from '/public/engine/engine-wrapper.js';
+
 const CONFIG = {
-    API_URL: 'https://stockfishapi.hf.space/analyze/fen',
     DEPTH: 18,
     MOVETIME: 1000,
-    TIMEOUT: 10000,
+    TIMEOUT: 20000,
 };
 
 const state = {
@@ -58,39 +59,21 @@ const Analysis = {
 
 class StockfishEngine {
     constructor() {
-        this.worker = null;
+        this.engine = null;
         this.isReady = false;
         this.pendingResolve = null;
-        this.isWasmFailed = false;
         this.currentMultiPV = [];
     }
 
     async init() {
-        return new Promise((resolve) => {
+        return new Promise(async (resolve) => {
             try {
-                const wasmBase = "https://stockfishchess.org/wasm/";
+                this.engine = await createEngine();
 
-                const blob = new Blob([`
-                    var Module = {
-                        locateFile: function(path) {
-                            return '${wasmBase}' + path;
-                        }
-                    };
-                    importScripts('${wasmBase}stockfish.js');
-                `], { type: 'application/javascript' });
-
-                this.worker = new Worker(URL.createObjectURL(blob));
-
-                this.worker.onmessage = (e) => this.handleMessage(e.data);
-
-                this.worker.onerror = (e) => {
-                    console.warn("Stockfish WASM failed:", e);
-                    this.enableFallback();
-                    resolve(false);
-                };
+                this.engine.onMessage((line) => this.handleMessage(line));
 
                 // Begin UCI
-                this.worker.postMessage("uci");
+                this.engine.send("uci");
 
                 const check = setInterval(() => {
                     if (this.isReady) {
@@ -103,34 +86,30 @@ class StockfishEngine {
                     if (!this.isReady) {
                         clearInterval(check);
                         console.warn("WASM startup timeout");
-                        this.enableFallback();
+                        // Fallback logic could go here if we had another engine
                         resolve(false);
                     }
-                }, 8000);
+                }, 10000);
 
             } catch (err) {
                 console.error("init failed:", err);
-                this.enableFallback();
                 resolve(false);
             }
         });
     }
 
-    enableFallback() {
-        this.isWasmFailed = true;
-        state.useApi = true;
-        this.isReady = true;
-        UI.updateStatus('Stockfish API (Cloud)', true);
-    }
+    // enableFallback() removed - user wants to use local WASM primarily
+    // If we wanted to keep API fallback, we'd need to re-implement it using fetch here.
+    // For now, focusing on the "integrate this WASM engine" request.
 
     handleMessage(line) {
         if (line === 'uciok') {
             this.isReady = true;
-            this.worker.postMessage('setoption name MultiPV value 3');
-            this.worker.postMessage('setoption name Threads value 2');
-            this.worker.postMessage('setoption name Use NNUE value true');
-            this.worker.postMessage('isready');
-            UI.updateStatus('Stockfish 16 NNUE (WASM)', true);
+            this.engine.send('setoption name MultiPV value 3');
+            this.engine.send('setoption name Threads value 4'); // Use more threads if available
+            this.engine.send('setoption name Use NNUE value true');
+            this.engine.send('isready');
+            UI.updateStatus('Stockfish WASM (Local)', true);
             return;
         }
         
@@ -204,24 +183,11 @@ class StockfishEngine {
              if (cached.depth >= depth) return cached;
         }
 
-        let result = null;
-        
-        if (!this.isWasmFailed) {
-             result = await this.evaluateApi(fen);
-        }
-
-        if (!result || result.error) {
-            if (!this.worker) {
-                 return { score: 0, depth: 0, error: 'No Engine' };
-            }
-            result = await this.evaluateWasm(fen, depth);
-        }
-
-        if (result && !result.error) {
-            state.evaluations.set(cacheKey, result);
+        if (!this.engine) {
+             return { score: 0, depth: 0, error: 'No Engine' };
         }
         
-        return result || { score: 0, depth: 0 };
+        return this.evaluateWasm(fen, depth);
     }
 
     async evaluateWasm(fen, depth) {
@@ -242,79 +208,23 @@ class StockfishEngine {
             const pending = { 
                 resolve: (result) => {
                     clearTimeout(timer);
+                    state.evaluations.set(fen.split(' ').slice(0, 4).join(' '), result);
                     resolve(result);
                 }, 
                 currentResult: null 
             };
 
             this.pendingResolve = pending;
-            this.worker.postMessage('position fen ' + fen);
-            this.worker.postMessage(`go depth ${depth}`);
+            this.engine.send('position fen ' + fen);
+            this.engine.send(`go depth ${depth}`);
         });
     }
-
-    async evaluateApi(fen) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-            const res = await fetch(CONFIG.API_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fen, depth: 18, multipv: 3 }),
-                signal: controller.signal
-            });
-            
-            clearTimeout(timeoutId);
-
-            if (!res.ok) throw new Error('API Error ' + res.status);
-            
-            const data = await res.json();
-            
-            let score = 0;
-            let mate = null;
-            let multiPV = [];
-            
-            if (data.mate) {
-                mate = parseInt(data.mate);
-                score = mate > 0 ? 10000 : -10000;
-            } else if (data.eval !== undefined) {
-                score = Math.round(data.eval * 100);
-            } else if (data.evaluation) {
-                 score = parseFloat(data.evaluation) * 100;
-            }
-
-            const bestMove = data.best_move || data.move || data.bestMove;
-
-            if (data.lines && Array.isArray(data.lines)) {
-                 multiPV = data.lines.map((line, idx) => ({
-                     multipv: idx + 1,
-                     score: line.score,
-                     mate: line.mate,
-                     bestMove: line.moves ? line.moves.split(' ')[0] : null,
-                     uciLine: line.moves
-                 }));
-            } else {
-                multiPV.push({ multipv: 1, score, mate, bestMove, uciLine: bestMove });
-            }
-
-            return {
-                score,
-                mate,
-                depth: data.depth || 18,
-                bestMove,
-                multiPV,
-                source: 'API'
-            };
-
-        } catch (e) {
-            return { error: true };
-        }
-    }
+    
+    // evaluateApi removed as we are replacing it with WASM
     
     stop() {
-        if (this.worker) {
-            this.worker.postMessage('stop');
+        if (this.engine) {
+            this.engine.send('stop');
         }
     }
 }

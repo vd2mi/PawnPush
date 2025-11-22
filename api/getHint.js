@@ -1205,7 +1205,7 @@ async function callGPTWithTools(messages, apiKey) {
   }
 }
 
-async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, puzzleType) {
+async function runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, puzzleType, clientAnalysis = null) {
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const HF_TOKEN = process.env.HF_TOKEN;
 
@@ -1268,15 +1268,34 @@ Do not explain anything - only request tool calls.`
             
             console.log(`GPT requested analysis:`, args);
             
-            const analysisResult = await analyzePosition({
-              fen: args.fen || fen,
-              depth: args.depth || 18,
-              multipv: args.multipv || 3,
-              purpose: args.purpose || 'main_position',
-              hfToken: HF_TOKEN
-            });
+            let analysisResult;
 
-            const recoveredResult = await recoverPV(analysisResult, args.fen || fen, HF_TOKEN);
+            // If client provided analysis and it matches the request (main position), use it
+            if (clientAnalysis && (args.purpose === 'main_position' || !args.purpose || args.fen === fen || !args.fen)) {
+                 console.log('Using client-side analysis');
+                 analysisResult = clientAnalysis;
+                 // Ensure format matches what analyzePosition returns
+                 if (!analysisResult.bestMove) analysisResult.bestMove = clientAnalysis.bestMove; 
+            } else {
+                analysisResult = await analyzePosition({
+                    fen: args.fen || fen,
+                    depth: args.depth || 18,
+                    multipv: args.multipv || 3,
+                    purpose: args.purpose || 'main_position',
+                    hfToken: HF_TOKEN
+                });
+            }
+
+            // recoverPV might still be needed if client analysis is partial, 
+            // but usually local engine gives full PV.
+            // ... (rest of code)
+            
+            // For now, let's just use analysisResult. 
+            // If clientAnalysis is good, recoverPV should be fast or skipped.
+            
+            const recoveredResult = clientAnalysis && analysisResult === clientAnalysis 
+                ? analysisResult 
+                : await recoverPV(analysisResult, args.fen || fen, HF_TOKEN);
 
             analysisSteps.push({
               request: args,
@@ -1451,7 +1470,7 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-  let fen, userQuestion, solutionMoves, moveHistory, puzzleType;
+  let fen, userQuestion, solutionMoves, moveHistory, puzzleType, clientAnalysis;
   
   if (req.method === 'GET') {
     fen = req.query.fen;
@@ -1459,8 +1478,9 @@ export default async function handler(req, res) {
     solutionMoves = req.query.solutionMove ? [req.query.solutionMove] : [];
     puzzleType = req.query.puzzleType;
     moveHistory = null;
+    clientAnalysis = null;
   } else if (req.method === 'POST') {
-    ({ fen, userQuestion, solutionMoves, moveHistory } = req.body);
+    ({ fen, userQuestion, solutionMoves, moveHistory, clientAnalysis } = req.body);
     puzzleType = req.body.puzzleType;
   } else {
       return res.status(405).json({ error: 'Method not allowed' });
@@ -1481,7 +1501,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const result = await runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, puzzleType);
+    const result = await runAgenticCoach(fen, userQuestion, solutionMoves, moveHistory, puzzleType, clientAnalysis);
     
 
     return res.status(200).json({

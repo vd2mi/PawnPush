@@ -1,3 +1,5 @@
+import { createEngine } from '/public/engine/engine-wrapper.js';
+
 function playSound(soundName) {
   if (window.audioManager) {
     window.audioManager.playSound(soundName);
@@ -445,32 +447,113 @@ function toggleChat() {
     }
 }
 
-coachBtn.addEventListener('click', toggleChat);
-
-chatSend.addEventListener('click', async () => {
-  const question = chatInput.value.trim();
-  if (!question) return;
-  const userMsg = document.createElement('div');
-  userMsg.classList.add('user');
-  userMsg.innerHTML = `<strong>You:</strong> ${question}`;
-  chatMessages.appendChild(userMsg);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-  chatInput.value = "";
-  const aiMsg = document.createElement('div');
-  aiMsg.classList.add('ai');
-  aiMsg.innerHTML = `<strong>Coach:</strong> Coach is thinking...`;
-  chatMessages.appendChild(aiMsg);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-  try {
-    const fen = chess.fen();
-    const res = await fetch(`/api/getHint?fen=${fen}&userMove=&stockfishMove=&question=${encodeURIComponent(question)}&solutionMove=${currentPuzzle.puzzle.solution[solutionIndex]}&puzzleType=${currentPuzzle.puzzle.themes}`);
-    const data = await res.json();
-    aiMsg.innerHTML = `<strong>Coach:</strong> ${data.hint}`;
-  } catch (e) {
-    aiMsg.innerHTML = `<strong>Coach:</strong> Error getting hint`;
+  let engine = null;
+  async function getEngine() {
+    if (!engine) engine = await createEngine();
+    return engine;
   }
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-});
+
+  async function analyzeLocal(fen) {
+    try {
+      const eng = await getEngine();
+      // Simple analysis: depth 18, multipv 3
+      // We need to parse the output similar to game-review but return the structure getHint expects
+      
+      return new Promise((resolve) => {
+          let bestMove = null;
+          let multiPV = [];
+          let pendingMultiPV = [];
+          
+          const onMessage = (line) => {
+             if (line.startsWith('info') && line.includes('score') && line.includes('multipv')) {
+                 // ... parsing logic (simplified) ...
+                 // Actually, let's reuse logic or write simple parser
+                 const parts = line.split(' ');
+                 const getVal = (k) => { const i = parts.indexOf(k); return i>=0 ? parts[i+1] : null; };
+                 const mpv = parseInt(getVal('multipv'));
+                 const scoreType = getVal('score');
+                 let val = parseInt(parts[parts.indexOf(scoreType)+1]);
+                 let mate = null;
+                 if (scoreType === 'mate') { mate = val; val = mate > 0 ? 10000 : -10000; }
+                 
+                 const pvIdx = parts.indexOf('pv');
+                 const pv = pvIdx >= 0 ? parts.slice(pvIdx+1) : [];
+                 const move = pv[0];
+                 
+                 pendingMultiPV[mpv-1] = {
+                     move: move,
+                     evaluation: mate ? (mate>0?`M${mate}`:`-M${Math.abs(mate)}`) : (val/100).toFixed(2),
+                     evalScore: val,
+                     pv: pv
+                 };
+             }
+             if (line.startsWith('bestmove')) {
+                 bestMove = line.split(' ')[1];
+                 const result = {
+                     bestMove: bestMove,
+                     topMoves: pendingMultiPV.filter(x=>x),
+                     evaluation: pendingMultiPV[0]?.evaluation || '0.00',
+                     principalVariation: pendingMultiPV[0]?.pv || []
+                 };
+                 resolve(result);
+             }
+          };
+          
+          eng.onMessage(onMessage);
+          eng.send('stop');
+          eng.send('ucinewgame');
+          eng.send('position fen ' + fen);
+          eng.send('setoption name MultiPV value 3');
+          eng.send('go depth 18');
+      });
+    } catch (e) {
+      console.error('Local analysis failed', e);
+      return null;
+    }
+  }
+
+  coachBtn.addEventListener('click', toggleChat);
+
+  chatSend.addEventListener('click', async () => {
+    const question = chatInput.value.trim();
+    if (!question) return;
+    const userMsg = document.createElement('div');
+    userMsg.classList.add('user');
+    userMsg.innerHTML = `<strong>You:</strong> ${question}`;
+    chatMessages.appendChild(userMsg);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    chatInput.value = "";
+    const aiMsg = document.createElement('div');
+    aiMsg.classList.add('ai');
+    aiMsg.innerHTML = `<strong>Coach:</strong> Coach is thinking...`;
+    chatMessages.appendChild(aiMsg);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    try {
+      const fen = chess.fen();
+      
+      // Run local analysis first
+      const analysis = await analyzeLocal(fen);
+      
+      const res = await fetch('/api/getHint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+           fen,
+           userQuestion: question,
+           solutionMoves: [currentPuzzle.puzzle.solution[solutionIndex]],
+           puzzleType: currentPuzzle.puzzle.themes,
+           clientAnalysis: analysis
+        })
+      });
+      
+      const data = await res.json();
+      aiMsg.innerHTML = `<strong>Coach:</strong> ${data.hint}`;
+    } catch (e) {
+      console.error(e);
+      aiMsg.innerHTML = `<strong>Coach:</strong> Error getting hint`;
+    }
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  });
 
 chatInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') chatSend.click();
