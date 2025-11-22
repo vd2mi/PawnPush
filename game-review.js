@@ -1,5 +1,3 @@
-import { createEngine } from '/engine/engine-wrapper.js';
-
 const CONFIG = {
     DEPTH: 18,
     MOVETIME: 1000,
@@ -63,23 +61,37 @@ class StockfishEngine {
         this.isReady = false;
         this.pendingResolve = null;
         this.currentMultiPV = [];
+        this.initDone = false;
     }
 
     async init() {
-        return new Promise(async (resolve) => {
-            try {
-                this.engine = await createEngine();
+        if (this.initDone) return true;
 
-                this.engine.onMessage((line) => {
-                    // console.log('Engine:', line); // Uncomment for debug
+        try {
+            this.engine = await Stockfish({
+                locateFile: (path) => {
+                    if (path.endsWith('.wasm')) return '/engine/stockfish.wasm';
+                    return path;
+                }
+            });
+
+            if (this.engine.addMessageListener) {
+                this.engine.addMessageListener((line) => {
                     this.handleMessage(line);
                 });
+            }
 
-                this.engine.send("uci");
+            if (this.engine.postMessage) {
+                this.engine.postMessage('uci');
+            } else if (typeof this.engine === 'function') {
+                this.engine('uci');
+            }
 
+            return await new Promise((resolve) => {
                 const check = setInterval(() => {
                     if (this.isReady) {
                         clearInterval(check);
+                        this.initDone = true;
                         resolve(true);
                     }
                 }, 100);
@@ -87,33 +99,33 @@ class StockfishEngine {
                 setTimeout(() => {
                     if (!this.isReady) {
                         clearInterval(check);
-                        console.warn("WASM startup timeout, but proceeding if engine is responsive.");
-                        resolve(true); 
+                        console.warn('WASM startup timeout, proceeding anyway.');
+                        resolve(true);
                     }
                 }, 15000);
-
-            } catch (err) {
-                console.error("init failed:", err);
-                resolve(false);
-            }
-        });
+            });
+        } catch (err) {
+            console.error('Stockfish init failed:', err);
+            return false;
+        }
     }
 
     handleMessage(line) {
         if (line === 'uciok') {
             this.isReady = true;
-            this.engine.send('setoption name MultiPV value 3');
-            this.engine.send('setoption name Threads value 4');
-            this.engine.send('setoption name Use NNUE value true');
-            this.engine.send('isready');
+            if (this.engine) {
+                this.engine.postMessage ? this.engine.postMessage('setoption name MultiPV value 3') : this.engine('setoption name MultiPV value 3');
+                this.engine.postMessage ? this.engine.postMessage('setoption name Threads value 1') : this.engine('setoption name Threads value 1');
+                this.engine.postMessage ? this.engine.postMessage('isready') : this.engine('isready');
+            }
             UI.updateStatus('Stockfish WASM (Local)', true);
             return;
         }
-        
+
         if (this.pendingResolve) {
             if (line.startsWith('info') && line.includes('score') && line.includes('multipv')) {
                 const parts = line.split(' ');
-                
+
                 const getVal = (key) => {
                     const idx = parts.indexOf(key);
                     return idx !== -1 ? parts[idx + 1] : null;
@@ -123,10 +135,10 @@ class StockfishEngine {
                 const depth = parseInt(getVal('depth'));
                 const scoreType = getVal('score');
                 let rawScore = parseInt(parts[parts.indexOf(scoreType) + 1]);
-                
+
                 let score = rawScore;
                 let mate = null;
-                
+
                 if (scoreType === 'mate') {
                     mate = rawScore;
                     score = mate > 0 ? 10000 : -10000;
@@ -155,7 +167,7 @@ class StockfishEngine {
                     };
                 } else {
                     if (this.pendingResolve.currentResult) {
-                         this.pendingResolve.currentResult.multiPV = [...this.currentMultiPV];
+                        this.pendingResolve.currentResult.multiPV = [...this.currentMultiPV];
                     }
                 }
             }
@@ -165,7 +177,7 @@ class StockfishEngine {
                 const result = this.pendingResolve.currentResult || { score: 0, depth: 0, mate: null, multiPV: [] };
                 result.bestMove = bestMove;
                 result.multiPV = this.currentMultiPV.filter(x => x);
-                
+
                 const resolve = this.pendingResolve.resolve;
                 this.pendingResolve = null;
                 resolve(result);
@@ -176,26 +188,21 @@ class StockfishEngine {
     async evaluate(fen, depth = CONFIG.DEPTH) {
         const cacheKey = fen.split(' ').slice(0, 4).join(' ');
         if (state.evaluations.has(cacheKey)) {
-             const cached = state.evaluations.get(cacheKey);
-             if (cached.depth >= depth) return cached;
+            const cached = state.evaluations.get(cacheKey);
+            if (cached.depth >= depth) return cached;
         }
 
         if (!this.engine || !this.isReady) {
-             return { score: 0, depth: 0, error: 'Engine not ready' };
+            return { score: 0, depth: 0, error: 'Engine not ready' };
         }
-        
-        return this.evaluateWasm(fen, depth);
-    }
 
-    async evaluateApi(fen, depth) {
-        // Deprecated or removed
-        return { score: 0, depth: 0, error: 'API Failed' };
+        return this.evaluateWasm(fen, depth);
     }
 
     async evaluateWasm(fen, depth) {
         this.currentMultiPV = [];
-        
-        return new Promise((resolve, reject) => {
+
+        return new Promise((resolve) => {
             if (this.pendingResolve) {
                 this.pendingResolve.resolve({ score: 0, depth: 0, error: 'Interrupted' });
             }
@@ -207,27 +214,40 @@ class StockfishEngine {
                 }
             }, CONFIG.TIMEOUT);
 
-            const pending = { 
+            const pending = {
                 resolve: (result) => {
                     clearTimeout(timer);
                     state.evaluations.set(fen.split(' ').slice(0, 4).join(' '), result);
                     resolve(result);
-                }, 
-                currentResult: null 
+                },
+                currentResult: null
             };
 
             this.pendingResolve = pending;
-            this.engine.send('position fen ' + fen);
-            this.engine.send(`go depth ${depth}`);
+
+            const cmdPos = 'position fen ' + fen;
+            const cmdGo = `go depth ${depth}`;
+
+            if (this.engine.postMessage) {
+                this.engine.postMessage(cmdPos);
+                this.engine.postMessage(cmdGo);
+            } else if (typeof this.engine === 'function') {
+                this.engine(cmdPos);
+                this.engine(cmdGo);
+            }
         });
     }
-    
+
     stop() {
-        if (this.engine) {
-            this.engine.send('stop');
+        if (!this.engine) return;
+        if (this.engine.postMessage) {
+            this.engine.postMessage('stop');
+        } else if (typeof this.engine === 'function') {
+            this.engine('stop');
         }
     }
 }
+
 
 const engine = new StockfishEngine();
 
