@@ -1,5 +1,4 @@
 const CONFIG = {
-    WASM_URL: 'https://cdn.jsdelivr.net/npm/stockfish@16.1.0/dist/stockfish.js',
     API_URL: 'https://stockfishapi.hf.space/analyze/fen',
     DEPTH: 18,
     MOVETIME: 1000,
@@ -69,46 +68,48 @@ class StockfishEngine {
     async init() {
         return new Promise((resolve) => {
             try {
-                const wasmPath = CONFIG.WASM_URL.substring(0, CONFIG.WASM_URL.lastIndexOf('/') + 1);
-                
+                const wasmBase = "https://stockfishchess.org/wasm/";
+
                 const blob = new Blob([`
                     var Module = {
                         locateFile: function(path) {
-                            return '${wasmPath}' + path;
+                            return '${wasmBase}' + path;
                         }
                     };
-                    importScripts('${CONFIG.WASM_URL}');
+                    importScripts('${wasmBase}stockfish.js');
                 `], { type: 'application/javascript' });
 
                 this.worker = new Worker(URL.createObjectURL(blob));
-                
+
                 this.worker.onmessage = (e) => this.handleMessage(e.data);
+
                 this.worker.onerror = (e) => {
-                    console.warn('Stockfish WASM failed:', e);
+                    console.warn("Stockfish WASM failed:", e);
                     this.enableFallback();
                     resolve(false);
                 };
 
-                this.worker.postMessage('uci');
-                
-                const checkReady = setInterval(() => {
+                // Begin UCI
+                this.worker.postMessage("uci");
+
+                const check = setInterval(() => {
                     if (this.isReady) {
-                        clearInterval(checkReady);
+                        clearInterval(check);
                         resolve(true);
                     }
                 }, 100);
 
                 setTimeout(() => {
                     if (!this.isReady) {
-                        clearInterval(checkReady);
-                        console.warn('Stockfish WASM timed out.');
+                        clearInterval(check);
+                        console.warn("WASM startup timeout");
                         this.enableFallback();
                         resolve(false);
                     }
-                }, 10000);
+                }, 8000);
 
             } catch (err) {
-                console.error('Engine init failed:', err);
+                console.error("init failed:", err);
                 this.enableFallback();
                 resolve(false);
             }
