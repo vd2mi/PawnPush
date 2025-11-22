@@ -2,6 +2,9 @@ const CONFIG = {
     DEPTH: 18,
     MOVETIME: 1000,
     TIMEOUT: 20000,
+    CLOUDFLARE_DEPTH: 20,
+    API_DEPTH: 18,
+    SIGNIFICANT_THRESHOLD: 50
 };
 
 const state = {
@@ -57,198 +60,69 @@ const Analysis = {
 
 class StockfishEngine {
     constructor() {
-        this.engine = null;
-        this.isReady = false;
-        this.pendingResolve = null;
-        this.currentMultiPV = [];
-        this.initDone = false;
-        this.initInProgress = false;
     }
 
-    init() {
-        if (this.initDone || this.initInProgress) return Promise.resolve(this.isReady);
-        this.initInProgress = true;
-
-        // Safety check
-        if (typeof Stockfish === 'undefined') {
-            console.warn('Stockfish not loaded, using API only');
-            this.initInProgress = false;
-            return Promise.resolve(false);
-        }
-
-        console.log('Starting Stockfish initialization...');
-        
-        // Start initialization but resolve immediately to not block UI
-        this.startEngineInit();
-        
-        // Return immediately - engine will become ready asynchronously
-        return Promise.resolve(false);
-    }
-
-    startEngineInit() {
-        // Use requestIdleCallback or setTimeout to ensure non-blocking
-        const initFn = () => {
-            try {
-                console.log('Loading Stockfish WASM...');
-                
-                // Call Stockfish() and handle the promise separately
-                Stockfish().then(engine => {
-                    if (!engine) {
-                        console.warn('Stockfish() returned null, using API');
-                        this.initInProgress = false;
-                        return;
-                    }
-
-                    this.engine = engine;
-                    console.log('Stockfish loaded, setting up listener...');
-
-                    // Use addMessageListener (this is the Emscripten interface)
-                    this.engine.addMessageListener((line) => {
-                        this.handleMessage(line);
-                    });
-
-                    // Send UCI command
-                    this.engine.postMessage('uci');
-
-                    // Wait for uciok with timeout
-                    const startTime = Date.now();
-                    const check = setInterval(() => {
-                        if (this.isReady) {
-                            clearInterval(check);
-                            this.initDone = true;
-                            this.initInProgress = false;
-                            console.log('Engine ready!');
-                        } else if (Date.now() - startTime > 5000) {
-                            clearInterval(check);
-                            this.initInProgress = false;
-                            console.warn('UCI handshake timeout, will use API fallback');
-                        }
-                    }, 100);
-
-                }).catch(err => {
-                    console.error('Stockfish init failed:', err);
-                    this.initInProgress = false;
-                });
-
-            } catch (err) {
-                console.error('Stockfish init failed:', err);
-                this.initInProgress = false;
-            }
-        };
-
-        if (window.requestIdleCallback) {
-            requestIdleCallback(initFn);
-        } else {
-            setTimeout(initFn, 100);
-        }
-    }
-
-    handleMessage(line) {
-        if (line === 'uciok') {
-            this.isReady = true;
-            if (this.engine) {
-                this.engine.postMessage('setoption name MultiPV value 3');
-                this.engine.postMessage('setoption name Threads value 1');
-                this.engine.postMessage('isready');
-            }
-            UI.updateStatus('Stockfish WASM (Local)', true);
-            return;
-        }
-
-        if (this.pendingResolve) {
-            if (line.startsWith('info') && line.includes('score') && line.includes('multipv')) {
-                const parts = line.split(' ');
-
-                const getVal = (key) => {
-                    const idx = parts.indexOf(key);
-                    return idx !== -1 ? parts[idx + 1] : null;
-                };
-
-                const mpv = parseInt(getVal('multipv'));
-                const depth = parseInt(getVal('depth'));
-                
-                // FIX: Find score type correctly (avoid matching "cp" in move names like "rcp7b1")
-                const scoreIdx = parts.findIndex((p, i) => (p === 'cp' || p === 'mate') && i > 0 && parts[i - 1] === 'score');
-                if (scoreIdx === -1) return;
-                
-                const scoreType = parts[scoreIdx];
-                let rawScore = parseInt(parts[scoreIdx + 1]);
-
-                let score = rawScore;
-                let mate = null;
-
-                if (scoreType === 'mate') {
-                    mate = rawScore;
-                    score = mate > 0 ? 10000 : -10000;
-                }
-
-                const pvIdx = parts.indexOf('pv');
-                const pvMoves = pvIdx !== -1 ? parts.slice(pvIdx + 1).join(' ') : '';
-                const bestMove = pvIdx !== -1 ? parts[pvIdx + 1] : null;
-
-                this.currentMultiPV[mpv - 1] = {
-                    depth,
-                    score,
-                    mate,
-                    bestMove,
-                    uciLine: pvMoves,
-                    multipv: mpv
-                };
-
-                if (mpv === 1) {
-                    this.pendingResolve.currentResult = {
-                        score,
-                        mate,
-                        depth,
-                        bestMove,
-                        multiPV: [...this.currentMultiPV]
-                    };
-                } else {
-                    if (this.pendingResolve.currentResult) {
-                        this.pendingResolve.currentResult.multiPV = [...this.currentMultiPV];
-                    }
-                }
-            }
-
-            if (line.startsWith('bestmove')) {
-                const bestMove = line.split(' ')[1];
-                const result = this.pendingResolve.currentResult || { score: 0, depth: 0, mate: null, multiPV: [] };
-                result.bestMove = bestMove;
-                result.multiPV = this.currentMultiPV.filter(x => x);
-
-                const resolve = this.pendingResolve.resolve;
-                this.pendingResolve = null;
-                resolve(result);
-            }
-        }
-    }
-
-    async evaluate(fen, depth = CONFIG.DEPTH) {
+    async evaluate(fen, depth = CONFIG.DEPTH, useDeepAnalysis = false) {
         const cacheKey = fen.split(' ').slice(0, 4).join(' ');
         if (state.evaluations.has(cacheKey)) {
             const cached = state.evaluations.get(cacheKey);
             if (cached.depth >= depth) return cached;
         }
 
-        // Fallback to API if engine not ready
-        if (!this.engine || !this.isReady) {
-            return await this.analyzePositionRemote(fen, depth);
+        if (useDeepAnalysis) {
+            const hfResult = await this.analyzePositionHF(fen, CONFIG.API_DEPTH);
+            if (hfResult) return hfResult;
         }
 
-        return this.evaluateWasm(fen, depth);
+        const cfResult = await this.analyzePositionCloudflare(fen, CONFIG.CLOUDFLARE_DEPTH);
+        if (cfResult) return cfResult;
+
+        return { score: 0, depth: 0, error: 'Engine unavailable' };
     }
 
-    async analyzePositionRemote(fen, depth = CONFIG.DEPTH) {
+    async analyzePositionCloudflare(fen, depth = CONFIG.CLOUDFLARE_DEPTH) {
         try {
-            const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
+            const response = await fetch('https://chess-api.com/v1', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fen, depth }),
-                signal: AbortSignal.timeout(15000)
+                body: JSON.stringify({ 
+                    fen, 
+                    depth,
+                    mode: 'best'
+                }),
+                signal: AbortSignal.timeout(10000)
             });
 
             if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
+                throw new Error(`Cloudflare API error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            
+            return {
+                score: data.score || 0,
+                mate: data.mate || null,
+                depth: data.depth || depth,
+                bestMove: data.move || data.bestMove || null,
+                multiPV: data.lines || []
+            };
+        } catch (error) {
+            console.error('Cloudflare API failed:', error);
+            return null;
+        }
+    }
+
+    async analyzePositionHF(fen, depth = CONFIG.API_DEPTH) {
+        try {
+            const response = await fetch('/api/analyzePosition', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fen, depth }),
+                signal: AbortSignal.timeout(25000)
+            });
+
+            if (!response.ok) {
+                throw new Error(`HF API error: ${response.status}`);
             }
 
             const data = await response.json();
@@ -261,46 +135,9 @@ class StockfishEngine {
                 multiPV: data.multiPV || data.lines || []
             };
         } catch (error) {
-            console.error('Remote API failed:', error);
-            return { score: 0, depth: 0, error: 'API unavailable' };
+            console.error('HF API failed:', error);
+            return null;
         }
-    }
-
-    async evaluateWasm(fen, depth) {
-        return new Promise((resolve) => {
-            if (this.pendingResolve) {
-                this.pendingResolve.resolve({ score: 0, depth: 0, error: 'Interrupted' });
-            }
-
-            const timer = setTimeout(() => {
-                if (this.pendingResolve === pending) {
-                    this.pendingResolve = null;
-                    resolve({ score: 0, depth: 0, error: 'Timeout' });
-                }
-            }, CONFIG.TIMEOUT);
-
-            const pending = {
-                resolve: (result) => {
-                    clearTimeout(timer);
-                    state.evaluations.set(fen.split(' ').slice(0, 4).join(' '), result);
-                    resolve(result);
-                },
-                currentResult: null
-            };
-
-            this.pendingResolve = pending;
-
-            // FIX: Reset multiPV array to prevent ghost lines
-            this.currentMultiPV = [null, null, null];
-
-            this.engine.postMessage('position fen ' + fen);
-            this.engine.postMessage(`go depth ${depth}`);
-        });
-    }
-
-    stop() {
-        if (!this.engine) return;
-        this.engine.postMessage('stop');
     }
 }
 
@@ -311,26 +148,6 @@ const Reviewer = {
         if (state.isAnalyzing) return;
         state.isAnalyzing = true;
         UI.showLoading(true);
-        
-        // Initialize engine on first use (lazy loading) and WAIT for it
-        if (!engine.initDone && !engine.initInProgress) {
-            console.log('First analysis - initializing engine, please wait...');
-            UI.updateProgress(0, 1);
-            engine.init();
-            
-            // Wait up to 10 seconds for engine to be ready
-            const maxWait = 10000;
-            const startWait = Date.now();
-            while (!engine.isReady && (Date.now() - startWait) < maxWait) {
-                await new Promise(resolve => setTimeout(resolve, 200));
-            }
-            
-            if (engine.isReady) {
-                console.log('Engine ready! Starting analysis with local Stockfish.');
-            } else {
-                console.warn('Engine not ready after 10s, will use API fallback for analysis.');
-            }
-        }
         
         state.moveAnalyses = new Array(state.history.length).fill(null);
         
@@ -346,13 +163,12 @@ const Reviewer = {
                 
                 UI.updateProgress(i + 1, state.history.length - 1);
 
-                const evalBefore = await engine.evaluate(fenBefore);
-                const evalAfter = await engine.evaluate(fenAfter);
+                const evalBefore = await engine.evaluate(fenBefore, CONFIG.CLOUDFLARE_DEPTH, false);
+                const evalAfter = await engine.evaluate(fenAfter, CONFIG.CLOUDFLARE_DEPTH, false);
 
                 const turn = new Chess(fenBefore).turn(); 
                 
                 const scoreBefore = evalBefore.score; 
-                // FIX: Don't double-invert the score
                 const scoreAfter = evalAfter.score; 
                 
                 let cpl = 0;
@@ -365,6 +181,16 @@ const Reviewer = {
                      } else {
                          cpl = 0;
                      }
+                }
+
+                let finalEvalBefore = evalBefore;
+                if (cpl >= CONFIG.SIGNIFICANT_THRESHOLD) {
+                    console.log(`Significant move (CPL: ${cpl}), using HF API depth 18...`);
+                    finalEvalBefore = await engine.evaluate(fenBefore, CONFIG.API_DEPTH, true);
+                    const deepScoreBefore = finalEvalBefore.score;
+                    if (Math.abs(deepScoreBefore) < 9000 && Math.abs(scoreAfter) < 9000) {
+                        cpl = Math.max(0, deepScoreBefore - scoreAfter);
+                    }
                 }
                 
                 if (Math.abs(scoreBefore) < 9000) {
@@ -382,13 +208,13 @@ const Reviewer = {
                 state.moveAnalyses[i] = {
                     moveIndex: i,
                     playedMove: findMoveSan(fenBefore, fenAfter),
-                    bestMove: evalBefore.bestMove,
-                    score: scoreBefore,
-                    mate: evalBefore.mate,
+                    bestMove: finalEvalBefore.bestMove,
+                    score: finalEvalBefore.score,
+                    mate: finalEvalBefore.mate,
                     cpl: cpl,
                     quality: quality,
                     fen: fenBefore,
-                    multiPV: evalBefore.multiPV || []
+                    multiPV: finalEvalBefore.multiPV || []
                 };
                 
                 UI.updateMoveList(i);
@@ -518,9 +344,6 @@ const UI = {
 
         console.log('Chessboard initialized');
         console.log('UI.init() completed - page is ready!');
-        
-        // DON'T initialize engine on page load - it blocks!
-        // Engine will initialize when user clicks "Analyze"
     },
 
     showGameSelector: (games) => {
@@ -549,12 +372,6 @@ const UI = {
         document.body.appendChild(modal);
     },
 
-    updateStatus: (text, ready) => {
-        const el = document.getElementById('statusText');
-        const dot = document.getElementById('statusDot');
-        if (el) el.textContent = text;
-        if (dot) dot.className = 'status-dot' + (ready ? ' ready' : '');
-    },
 
     showToast: (msg, type = 'info') => {
         const t = document.createElement('div');

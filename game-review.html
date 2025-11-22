@@ -11,11 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
   <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.js"></script>
-  <script>
-    // Configure Stockfish WASM path before loading
-    window.STOCKFISH = { WASM_PATH: "./engine/stockfish.wasm" };
-  </script>
-  <script src="./engine/stockfish.js"></script>
+  <!-- Stockfish loaded AFTER page is ready to prevent blocking -->
   <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
   <link rel="stylesheet" href="style.css">
   <script src="audio-manager.js"></script>
@@ -518,5 +514,16 @@
 </main>
 
 <script src="game-review.js"></script>
+<script>
+  // Load Stockfish AFTER the page is fully loaded and interactive
+  window.addEventListener('load', () => {
+    console.log('Page loaded, now loading Stockfish...');
+    window.STOCKFISH = { WASM_PATH: "./engine/stockfish.wasm" };
+    const script = document.createElement('script');
+    script.src = './engine/stockfish.js';
+    script.async = true;
+    document.head.appendChild(script);
+  });
+</script>
 </body>
 </html>
