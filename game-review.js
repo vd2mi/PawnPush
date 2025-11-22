@@ -312,6 +312,14 @@ const Reviewer = {
         state.isAnalyzing = true;
         UI.showLoading(true);
         
+        // Initialize engine on first use (lazy loading)
+        if (!engine.initDone && !engine.initInProgress) {
+            console.log('First analysis - initializing engine...');
+            engine.init();
+            // Give engine a moment to start initializing
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
         state.moveAnalyses = new Array(state.history.length).fill(null);
         
         let whiteStats = { cplSum: 0, moves: 0 };
@@ -497,21 +505,10 @@ const UI = {
         });
 
         console.log('Chessboard initialized');
-        console.log('UI.init() completed - page should be ready now');
-
-        // Initialize engine AFTER a delay to ensure UI is fully loaded
-        setTimeout(() => {
-            console.log('Starting engine init (delayed)...');
-            engine.init().then((success) => {
-                if (success) {
-                    console.log('Engine initialized successfully');
-                } else {
-                    console.warn('Engine initialization failed, will use API fallback');
-                }
-            }).catch(err => {
-                console.error('Engine init error:', err);
-            });
-        }, 1000);
+        console.log('UI.init() completed - page is ready!');
+        
+        // DON'T initialize engine on page load - it blocks!
+        // Engine will initialize when user clicks "Analyze"
     },
 
     showGameSelector: (games) => {
