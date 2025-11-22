@@ -1,5 +1,5 @@
 const CONFIG = {
-    WASM_URL: 'https://cdn.jsdelivr.net/gh/niklasf/stockfish.wasm/stockfish.js',
+    WASM_URL: 'https://cdn.jsdelivr.net/npm/stockfish@16.1.0/dist/stockfish.js',
     API_URL: 'https://stockfishapi.hf.space/analyze/fen',
     DEPTH: 18,
     MOVETIME: 1000,
