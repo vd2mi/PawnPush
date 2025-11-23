@@ -1,7 +1,5 @@
 (() => {
-    /* ============================
-     * Configuration & Constants
-     * ============================ */
+    
 const CONFIG = {
         TIER1_DEPTH: 12,
         TIER2_DEPTH: 22,
@@ -17,9 +15,7 @@ const CONFIG = {
 
     const LINE_COLORS = ['#00d47e', '#3b82f6', '#a855f7', '#f97316', '#ec4899'];
 
-    /* ============================
-     * Global State
-     * ============================ */
+    
     const State = {
     chess: new Chess(),
         scratch: new Chess(),
@@ -53,9 +49,7 @@ const CONFIG = {
         })()
     };
 
-    /* ============================
-     * Utility Helpers
-     * ============================ */
+    
     const Utils = {
         fenKey(fen) {
             return fen.split(' ').slice(0, 4).join(' ');
@@ -70,16 +64,16 @@ const CONFIG = {
                 return '';
             });
             
-            // Remove header section completely
+            
             let body = text.replace(/\[.*?\]\s*/g, '');
             
-            // Remove all annotations and comments
+            
             body = body
-                .replace(/\{[^}]*\}/g, ' ')  // Remove {comments} and {[%clk ...]}
-                .replace(/\([^)]*\)/g, ' ')   // Remove (variations)
-                .replace(/\$[0-9]+/g, ' ')    // Remove $NAGs
-                .replace(/;[^\n]*/g, ' ')     // Remove ; comments
-                .replace(/\s+/g, ' ')         // Normalize whitespace
+                .replace(/\{[^}]*\}/g, ' ') 
+                .replace(/\([^)]*\)/g, ' ')  
+                .replace(/\$[0-9]+/g, ' ')    
+                .replace(/;[^\n]*/g, ' ')     
+                .replace(/\s+/g, ' ')         
                 .trim();
             
             return { headers, body };
@@ -87,7 +81,7 @@ const CONFIG = {
         loadPgn(body) {
             const temp = new Chess();
             
-            // Try loading as PGN first
+            
             let success = false;
             try {
                 success = temp.load_pgn(body, { sloppy: true });
@@ -95,7 +89,7 @@ const CONFIG = {
                 success = false;
             }
             
-            // If PGN loading failed, try parsing as move list
+            
             if (!success) {
                 temp.reset();
                 const tokens = body.trim().split(/\s+/);
@@ -120,7 +114,7 @@ const CONFIG = {
                     throw new Error('Unable to parse PGN - no valid moves found.');
                 }
                 
-                // Warn if moves were skipped
+                
                 if (failedMoves.length > 0) {
                     console.warn(`Skipped ${failedMoves.length} invalid moves:`, failedMoves.slice(0, 5).join(', '));
                 }
@@ -179,9 +173,7 @@ const CONFIG = {
         }
     };
 
-    /* ============================
-     * Evaluation Cache
-     * ============================ */
+    
     const EvalCache = (() => {
         const store = new Map();
         const bySource = new Map();
@@ -224,9 +216,7 @@ const CONFIG = {
         return { save, lookup, best };
     })();
 
-    /* ============================
-     * Analysis Helpers
-     * ============================ */
+    
     const Analysis = {
         normalize({ cp, mate, turn }) {
             if (typeof mate === 'number') {
@@ -252,7 +242,7 @@ const CONFIG = {
             return { label: 'Blunder', icon: '??', className: 'move-blunder' };
         },
         accuracy(acpl) {
-            // Use exponential decay formula (consistent with server)
+            
             return Math.min(100, Math.round(100 * Math.exp(-0.002 * acpl)));
         },
         rating(acpl) {
@@ -260,9 +250,7 @@ const CONFIG = {
         }
     };
 
-    /* ============================
-     * Request Queue
-     * ============================ */
+    
     const RequestQueue = (() => {
         const queue = [];
         const inflight = new Map();
@@ -315,6 +303,30 @@ const CONFIG = {
         };
     }
 
+    function normalizeCloudflareEval(raw) {
+        if (raw === null || raw === undefined) return 0;
+
+        const str = String(raw).trim().replace(',', '.');
+        if (str === '0' || str === '-0') return 0;
+
+        const num = parseFloat(str);
+        if (isNaN(num)) return 0;
+
+        if (str.includes('.')) return Math.round(num * 100);
+
+        const abs = Math.abs(num);
+
+        if (abs >= 1000) return Math.round(num);
+
+        if (abs < 40) return Math.round(num);
+
+        if (abs <= 300) return Math.round(num);
+
+        if (abs < 900) return Math.round(num);
+
+        return Math.round(num);
+    }
+
     async function fetchCloudflare(fen, externalSignal) {
             const params = new URLSearchParams({
                 fen,
@@ -331,8 +343,7 @@ const CONFIG = {
             if (!res.ok) return null;
             const json = await res.json();
             
-            // Parse the Cloudflare response
-            // The API returns evaluation from White's perspective already
+            
             let cpWhite = 0;
             let mate = null;
 
@@ -341,40 +352,36 @@ const CONFIG = {
                 mate = parseInt(json.mate, 10);
             }
             
-            // Parse centipawn evaluation (already from White's perspective)
-            // Cloudflare API can return evaluation as string in pawns or centipawns
+            
             if (json.evaluation !== undefined && json.evaluation !== null) {
-                const evalStr = String(json.evaluation);
-                
-                // If contains decimal point, it's in pawns - multiply by 100
-                if (evalStr.indexOf('.') !== -1) {
-                    cpWhite = Math.round(parseFloat(evalStr) * 100);
-                } else {
-                    const intVal = parseInt(evalStr, 10);
-                    // If integer is small (≤20), treat as pawns
-                    if (Math.abs(intVal) <= 20) {
-                        cpWhite = intVal * 100;
-                    } else {
-                        // Otherwise assume centipawns
-                        cpWhite = intVal;
-                    }
-                }
+                cpWhite = normalizeCloudflareEval(json.evaluation);
             } else if (json.eval !== undefined && json.eval !== null) {
-                const evalStr = String(json.eval);
-                if (evalStr.indexOf('.') !== -1) {
-                    cpWhite = Math.round(parseFloat(evalStr) * 100);
-                } else {
-                    const intVal = parseInt(evalStr, 10);
-                    cpWhite = Math.abs(intVal) <= 20 ? intVal * 100 : intVal;
-                }
+                cpWhite = normalizeCloudflareEval(json.eval);
+            }
+
+            const bestMove = json.bestmove || '';
+            let bestMoveSan = '';
+            
+            if (bestMove && bestMove.length >= 4) {
+                const temp = new Chess(fen);
+                const move = temp.move({
+                    from: bestMove.slice(0, 2),
+                    to: bestMove.slice(2, 4),
+                    promotion: bestMove[4]
+                });
+                if (move) bestMoveSan = move.san;
             }
 
             return {
                 cpWhite,
                 mate,
                 depth: json.depth || CONFIG.TIER1_DEPTH,
-                bestMove: json.bestmove || '',
-                multiPV: []
+                bestMove,
+                multiPV: bestMoveSan ? [{
+                    cp: cpWhite,
+                    mate,
+                    moves: [bestMoveSan]
+                }] : []
             };
         } catch (err) {
             clear();
@@ -384,9 +391,8 @@ const CONFIG = {
     }
 
     async function fetchHF(fen, externalSignal) {
-        if (!Runtime.allowProxy) {
+            if (!Runtime.allowProxy) {
             if (!State.hfWarned) {
-                console.warn('[HF] Proxy disabled in local static environment.');
                 State.hfWarned = true;
             }
             return null;
@@ -406,6 +412,9 @@ const CONFIG = {
             clear();
             if (!res.ok) return null;
             const json = await res.json();
+            
+            if (json.error) return null;
+
             return {
                 cpWhite: json.eval || 0,
                 mate: json.mate || null,
@@ -420,9 +429,7 @@ const CONFIG = {
         }
     }
 
-    /* ============================
-     * Engine Interface
-     * ============================ */
+    
     const Engine = {
         async evaluate(fen, tier = 1, signal = null) {
             const key = Utils.fenKey(fen);
@@ -451,9 +458,7 @@ const CONFIG = {
         }
     };
 
-    /* ============================
-     * Arrow Layer (Canvas)
-     * ============================ */
+    
     const ArrowLayer = {
         canvas: null,
         ctx: null,
@@ -509,13 +514,12 @@ const CONFIG = {
             this.ctx.lineCap = 'round';
             this.ctx.globalAlpha = 0.8;
             
-            // Draw line
             this.ctx.beginPath();
             this.ctx.moveTo(x1, y1);
             this.ctx.lineTo(x2, y2);
             this.ctx.stroke();
             
-            // Draw arrowhead
+            
             this.ctx.beginPath();
             this.ctx.moveTo(x2, y2);
             this.ctx.lineTo(
@@ -541,9 +545,7 @@ const CONFIG = {
         }
     };
 
-    /* ============================
-     * UI Components
-     * ============================ */
+    
     const EvalBar = {
         update(cpWhite, mate) {
             const fill = document.getElementById('evalBarFill');
@@ -646,7 +648,7 @@ const CONFIG = {
 
             panel.innerHTML = html;
 
-            // Update stats
+            
             document.getElementById('whiteAccuracy').textContent = `${white.accuracy}%`;
             document.getElementById('whiteAcpl').textContent = white.acpl;
             document.getElementById('whiteRating').textContent = white.rating;
@@ -673,11 +675,11 @@ const CONFIG = {
                 return;
             }
 
-            // Show panel if we have evaluation data
+            
             panel.style.display = 'block';
             let html = '';
             
-            // If we have multiPV lines, show them
+            
             if (eval.multiPV && eval.multiPV.length > 0) {
                 eval.multiPV.slice(0, 3).forEach((line, index) => {
                     const score = line.mate !== null 
@@ -697,7 +699,7 @@ const CONFIG = {
                     `;
                 });
             } else {
-                // Show just the best move from single-line evaluation
+                
                 const score = eval.mate !== null 
                     ? `M${Math.abs(eval.mate)}` 
                     : (eval.cpWhite / 100).toFixed(2);
@@ -783,9 +785,7 @@ const CONFIG = {
         }
     };
 
-    /* ============================
-     * Board Management
-     * ============================ */
+    
     const UIBoard = {
         init() {
             State.board = Chessboard('board', {
@@ -807,13 +807,13 @@ const CONFIG = {
                 State.board.position(fen);
                 State.chess.load(fen);
                 
-                // Update eval bar
+                
                 const eval = EvalCache.best(Utils.fenKey(fen));
                 if (eval) {
                     EvalBar.update(eval.cpWhite, eval.mate);
                 }
                 
-                // Show best move arrow if we have analysis
+                
                 if (State.moveAnalyses.length > 0 && State.moveIndex > 0) {
                     const prevFen = State.history[State.moveIndex - 1];
                     const prevEval = EvalCache.best(Utils.fenKey(prevFen));
@@ -839,9 +839,7 @@ const CONFIG = {
         }
     };
 
-    /* ============================
-     * Main UI Controller
-     * ============================ */
+    
     const UI = {
         init() {
             UIBoard.init();
@@ -909,8 +907,8 @@ const CONFIG = {
             AnalysisDisplay.update();
     },
 
-        goToMove(index) {
-            // Clear any active preview
+    goToMove(index) {
+            
             if (State.previewTimeout) {
                 clearTimeout(State.previewTimeout);
                 State.previewTimeout = null;
@@ -954,7 +952,7 @@ const CONFIG = {
                 for (let i = 0; i < totalMoves; i++) {
                     if (State.analysisAbort.signal.aborted) break;
                     
-                    // Update progress
+                    
                     UI.showLoading(`Analyzing move ${i}/${totalMoves}...`);
                     
                     const fen = State.history[i];
@@ -965,16 +963,14 @@ const CONFIG = {
                         const prevEval = EvalCache.best(Utils.fenKey(prevFen));
                         
                         if (prevEval && eval1) {
-                            // The player who MADE the move is the one whose turn it was BEFORE the move
+                            
                             const player = Utils.turnLabel(prevFen);
                             
-                            // Get evaluations from the player's perspective
-                            // before = position before the move (from player's perspective)
-                            // after = position after the move (from player's perspective)
+                           
                             const before = Analysis.perspective(prevEval.cpWhite, prevEval.mate, player);
                             const after = Analysis.perspective(eval1.cpWhite, eval1.mate, player);
                             
-                            // CPL = how much the position got worse for the player who moved
+                            
                             const cpl = Analysis.cpl(before, after);
                             const classification = Analysis.classify(cpl);
                             
@@ -986,15 +982,15 @@ const CONFIG = {
                         }
                     }
                     
-                    // Yield to UI every 5 moves to prevent freezing
+                    
                     if (i % 5 === 0) {
                         await new Promise(resolve => setTimeout(resolve, 0));
-                        // Update move list progressively
+                        
                         MoveList.render();
                     }
                 }
 
-                // Calculate stats
+                
                 let whiteTotal = 0, blackTotal = 0, whiteCount = 0, blackCount = 0;
                 State.moveAnalyses.forEach((analysis, idx) => {
                     if (idx % 2 === 0) {
@@ -1022,7 +1018,7 @@ const CONFIG = {
                     }
                 };
 
-                // Generate summary
+                
                 const moments = State.moveAnalyses
                     .map((a, i) => ({ ...a, index: i }))
                     .filter(a => a.className === 'move-blunder' || a.className === 'move-mistake')
@@ -1078,7 +1074,7 @@ const CONFIG = {
                 
                 const data = await response.json();
                 
-                // Let user pick archive (month)
+                
                 const archiveOptions = data.archives.slice(-6).reverse().reduce((acc, url, i) => {
                     const match = url.match(/(\d{4})\/(\d{2})$/);
                     const label = match ? `${match[1]}-${match[2]}` : `Archive ${i + 1}`;
@@ -1100,7 +1096,7 @@ const CONFIG = {
                 const gamesResponse = await fetch(selectedArchive);
                 const gamesData = await gamesResponse.json();
                 
-                // Group by time control
+                
                 const gamesByType = {};
                 gamesData.games.forEach(g => {
                     const tc = g.time_class || 'unknown';
@@ -1108,7 +1104,7 @@ const CONFIG = {
                     gamesByType[tc].push(g);
                 });
 
-                // Create game list with type labels
+                
                 const games = [];
                 Object.keys(gamesByType).forEach(type => {
                     gamesByType[type].slice(-10).forEach((g, i) => {
@@ -1171,11 +1167,9 @@ const CONFIG = {
         }
     };
 
-    /* ============================
-     * Global Functions (for inline handlers)
-     * ============================ */
+    
     window.previewLine = (lineIndex) => {
-        // Clear any existing preview timeout
+        
         if (State.previewTimeout) {
             clearTimeout(State.previewTimeout);
             State.previewTimeout = null;
@@ -1190,7 +1184,6 @@ const CONFIG = {
         const line = eval.multiPV[lineIndex];
         if (!line.moves || line.moves.length === 0) return;
 
-        // Convert SAN moves to arrows
         const arrows = [];
         const temp = new Chess(fen);
         
@@ -1217,7 +1210,7 @@ const CONFIG = {
             }
             
             State.previewTimeout = setTimeout(() => {
-                // Only clear if we're still on the same move
+                
                 if (State.preview && State.preview.moveIndex === State.moveIndex) {
                     if (badge) badge.style.display = 'none';
                     State.preview = null;
@@ -1229,9 +1222,7 @@ const CONFIG = {
         }
     };
 
-    /* ============================
-     * Initialize on Load
-     * ============================ */
+    
     document.addEventListener('DOMContentLoaded', () => {
         UI.init();
     });

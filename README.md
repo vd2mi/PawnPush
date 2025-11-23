@@ -34,8 +34,11 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 - **Cross-device support** - Battle from any device, anywhere
 
 ### 🤖 **AI-Powered Learning**
-- **Smart hint system** powered by GPT-4 API
-- **AI coaching chat** for tailored hints and explanations
+- **Advanced Agentic AI Coach** - Multi-step reasoning system with GPT-4.1-mini
+- **Stockfish Integration** - Real-time chess engine analysis via HuggingFace API
+- **Tactical Pattern Detection** - Automatic detection of forks, pins, skewers, hanging pieces, and overloaded pieces
+- **Position Facts System** - Comprehensive board analysis with attack/defense maps
+- **Safe AI Responses** - Verification system prevents hallucinated moves and squares
 - **Progressive hints** with beautiful yellow glow visual cues
 - **Move validation** with instant feedback and audio cues
 - **Intelligent move highlighting** - correct moves glow turquoise, wrong moves glow red
@@ -59,24 +62,44 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 - **⚔️ 1v1 Private Battle** - Challenge friends in real-time puzzle races with private room codes
 - **🏆 Global Leaderboard** - Compete worldwide with Firebase-powered cross-device rankings
 - **Daily Puzzle** - Fresh challenge from Lichess every day with animated rating
-- **Game Review** - Analyze your games position by position with Stockfish engine analysis
-  - Load games via PGN, FEN, or directly from Chess.com API
-  - Real-time Stockfish evaluation via HuggingFace API integration
-  - Dynamic evaluation bar that updates instantly on position changes with cached results for seamless navigation
-  - Move-by-move analysis with Centipawn Loss (CPL) calculations and quality grading
-  - Performance dashboards with estimated Elo, accuracy %, and ACPL for each player (Elo derived from normalized evaluation scores using a ±400 SD mapping)
-  - Batch analysis of entire games with progress tracking and smart retry handling
-  - Short-game detection warning when fewer than 10 moves are available for meaningful stats
+- **Game Review** - Professional-grade game analysis with dual-engine system
+  - **Two-Tier Engine System**: Cloudflare Stockfish (fast, depth 12) + HuggingFace Stockfish (deep, depth 22)
+  - **Intelligent Evaluation**: Automatic format detection (pawns vs centipawns) with proper normalization
+  - **Chess.com Integration**: Import games directly with archive selection and time control filtering
+  - **Canvas-Drawn Arrows**: Color-coded best move visualization (green/blue/purple for top 3 lines)
+  - **Move Classification**: Best, Excellent, Good, Inaccuracy, Mistake, Blunder based on CPL
+  - **Performance Metrics**: Accuracy %, ACPL, and estimated rating for both players
+  - **Progressive Analysis**: Non-blocking UI with async yield every 5 moves
+  - **Smart Caching**: Aggressive evaluation caching to minimize redundant API calls
+  - **Preview Mode**: Visualize engine lines with multi-step arrow sequences
+  - **Robust PGN Parsing**: Handles Chess.com clock annotations, comments, and variations
+  - **Concurrency Control**: Queue-based engine requests prevent API spam
+  - **Real-time Updates**: Dynamic eval bar, move list, and performance stats
 - **Automatic Opponent Responses** - Computer plays opponent moves seamlessly
 - **Color-coded difficulty** - Cyan (Beginner) → Blue (Intermediate) → Yellow (Advanced) → Red (Expert)
 
 ## 🆕 Recent Enhancements (2025)
-- **Game Review overhauled** with batched Stockfish requests (5 moves at a time) for faster analysis
-- Introduced **evaluation caching** so navigating the move list keeps the bar in sync instantly
-- Added **performance overview cards** showing each player’s estimated Elo (using our normalized evaluation score → Elo formula), accuracy, and ACPL
-- Implemented **short-game warnings** to highlight when statistics may be unreliable
-- Polished quick-eval workflow and reduced unnecessary API traffic for a smoother experience
-- Documented the new performance formula in the README for future contributors
+
+### **Agentic AI Coach System**
+- Built **multi-step reasoning AI** using GPT-4.1-mini with tool calling
+- Implemented **Stockfish integration** for real-time position analysis
+- Created **tactical pattern detection** system (forks, pins, skewers, hanging pieces, overloaded pieces)
+- Developed **position facts engine** with comprehensive attack/defense mapping
+- Added **safe response verification** to prevent AI hallucinations
+- Integrated **pseudo-legal attack maps** for accurate tactical analysis
+
+### **Game Review Overhaul**
+- Implemented **two-tier engine system**: Cloudflare (fast) + HuggingFace (deep)
+- Added **canvas-drawn arrows** with color-coded move visualization
+- Built **Chess.com API integration** with archive selection and time control filtering
+- Created **intelligent evaluation parser** handling multiple formats (pawns/centipawns)
+- Developed **progressive analysis** with non-blocking UI updates
+- Implemented **preview mode** showing multi-step engine lines with arrows
+- Added **robust PGN parsing** supporting Chess.com annotations
+- Built **evaluation caching system** for instant navigation
+- Created **concurrency control** with queue-based engine requests
+- Unified **accuracy formula** (exponential decay) across client and server
+- Added **performance metrics**: Accuracy %, ACPL, estimated rating for both players
 
 ## 🏗️ **System Architecture**
 
@@ -103,12 +126,15 @@ graph TB
 ## 🛠️ Technologies Used
 
 - **Frontend:** HTML5, CSS3, Vanilla JavaScript
-- **Custom API Layer:** 🔥 Built from scratch - serverless GPT-4, Stockfish, and Firebase integration
-- **Chessboard UI:** [Chessboard.js](https://chessboardjs.com/) with custom piece themes
-- **Chess Logic:** [chess.js](https://github.com/jhlywa/chess.js) for move validation
+- **Custom API Layer:** 🔥 Built from scratch - serverless GPT-4.1-mini, dual Stockfish engines, Firebase integration
+- **Chessboard UI:** [Chessboard.js](https://chessboardjs.com/) with Chess.com piece theme and canvas arrow overlay
+- **Chess Logic:** [chess.js](https://github.com/jhlywa/chess.js) for move validation and position analysis
 - **Backend:** Firebase Firestore for real-time multiplayer rooms and global leaderboard
-- **AI Integration:** GPT-4 via custom-built serverless API for intelligent hints
-- **Engine Integration:** Stockfish chess engine via HuggingFace API wrapper
+- **AI Integration:** Agentic GPT-4.1-mini with tool calling, multi-step reasoning, and tactical pattern detection
+- **Engine Integration:** 
+  - Cloudflare Stockfish API (fast, depth 12, 1.8s timeout)
+  - HuggingFace Stockfish API (deep, depth 22, 22s timeout)
+  - Two-tier system with intelligent fallback and caching
 - **External APIs:** Lichess API for daily puzzles
 - **Piece Graphics:** Chess.com piece theme for professional appearance
 - **Styling:** Custom CSS with modern dark theme and vibrant color system
@@ -121,9 +147,16 @@ graph TB
 PawnPush/
 │
 ├── api/                       # 🔥 Custom-built API layer
-│   ├── getHint.js            # Custom GPT-4 hint API (serverless)
-│   ├── stockfish.js          # Custom Stockfish engine via HuggingFace API
-│   ├── chesscom.js           # Chess.com game fetching API
+│   ├── getHint.js            # Agentic AI Coach with GPT-4.1-mini + Stockfish (1515 lines)
+│   │                         # - Multi-step reasoning with tool calling
+│   │                         # - Tactical pattern detection (forks, pins, skewers)
+│   │                         # - Position facts engine with attack/defense maps
+│   │                         # - Safe response verification system
+│   ├── analyzePosition.js    # Full game analysis API (331 lines)
+│   │                         # - Two-tier engine system (Cloudflare + HuggingFace)
+│   │                         # - Move-by-move CPL calculations
+│   │                         # - Performance metrics (accuracy, ACPL, rating)
+│   │                         # - Key moments detection (blunders, mistakes, swings)
 │   └── firebase.js           # Firebase API configuration
 │
 │
@@ -234,10 +267,14 @@ Visit [https://pawn-push.vercel.app](https://pawn-push.vercel.app) to start solv
 - **Intelligent Orientation**: All puzzles evaluated to ensure users play the winning side
 - **Seamless Gameplay**: Computer automatically plays opponent responses
 
-### **AI Integration**
-- **GPT-4 API**: Powers the intelligent hint system and coaching chat
-- **Contextual Hints**: AI analyzes the current position and provides relevant guidance
-- **Progressive Assistance**: Multiple hint levels from visual cues to full solutions
+### **Agentic AI Integration**
+- **GPT-4.1-mini with Tool Calling**: Multi-step reasoning system for chess coaching
+- **Stockfish Integration**: Real-time engine analysis via HuggingFace API
+- **Tactical Pattern Detection**: Automatic identification of forks, pins, skewers, hanging pieces, overloaded pieces
+- **Position Facts Engine**: Comprehensive board analysis with attack/defense maps and pseudo-legal move generation
+- **Safe Response System**: Verification layer prevents AI hallucinations (invalid squares, pieces, or tactics)
+- **Contextual Analysis**: AI analyzes current position and provides relevant guidance based on actual board state
+- **Progressive Assistance**: Multiple hint levels from visual cues to full solutions with engine-backed explanations
 
 ### **Multiplayer System**
 - **Firebase Firestore**: Real-time room synchronization and data persistence
@@ -256,7 +293,13 @@ Visit [https://pawn-push.vercel.app](https://pawn-push.vercel.app) to start solv
 - **Audio Integration**: Sound effects for moves, captures, castling, checks, and puzzle completion
 - **Visual Feedback**: Color-coded move validation and beautiful orange glow effects
 - **Smooth Animations**: Beautiful transitions between puzzles with shine effects on buttons
-- **Game Review Features**: Real-time eval bar updates, CPL calculations, performance ratings
+- **Game Review Features**: 
+  - Two-Tier Engine System (Cloudflare + HuggingFace)
+  - Canvas-drawn arrows with color-coded move visualization
+  - Smart evaluation parsing (pawns vs centipawns auto-detection)
+  - Progressive analysis with non-blocking UI
+  - Chess.com import with archive and time control selection
+  - Aggressive caching and concurrency control
 - **Responsive Design**: Optimized for desktop, tablet, and mobile
 - **No Registration**: Start playing immediately without creating an account
 
@@ -277,10 +320,12 @@ PawnPush empowers chess players with AI-driven insights, improving problem-solvi
 Through developing PawnPush, I've mastered:
 
 - **Full-Stack Development**: Complete application architecture from frontend to API integration
-- **Custom API Development**: Built production-ready serverless APIs from scratch with GPT-4 and Stockfish
+- **Custom API Development**: Built production-ready serverless APIs from scratch with GPT-4.1-mini and dual Stockfish engines
+- **Agentic AI Systems**: Multi-step reasoning with tool calling, tactical pattern detection, and safe response verification
 - **Real-Time Systems**: Firebase Firestore integration for live multiplayer functionality
-- **AI/ML Integration**: GPT-4 API integration for intelligent coaching and hint systems
-- **API Design & Deployment**: RESTful API design, serverless architecture, and production deployment
+- **AI/ML Integration**: GPT-4.1-mini with tool calling for intelligent coaching, position analysis, and hint systems
+- **API Design & Deployment**: RESTful API design, serverless architecture, two-tier engine system, and production deployment
+- **Canvas Graphics**: Dynamic arrow rendering with color-coded move visualization and responsive scaling
 - **Database Design**: NoSQL schema design for real-time collaborative features
 - **UX/UI Design**: Modern dark theme design with cohesive color systems and responsive layouts
 - **Cloud Hosting**: Serverless deployment and optimization for production environments

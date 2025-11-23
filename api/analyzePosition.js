@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-    // Enable CORS
+    
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -18,12 +18,12 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'FEN or PGN input is required' });
     }
 
-    // API configuration
+    
     const CF_URL = 'https://stockfish.online/api/s/v2.php';
     const HF_TOKEN = process.env.HF_TOKEN;
     const HF_URL = 'https://vd2mi-stockfishapi.hf.space/analyze/fen';
 
-    // Helper: Cloudflare API call
+    
     async function fetchCloudflare(positionFen, depthVal) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2000);
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
         }
     }
 
-    // Helper: Hugging Face API call
+    
     async function fetchHuggingFace(positionFen, depthVal, multipvVal) {
         if (!HF_TOKEN) return null;
         const controller = new AbortController();
@@ -72,7 +72,7 @@ export default async function handler(req, res) {
         }
     }
 
-    // Single position analysis
+    
     if (fen && !pgn) {
         let resultData = await fetchCloudflare(fen, depth);
         if (!resultData) {
@@ -84,8 +84,7 @@ export default async function handler(req, res) {
         return res.status(200).json(resultData);
     }
 
-    // Full game analysis (PGN)
-    // Import chess.js dynamically for server-side use
+    
     let Chess;
     try {
         Chess = (await import('chess.js')).Chess;
@@ -119,7 +118,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'No moves found in PGN' });
     }
 
-    // Generate all FEN positions
+    
     game.reset();
     const fens = [game.fen()];
     for (let san of history) {
@@ -127,11 +126,11 @@ export default async function handler(req, res) {
         fens.push(game.fen());
     }
 
-    // Analyze each position
+    
     const analysisResults = new Array(fens.length);
     let useCloud = true;
 
-    // Test Cloudflare first
+    
     const testData = await fetchCloudflare(fens[0], 8);
     if (!testData) {
         useCloud = false;
@@ -159,7 +158,7 @@ export default async function handler(req, res) {
             return res.status(500).json({ error: 'Analysis failed during game analysis' });
         }
 
-        // Normalize engine output
+        
         const chessForLine = new Chess(fens[i]);
         const sideToMove = chessForLine.turn();
         
@@ -171,7 +170,7 @@ export default async function handler(req, res) {
             let depthInfo = pv.depth || depthVal;
             let uciMoves = [];
 
-            // Parse evaluation
+            
             if (pv.centipawns !== undefined) {
                 evalCp = parseInt(pv.centipawns, 10);
             } else if (pv.eval !== undefined) {
@@ -184,7 +183,7 @@ export default async function handler(req, res) {
                 mate = sideToMove === 'w' ? mateVal : -mateVal;
             }
 
-            // Parse moves
+            
             if (pv.continuationArr) {
                 uciMoves = pv.continuationArr;
             } else if (pv.pv) {
@@ -193,7 +192,7 @@ export default async function handler(req, res) {
                 uciMoves = [pv.move];
             }
 
-            // Convert UCI to SAN
+            
             const movesSAN = [];
             const tempChess = new Chess(fens[i]);
             for (let uci of uciMoves) {
@@ -219,7 +218,7 @@ export default async function handler(req, res) {
         analysisResults[i] = lineOutputs;
     }
 
-    // Compute move-by-move analysis
+    
     const movesAnalysis = [];
     let totalCpLossWhite = 0, totalCpLossBlack = 0;
     let movesWhiteCount = 0, movesBlackCount = 0;
@@ -276,14 +275,14 @@ export default async function handler(req, res) {
     const ratingWhite = Math.max(400, Math.round(2900 - 250 * Math.log10(acplWhite + 12)));
     const ratingBlack = Math.max(400, Math.round(2900 - 250 * Math.log10(acplBlack + 12)));
 
-    // Determine winner
+    
     const header = game.header();
     let winner = 'Draw';
     if (header.Result === '1-0') winner = 'White';
     else if (header.Result === '0-1') winner = 'Black';
     else if (header.Result === '1/2-1/2') winner = 'Draw';
 
-    // Key moments
+    
     const keyMoments = [];
     movesAnalysis.forEach((move, idx) => {
         if (move.category === 'move-blunder' || move.category === 'move-mistake') {
@@ -305,7 +304,7 @@ export default async function handler(req, res) {
         });
     }
 
-    // Narrative
+    
     let narrative = winner === 'Draw' 
         ? 'The game ended in a draw. '
         : `${winner} won the game. `;
