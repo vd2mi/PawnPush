@@ -4,19 +4,20 @@
         MULTIPV: 3,
         TIMEOUT: 20000,
         PREVIEW_MAX_PLIES: 8,
-        MAX_PARALLEL_REQUESTS: 1
+        MAX_PARALLEL_REQUESTS: 1,
+        BATCH_SIZE: 4
     };
 
     const LINE_COLORS = ['#00d47e', '#3b82f6', '#a855f7', '#f97316', '#ec4899'];
 
     const State = {
-        chess: new Chess(),
+    chess: new Chess(),
         scratch: new Chess(),
-        board: null,
-        history: [],
+    board: null,
+    history: [],
         headers: {},
-        moveIndex: 0,
-        moveAnalyses: [],
+    moveIndex: 0,
+    moveAnalyses: [],
         stats: {
             white: { accuracy: 0, acpl: 0, rating: 0 },
             black: { accuracy: 0, acpl: 0, rating: 0 }
@@ -42,7 +43,7 @@
 
     const Utils = {
         fenKey(fen) {
-            return fen.split(' ').slice(0, 4).join(' ');
+            return fen;
         },
         turn(fen) {
             return fen.split(' ')[1] || 'w';
@@ -129,100 +130,6 @@
         return { save, best };
     })();
 
-    const RequestQueue = (() => {
-        const queue = [];
-        const inflight = new Map();
-        let active = 0;
-
-        function pump() {
-            if (active >= ENGINE_CONFIG.MAX_PARALLEL_REQUESTS) return;
-            const job = queue.shift();
-            if (!job) return;
-            if (job.signal?.aborted) {
-                job.reject(new DOMException('Aborted', 'AbortError'));
-                pump();
-                return;
-            }
-            active += 1;
-            job
-                .task()
-                .then(job.resolve)
-                .catch(job.reject)
-                .finally(() => {
-                    active -= 1;
-                    inflight.delete(job.key);
-                    pump();
-                });
-        }
-
-        function enqueue(key, task, signal) {
-            if (inflight.has(key)) return inflight.get(key);
-            const promise = new Promise((resolve, reject) => {
-                queue.push({ key, task, resolve, reject, signal });
-                pump();
-            });
-            inflight.set(key, promise);
-            return promise;
-        }
-
-        return { enqueue };
-    })();
-
-    const Engine = {
-        async evaluate(fen, signal = null) {
-            const cached = EvalCache.best(fen);
-            if (cached) return cached;
-
-            const key = Utils.fenKey(fen);
-
-            const task = async () => {
-                if (!Runtime.allowProxy) return null;
-
-                try {
-                    const controller = new AbortController();
-                    const timer = setTimeout(() => controller.abort(), ENGINE_CONFIG.TIMEOUT);
-                    
-                    if (signal) {
-                        signal.addEventListener('abort', () => controller.abort(), { once: true });
-                    }
-
-                    const res = await fetch('/api/analyzePosition', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            fen,
-                            depth: ENGINE_CONFIG.DEPTH,
-                            multipv: ENGINE_CONFIG.MULTIPV
-                        }),
-                        signal: controller.signal
-                    });
-
-                    clearTimeout(timer);
-
-                    if (!res.ok) return null;
-                    const json = await res.json();
-                    
-                    if (json.error || !json.pvs || !Array.isArray(json.pvs)) return null;
-
-                    const result = {
-                        cpWhite: json.cpWhite ?? json.pvs[0]?.cp ?? 0,
-                        mate: json.mate ?? json.pvs[0]?.mate ?? null,
-                        depth: json.depth ?? ENGINE_CONFIG.DEPTH,
-                        bestMove: json.bestMove ?? json.pvs[0]?.uci?.[0] ?? '',
-                        pvs: json.pvs
-                    };
-
-                    EvalCache.save(fen, result);
-                    return result;
-                } catch (err) {
-                    if (err.name === 'AbortError' && signal?.aborted) throw err;
-                    return null;
-                }
-            };
-
-            return RequestQueue.enqueue(key, task, signal);
-        }
-    };
 
     const ArrowLayer = {
         canvas: null,
@@ -681,7 +588,7 @@
                 if (State.moveAnalyses.length > 0 && State.moveIndex > 0) {
                     const prevFen = State.history[State.moveIndex - 1];
                     const prevEval = EvalCache.best(prevFen);
-                    if (prevEval && prevEval.bestMove) {
+                    if (prevEval && prevEval.bestMove && prevEval.bestMove.length >= 4) {
                         this.showBestMoveArrow(prevEval);
                     } else {
                         ArrowLayer.clear();
@@ -724,9 +631,9 @@
                 if (e.key === 'ArrowLeft') UI.goToMove(Math.max(0, State.moveIndex - 1));
                 if (e.key === 'ArrowRight') UI.goToMove(Math.min(State.history.length - 1, State.moveIndex + 1));
             });
-        },
+    },
 
-        loadGame() {
+    loadGame() {
             const pgnText = document.getElementById('pgnInput').value.trim();
             const fenText = document.getElementById('fenInput').value.trim();
 
@@ -741,7 +648,7 @@
                     State.headers = headers;
                 } else {
                     UI.toast('Please enter PGN or FEN', 'error');
-                    return;
+                return;
                 }
 
                 State.moveIndex = 0;
@@ -755,24 +662,24 @@
             } catch (err) {
                 UI.toast('Failed to load game: ' + err.message, 'error');
             }
-        },
+    },
 
-        clearGame() {
+    clearGame() {
             State.chess.reset();
             State.history = [State.chess.fen()];
             State.moveIndex = 0;
             State.moveAnalyses = [];
             State.summary = null;
             State.headers = {};
-            document.getElementById('pgnInput').value = '';
-            document.getElementById('fenInput').value = '';
+        document.getElementById('pgnInput').value = '';
+        document.getElementById('fenInput').value = '';
             UIBoard.update();
             MoveList.render();
             SummaryPanel.render();
             AnalysisDisplay.update();
-        },
+    },
 
-        goToMove(index) {
+    goToMove(index) {
             if (State.previewTimeout) {
                 clearTimeout(State.previewTimeout);
                 State.previewTimeout = null;
@@ -811,35 +718,29 @@
 
             try {
                 State.moveAnalyses = [];
-                const totalMoves = State.history.length;
-                
-                for (let i = 0; i < totalMoves; i++) {
-                    if (State.analysisAbort.signal.aborted) break;
-                    
-                    UI.showLoading(`Analyzing move ${i}/${totalMoves}...`);
-                    
-                    const fen = State.history[i];
-                    await Engine.evaluate(fen, State.analysisAbort.signal);
-                    
-                    if (i % 5 === 0) {
-                        await new Promise(resolve => setTimeout(resolve, 0));
-                    }
-                }
-
-                UI.showLoading('Generating analysis...');
+                State.evaluations.clear();
 
                 const res = await fetch('/api/analyzePosition', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        pgn: document.getElementById('pgnInput').value,
+                        fens: State.history,
                         depth: ENGINE_CONFIG.DEPTH,
                         multipv: ENGINE_CONFIG.MULTIPV
-                    })
+                    }),
+                    signal: State.analysisAbort.signal
                 });
 
                 if (!res.ok) throw new Error('Analysis failed');
                 const data = await res.json();
+
+                if (data.evaluations && Array.isArray(data.evaluations)) {
+                    data.evaluations.forEach((eval, idx) => {
+                        if (eval && State.history[idx]) {
+                            EvalCache.save(State.history[idx], eval);
+                        }
+                    });
+                }
 
                 State.moveAnalyses = data.moves || [];
                 State.summary = data.summary || null;
@@ -994,12 +895,12 @@
 
         const arrows = [];
         const temp = new Chess(fen);
-        
+
         for (let i = 0; i < Math.min(pv.san.length, ENGINE_CONFIG.PREVIEW_MAX_PLIES); i++) {
             const move = pv.san[i];
             const legalMoves = temp.moves({ verbose: true });
             const found = legalMoves.find(m => m.san === move);
-            
+
             if (found) {
                 arrows.push({ from: found.from, to: found.to });
                 temp.move(found);
@@ -1016,7 +917,7 @@
                 badge.textContent = `Preview: ${pv.san.slice(0, 3).join(' ')}`;
                 badge.style.display = 'block';
             }
-            
+
             State.previewTimeout = setTimeout(() => {
                 if (State.preview && State.preview.moveIndex === State.moveIndex) {
                     if (badge) badge.style.display = 'none';

@@ -11,10 +11,10 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { fen, pgn, depth = 18, multipv = 3 } = req.body || {};
+    const { fens: fensArray, depth = 18, multipv = 3 } = req.body || {};
 
-    if (!fen && !pgn) {
-        return res.status(400).json({ error: 'FEN or PGN input is required' });
+    if (!fensArray || !Array.isArray(fensArray)) {
+        return res.status(400).json({ error: 'FENs array is required' });
     }
 
     let Chess;
@@ -25,31 +25,13 @@ export default async function handler(req, res) {
     }
 
     const HF_TOKEN = process.env.HF_TOKEN;
-    const HF_URL = 'https://vd2mi-stockfishapi.hf.space/analyze/fen';
-    const CF_URL = 'https://stockfish.online/api/s/v2.php';
+    const HF_BATCH_URL = 'https://vd2mi-stockfishapi.hf.space/analyze/batch';
+    const BATCH_SIZE = 4;
 
-    const cache = new Map();
+    const PERSISTENT_CACHE = global.EVAL_CACHE || (global.EVAL_CACHE = new Map());
 
-    function getCacheKey(fen, depth, multipv) {
-        const shortFen = fen.split(' ').slice(0, 4).join(' ');
-        return `${shortFen}|${depth}|${multipv}`;
-    }
-
-    async function safeFetch(url, options, timeout) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeout);
-        try {
-            const res = await fetch(url, {
-                ...options,
-                signal: controller.signal
-            });
-            clearTimeout(timer);
-            if (!res.ok) return null;
-            return await res.json();
-        } catch {
-            clearTimeout(timer);
-            return null;
-        }
+    function getCacheKey(fen) {
+        return fen;
     }
 
     function uciToSan(fen, uciMoves) {
@@ -68,250 +50,176 @@ export default async function handler(req, res) {
         return san;
     }
 
-    function normalizeCloudflareEval(raw) {
-        if (raw === null || raw === undefined) return 0;
-        const str = String(raw).trim().replace(',', '.');
-        if (str === '0' || str === '-0') return 0;
-        const num = parseFloat(str);
-        if (isNaN(num)) return 0;
-        if (str.includes('.')) return Math.round(num * 100);
-        const abs = Math.abs(num);
-        if (abs >= 1000) return Math.round(num);
-        if (abs < 40) return Math.round(num);
-        if (abs <= 300) return Math.round(num);
-        if (abs < 900) return Math.round(num);
-        return Math.round(num);
-    }
+    async function fetchBatch(fensToEvaluate, depthVal, multipvVal) {
+        if (!HF_TOKEN || fensToEvaluate.length === 0) return null;
 
-    async function fetchHuggingFace(positionFen, depthVal, multipvVal) {
-        if (!HF_TOKEN) return null;
-        
-        const cacheKey = getCacheKey(positionFen, depthVal, multipvVal);
-        if (cache.has(cacheKey)) return cache.get(cacheKey);
+        const uncachedFens = [];
+        const fenIndexMap = [];
 
-        const json = await safeFetch(HF_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${HF_TOKEN}`
-            },
-            body: JSON.stringify({ fen: positionFen, depth: depthVal, multipv: multipvVal })
-        }, 20000);
-        
-        if (!json || json.error) return null;
+        fensToEvaluate.forEach((fen, idx) => {
+            const cacheKey = getCacheKey(fen);
+            if (PERSISTENT_CACHE.has(cacheKey)) {
+                fenIndexMap[idx] = { cached: true, result: PERSISTENT_CACHE.get(cacheKey) };
+            } else {
+                fenIndexMap[idx] = { cached: false, batchIndex: uncachedFens.length };
+                uncachedFens.push(fen);
+            }
+        });
 
-        const chess = new Chess(positionFen);
-        const turn = chess.turn();
+        if (uncachedFens.length === 0) {
+            return fensToEvaluate.map((fen, idx) => fenIndexMap[idx].result);
+        }
 
-        let pvs = [];
-        if (json.pvs && Array.isArray(json.pvs)) {
-            pvs = json.pvs.map(pv => {
-                let cp = pv.cp ?? pv.eval ?? 0;
-                let mate = pv.mate ?? null;
-                
-                if (mate !== null) {
-                    mate = turn === 'w' ? mate : -mate;
-                }
-                if (turn === 'b') {
-                    cp = -cp;
-                }
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 20000);
 
-                const uci = pv.pv || pv.moves || pv.uci || [];
-                const uciArray = Array.isArray(uci) ? uci : uci.split(' ').filter(Boolean);
-                const san = uciToSan(positionFen, uciArray);
-
-                return {
-                    cp,
-                    mate,
-                    depth: pv.depth ?? depthVal,
-                    uci: uciArray,
-                    san
-                };
+        let json;
+        try {
+            const response = await fetch(HF_BATCH_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${HF_TOKEN}`
+                },
+                body: JSON.stringify({ fens: uncachedFens, depth: depthVal, multipv: multipvVal }),
+                signal: controller.signal
             });
+
+            clearTimeout(timer);
+
+            if (!response.ok) {
+                console.error('HF batch failed:', response.status);
+                return null;
+            }
+
+            const text = await response.text();
+            try {
+                json = JSON.parse(text);
+            } catch {
+                console.error('JSON Parse Error:', text.slice(0, 200));
+                return null;
+            }
+        } catch (err) {
+            clearTimeout(timer);
+            console.error('Batch fetch error:', err);
+            return null;
         }
 
-        pvs.sort((a, b) => {
-            if (a.mate !== null && b.mate !== null) {
-                return a.mate > 0 ? (b.mate > 0 ? a.mate - b.mate : -1) : 1;
+        if (!json || !json.results || !Array.isArray(json.results)) {
+            console.error('Invalid batch response:', json);
+            return null;
+        }
+
+        const batchNormalized = json.results.map((result, idx) => {
+            const positionFen = uncachedFens[idx];
+
+            if (!result) {
+                const fallback = {
+                    cpWhite: 0,
+                    mate: null,
+                    depth: depthVal,
+                    bestMove: '',
+                    pvs: []
+                };
+                PERSISTENT_CACHE.set(getCacheKey(positionFen), fallback);
+                return fallback;
             }
-            if (a.mate !== null) return a.mate > 0 ? -1 : 1;
-            if (b.mate !== null) return b.mate > 0 ? 1 : -1;
-            return b.cp - a.cp;
+
+            const chess = new Chess(positionFen);
+            const turn = chess.turn();
+
+            let pvs = [];
+            if (result.pvs && Array.isArray(result.pvs)) {
+                pvs = result.pvs.map(pv => {
+                    const rawCp = pv.cp ?? pv.eval ?? 0;
+                    const rawMate = pv.mate ?? null;
+
+                    const cpWhite = turn === 'w' ? rawCp : -rawCp;
+                    const mateWhite = rawMate !== null ? (turn === 'w' ? rawMate : -rawMate) : null;
+
+                    const uci = pv.pv || pv.moves || pv.uci || [];
+                    const uciArray = Array.isArray(uci) ? uci : uci.split(' ').filter(Boolean);
+                    const san = uciToSan(positionFen, uciArray);
+
+                    return {
+                        cp: cpWhite,
+                        mate: mateWhite,
+                        depth: pv.depth ?? depthVal,
+                        uci: uciArray,
+                        san
+                    };
+                });
+            }
+
+            pvs.sort((a, b) => {
+                if (a.mate !== null && b.mate !== null) {
+                    if (a.mate > 0 && b.mate > 0) return a.mate - b.mate;
+                    if (a.mate < 0 && b.mate < 0) return b.mate - a.mate;
+                    return a.mate > 0 ? -1 : 1;
+                }
+                if (a.mate !== null) return a.mate > 0 ? -1 : 1;
+                if (b.mate !== null) return b.mate > 0 ? 1 : -1;
+                
+                const turnFactor = turn === 'w' ? 1 : -1;
+                return (b.cp - a.cp) * turnFactor;
+            });
+
+            let bestMove = pvs[0]?.uci?.[0] || result.bestMove || '';
+            if (typeof bestMove !== 'string' || bestMove.length < 4) {
+                bestMove = '';
+            }
+
+            const normalized = {
+                cpWhite: pvs[0]?.cp ?? 0,
+                mate: pvs[0]?.mate ?? null,
+                depth: depthVal,
+                bestMove,
+                pvs
+            };
+
+            PERSISTENT_CACHE.set(getCacheKey(positionFen), normalized);
+            return normalized;
         });
 
-        const result = {
-            cpWhite: pvs[0]?.cp ?? 0,
-            mate: pvs[0]?.mate ?? null,
-            depth: depthVal,
-            bestMove: pvs[0]?.uci?.[0] ?? '',
-            pvs
-        };
-
-        cache.set(cacheKey, result);
-        return result;
-    }
-
-    async function fetchCloudflare(positionFen, depthVal) {
-        const cacheKey = getCacheKey(positionFen, depthVal, 1);
-        if (cache.has(cacheKey)) return cache.get(cacheKey);
-
-        const params = new URLSearchParams({
-            fen: positionFen,
-            depth: String(depthVal),
-            mode: 'bestmove'
-        });
-        
-        const json = await safeFetch(`${CF_URL}?${params}`, {
-            method: 'GET'
-        }, 1500);
-        
-        if (!json) return null;
-
-        let cpWhite = 0;
-        let mate = null;
-
-        if (json.mate !== null && json.mate !== undefined) {
-            mate = parseInt(json.mate, 10);
-            if (isNaN(mate)) mate = null;
-        }
-        
-        if (json.evaluation !== undefined && json.evaluation !== null) {
-            cpWhite = normalizeCloudflareEval(json.evaluation);
-        } else if (json.eval !== undefined && json.eval !== null) {
-            cpWhite = normalizeCloudflareEval(json.eval);
-        }
-
-        const bestMove = json.bestmove || json.move || '';
-        const uci = bestMove ? [bestMove] : [];
-        const san = uciToSan(positionFen, uci);
-
-        const pvs = [{
-            cp: cpWhite,
-            mate,
-            depth: json.depth || depthVal,
-            uci,
-            san
-        }];
-
-        const result = {
-            cpWhite,
-            mate,
-            depth: json.depth || depthVal,
-            bestMove,
-            pvs
-        };
-
-        cache.set(cacheKey, result);
-        return result;
-    }
-
-    async function evaluatePosition(fen, depth, multipv) {
-        let result = await fetchHuggingFace(fen, depth, multipv);
-        if (result) return result;
-        result = await fetchCloudflare(fen, 12);
-        if (result) return result;
-        return null;
-    }
-
-    if (fen && !pgn) {
-        const result = await evaluatePosition(fen, depth, multipv);
-        if (!result) {
-            return res.status(500).json({ error: 'All engines failed' });
-        }
-        return res.status(200).json(result);
-    }
-
-    let game;
-    try {
-        game = new Chess();
-        if (!game.loadPgn(pgn)) {
-            game.reset();
-            const movesArr = pgn.trim().split(/\s+/);
-            for (let san of movesArr) {
-                if (!san || /^\d+\.+$/.test(san) || ['1-0', '0-1', '1/2-1/2', '*'].includes(san)) {
-                    continue;
-                }
-                const legalMove = game.move(san);
-                if (!legalMove) {
-                    throw new Error(`Illegal move: "${san}"`);
-                }
+        return fensToEvaluate.map((fen, idx) => {
+            if (fenIndexMap[idx].cached) {
+                return fenIndexMap[idx].result;
+            } else {
+                return batchNormalized[fenIndexMap[idx].batchIndex];
             }
-        }
-    } catch (err) {
-        return res.status(400).json({ error: 'Invalid PGN: ' + err.message });
-    }
-
-    const history = game.history({ verbose: true });
-    const totalMoves = history.length;
-    if (totalMoves === 0) {
-        return res.status(400).json({ error: 'No moves found in PGN' });
-    }
-
-    game.reset();
-    const fens = [game.fen()];
-    for (let move of history) {
-        game.move(move);
-        fens.push(game.fen());
+        });
     }
 
     const analysisResults = [];
-    for (let i = 0; i < fens.length; i++) {
-        const result = await evaluatePosition(fens[i], depth, multipv);
-        if (!result) {
-            return res.status(500).json({ error: `Analysis failed at position ${i}` });
+
+    for (let i = 0; i < fensArray.length; i += BATCH_SIZE) {
+        const batch = fensArray.slice(i, i + BATCH_SIZE);
+        const batchResults = await fetchBatch(batch, depth, multipv);
+        
+        if (!batchResults) {
+            return res.status(500).json({ error: `Batch analysis failed at position ${i}` });
         }
-        analysisResults.push(result);
+
+        analysisResults.push(...batchResults);
     }
 
     function normalizeEval(raw, sideToMove) {
+        if (!raw || raw.cp === undefined) {
+            return { cpForPlayer: 0, mate: null };
+        }
+        
         if (raw.mate !== null && raw.mate !== undefined) {
-            const m = Number(raw.mate);
-            const signed = sideToMove === 'w' ? m : -m;
-            return { cp: signed > 0 ? 10000 : -10000, mate: signed };
-        }
-        const cp = Number(raw.cp ?? raw.cpWhite ?? 0);
-        return { cp: sideToMove === 'w' ? cp : -cp, mate: null };
-    }
-
-    function isSacrifice(move, beforeEval, afterEval) {
-        if (!move.captured) return false;
-        const materialLoss = { p: 1, n: 3, b: 3, r: 5, q: 9 }[move.captured] || 0;
-        if (materialLoss === 0) return false;
-        const evalDiff = Math.abs(afterEval.cp - beforeEval.cp);
-        return evalDiff <= 50;
-    }
-
-    function isTactical(pvMoves) {
-        if (pvMoves.length < 3) return false;
-        const chess = new Chess();
-        let forcingCount = 0;
-        for (const san of pvMoves.slice(0, 6)) {
-            const move = chess.move(san);
-            if (!move) break;
-            if (chess.in_check() || move.captured || san.includes('+') || san.includes('#')) {
-                forcingCount++;
-            }
-        }
-        return forcingCount >= 2;
-    }
-
-    function detectMotifs(move, fen) {
-        const motifs = [];
-        if (move.san.includes('+')) motifs.push('Check');
-        if (move.san.includes('#')) motifs.push('Checkmate');
-        if (move.captured) motifs.push('Capture');
-        
-        const chess = new Chess(fen);
-        const piece = move.piece;
-        const to = move.to;
-        
-        const attackedSquares = chess.moves({ verbose: true, square: to });
-        if (attackedSquares.length >= 2) {
-            const pieceTypes = new Set(attackedSquares.map(m => m.captured).filter(Boolean));
-            if (pieceTypes.size >= 2) motifs.push('Fork');
+            const mateWhite = Number(raw.mate);
+            const mateForPlayer = sideToMove === 'w' ? mateWhite : -mateWhite;
+            return { 
+                cpForPlayer: mateForPlayer > 0 ? 10000 : -10000, 
+                mate: mateForPlayer 
+            };
         }
         
-        return motifs;
+        const cpWhite = Number(raw.cp ?? 0);
+        const cpForPlayer = sideToMove === 'w' ? cpWhite : -cpWhite;
+        return { cpForPlayer, mate: null };
     }
 
     function classifyCpl(cpl) {
@@ -331,6 +239,72 @@ export default async function handler(req, res) {
         return Math.max(400, Math.round(2850 - 220 * Math.log10(acpl + 10)));
     }
 
+    function isSacrifice(move, beforePv, afterPv) {
+        if (!move.captured) return false;
+        const materialLoss = { p: 1, n: 3, b: 3, r: 5, q: 9 }[move.captured] || 0;
+        if (materialLoss === 0) return false;
+        const evalDiff = Math.abs((afterPv?.cp ?? 0) - (beforePv?.cp ?? 0));
+        return evalDiff <= 50;
+    }
+
+    function isTactical(pvMoves, positionFen) {
+        if (!pvMoves || pvMoves.length < 3) return false;
+        const chess = new Chess(positionFen);
+        let forcingCount = 0;
+        for (const san of pvMoves.slice(0, 6)) {
+            const move = chess.move(san);
+            if (!move) break;
+            if (chess.in_check() || move.captured || san.includes('+') || san.includes('#')) {
+                forcingCount++;
+            }
+        }
+        return forcingCount >= 2;
+    }
+
+    function detectMotifs(move, fen) {
+        const motifs = [];
+        if (move.san.includes('+')) motifs.push('Check');
+        if (move.san.includes('#')) motifs.push('Checkmate');
+        if (move.captured) motifs.push('Capture');
+
+        const chess = new Chess(fen);
+        const applied = chess.move({
+            from: move.from,
+            to: move.to,
+            promotion: move.promotion
+        });
+
+        if (applied) {
+            const attackedSquares = chess.moves({ verbose: true, square: move.to });
+            if (attackedSquares.length >= 2) {
+                const pieceTypes = new Set(attackedSquares.map(m => m.captured).filter(Boolean));
+                if (pieceTypes.size >= 2) motifs.push('Fork');
+            }
+        }
+
+        return motifs;
+    }
+
+    const history = [];
+    
+    for (let i = 1; i < fensArray.length; i++) {
+        const prevFen = fensArray[i - 1];
+        const currentFen = fensArray[i];
+        const tempGame = new Chess(prevFen);
+        const moves = tempGame.moves({ verbose: true });
+        const foundMove = moves.find(m => {
+            const testGame = new Chess(prevFen);
+            testGame.move(m);
+            return testGame.fen() === currentFen;
+        });
+        if (foundMove) {
+            history.push(foundMove);
+        } else {
+            history.push({ san: '--', piece: 'p', from: 'e2', to: 'e4', captured: null, flags: '' });
+        }
+    }
+
+    const totalMoves = history.length;
     const movesAnalysis = [];
     let totalCpLossWhite = 0, totalCpLossBlack = 0;
     let movesWhiteCount = 0, movesBlackCount = 0;
@@ -347,18 +321,24 @@ export default async function handler(req, res) {
         const beforePv = beforeEval.pvs[0];
         const afterPv = afterEval.pvs[0];
 
+        const beforeNorm = normalizeEval(beforePv, side);
+        const afterNorm = normalizeEval(afterPv, side);
+        
         let cpLoss = 0;
-
-        if (beforePv?.mate !== null || afterPv?.mate !== null) {
-            if (beforePv?.mate !== null && (afterPv?.mate === null || Math.sign(beforePv.mate) !== Math.sign(afterPv.mate))) {
-                cpLoss = 1000;
-            } else if (afterPv?.mate !== null && afterPv.mate * (side === 'w' ? 1 : -1) < 0) {
-                cpLoss = 1000;
+        if (beforeNorm.mate !== null || afterNorm.mate !== null) {
+            if (beforeNorm.mate !== null && beforeNorm.mate > 0 && 
+                (afterNorm.mate === null || afterNorm.mate <= 0)) {
+                cpLoss = 500;
+            } else if (afterNorm.mate !== null && afterNorm.mate < 0) {
+                cpLoss = 500;
+            } else if (beforeNorm.mate !== null && afterNorm.mate !== null && 
+                       beforeNorm.mate > 0 && afterNorm.mate > 0) {
+                cpLoss = Math.max(0, afterNorm.mate - beforeNorm.mate) * 50;
+            } else {
+                cpLoss = 0;
             }
         } else {
-            const beforeNorm = normalizeEval(beforePv, side);
-            const afterNorm = normalizeEval(afterPv, side);
-            cpLoss = Math.max(0, beforeNorm.cp - afterNorm.cp);
+            cpLoss = Math.max(0, beforeNorm.cpForPlayer - afterNorm.cpForPlayer);
         }
 
         if (side === 'w') {
@@ -380,34 +360,42 @@ export default async function handler(req, res) {
         let brilliantReason = null;
 
         if (beforeEval.pvs.length >= 2 && move.san === bestSan) {
-            const pv0cp = beforeEval.pvs[0].cp;
-            const pv1cp = beforeEval.pvs[1].cp;
-            const cpGap = Math.abs(pv0cp - pv1cp);
+            const pv0Norm = normalizeEval(beforeEval.pvs[0], side);
+            const pv1Norm = normalizeEval(beforeEval.pvs[1], side);
+            const cpGap = Math.abs(pv0Norm.cpForPlayer - pv1Norm.cpForPlayer);
 
             if (cpGap >= 150) {
                 isOnlyMove = true;
             }
 
-            if (cpGap >= 120 && cpLoss <= 15) {
-                isGreat = true;
-                greats.push({ moveIndex: m, san: move.san });
-            }
-
             const wasSacrifice = isSacrifice(move, beforePv, afterPv);
-            const wasTactical = isTactical(beforeEval.pvs[0].san);
+            const wasTactical = isTactical(beforeEval.pvs[0].san, fensArray[m]);
 
             if (wasSacrifice && cpGap >= 150 && wasTactical && cpLoss <= 15) {
                 isBrilliant = true;
                 brilliantReason = 'Sacrificial forcing move with no alternatives';
                 brilliants.push({ moveIndex: m, san: move.san, reason: brilliantReason });
+            } else if (!wasSacrifice && cpGap >= 120 && cpLoss <= 15) {
+                isGreat = true;
+                greats.push({ moveIndex: m, san: move.san });
             }
         }
 
-        const motifs = detectMotifs(move, fens[m]);
+        const motifs = detectMotifs(move, fensArray[m]);
 
-        const evalTrend = m >= 2 ? 
-            (normalizeEval(analysisResults[m].pvs[0], side).cp > normalizeEval(analysisResults[m - 2].pvs[0], side).cp ? 'improving' : 
-             normalizeEval(analysisResults[m].pvs[0], side).cp < normalizeEval(analysisResults[m - 2].pvs[0], side).cp ? 'declining' : 'stable') : 'stable';
+        let evalTrend = 'stable';
+        if (m >= 1) {
+            const prevSide = (m - 1) % 2 === 0 ? 'w' : 'b';
+            const prevNorm = normalizeEval(analysisResults[m].pvs[0], prevSide);
+            const currentNorm = normalizeEval(analysisResults[m + 1].pvs[0], side);
+            
+            const diff = currentNorm.cpForPlayer - prevNorm.cpForPlayer;
+            if (diff > 20) {
+                evalTrend = 'improving';
+            } else if (diff < -20) {
+                evalTrend = 'declining';
+            }
+        }
 
         if (cpLoss >= 180) {
             swings.push({ type: 'swing', amount: cpLoss, moveIndex: m, san: move.san });
@@ -438,12 +426,6 @@ export default async function handler(req, res) {
 
     const ratingWhite = ratingFromAcpl(acplWhite);
     const ratingBlack = ratingFromAcpl(acplBlack);
-
-    const header = game.header();
-    let winner = 'Draw';
-    if (header.Result === '1-0') winner = 'White';
-    else if (header.Result === '0-1') winner = 'Black';
-    else if (header.Result === '1/2-1/2') winner = 'Draw';
 
     const keyMoments = [];
 
@@ -509,20 +491,21 @@ export default async function handler(req, res) {
     const endgameAccuracy = endgameMoves.filter(m => m.category === 'move-best' || m.category === 'move-good').length / Math.max(1, endgameMoves.length);
     const endgameSummary = endgameAccuracy > 0.8 ? 'Precise endgame technique.' : endgameAccuracy > 0.5 ? 'Decent endgame play.' : 'Inaccurate endgame.';
 
-    let narrative = `${winner === 'Draw' ? 'The game ended in a draw.' : `${winner} won the game.`} `;
+    let narrative = 'The game ended. ';
     narrative += `White's accuracy: ${accuracyWhite}% (ACPL: ${acplWhite}). Black's accuracy: ${accuracyBlack}% (ACPL: ${acplBlack}). `;
     narrative += `${openingSummary} ${middlegameSummary} ${endgameSummary} `;
-    
+
     if (brilliants.length > 0) {
         narrative += `${brilliants.length} brilliant move(s) played! `;
     }
-    
+
     const firstBlunder = keyMoments.find(m => m.type === 'blunder');
     if (firstBlunder) {
         narrative += firstBlunder.text.replace(/^Blunder – /, 'Critical moment: ').replace('loses', 'losing') + '. ';
     }
 
     return res.status(200).json({
+        evaluations: analysisResults,
         moves: movesAnalysis,
         summary: {
             white: { accuracy: accuracyWhite, acpl: acplWhite, rating: ratingWhite },
