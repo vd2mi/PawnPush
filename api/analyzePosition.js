@@ -151,18 +151,18 @@ export default async function handler(req, res) {
         try {
             console.log(`[fetchBatch] Requesting HF batch: size=${uncachedFens.length}, depth=${depthVal}, multipv=${multipvVal}`);
             const response = await fetch(HF_BATCH_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
                     'Authorization': `Bearer ${HF_TOKEN}`
-                },
+            },
                 body: JSON.stringify({ fens: uncachedFens, depth: depthVal, multipv: multipvVal }),
-                signal: controller.signal
-            });
+            signal: controller.signal
+        });
 
             clearTimeout(timer);
 
-            if (!response.ok) {
+        if (!response.ok) {
                 console.error('[fetchBatch] HF batch failed:', response.status);
                 return null;
             }
@@ -237,27 +237,69 @@ export default async function handler(req, res) {
                     sanMoves = uciToSan(positionFen, uciMoves);
                 }
 
-                let rawCp = line.cp ?? line.CP ?? line.centipawn ?? line.Centipawn ?? line.eval ?? line.Eval;
-                if (rawCp === undefined && line.evaluation && line.evaluation.type === 'cp') {
-                    rawCp = line.evaluation.value;
+                let rawCp = 0;
+                let rawMate = null;
+                let cpIsWhitePerspective = false;
+                let mateIsWhitePerspective = false;
+
+                if (line.cpWhite !== undefined) {
+                    rawCp = Number(line.cpWhite);
+                    cpIsWhitePerspective = true;
+                } else if (line.evaluation?.type === 'cp') {
+                    rawCp = Number(line.evaluation.value);
+                    cpIsWhitePerspective = false;
+                } else if (result.evaluation?.type === 'cp') {
+                    rawCp = Number(result.evaluation.value);
+                    cpIsWhitePerspective = false;
+                } else if (line.Centipawn !== undefined) {
+                    rawCp = Number(line.Centipawn);
+                    cpIsWhitePerspective = false;
+                } else if (line.centipawn !== undefined) {
+                    rawCp = Number(line.centipawn);
+                    cpIsWhitePerspective = false;
+                } else if (line.CP !== undefined) {
+                    rawCp = Number(line.CP);
+                    cpIsWhitePerspective = false;
+                } else if (line.cp !== undefined) {
+                    rawCp = Number(line.cp);
+                    cpIsWhitePerspective = false;
+                } else if (line.eval !== undefined) {
+                    rawCp = Number(line.eval);
+                    cpIsWhitePerspective = false;
+                } else if (line.Eval !== undefined) {
+                    rawCp = Number(line.Eval);
+                    cpIsWhitePerspective = false;
                 }
-                if (rawCp === undefined && result.evaluation && result.evaluation.type === 'cp') {
-                    rawCp = result.evaluation.value;
-                }
-                rawCp = Number(rawCp);
+
                 if (!Number.isFinite(rawCp)) rawCp = 0;
 
-                let rawMate = line.mate ?? line.Mate ?? null;
-                if ((rawMate === null || rawMate === undefined) && line.evaluation && line.evaluation.type === 'mate') {
-                    rawMate = line.evaluation.value;
+                if (line.mateWhite !== undefined) {
+                    rawMate = Number(line.mateWhite);
+                    mateIsWhitePerspective = true;
+                } else if (line.evaluation?.type === 'mate') {
+                    rawMate = Number(line.evaluation.value);
+                    mateIsWhitePerspective = false;
+                } else if (result.evaluation?.type === 'mate') {
+                    rawMate = Number(result.evaluation.value);
+                    mateIsWhitePerspective = false;
+                } else if (line.Mate !== undefined) {
+                    rawMate = Number(line.Mate);
+                    mateIsWhitePerspective = false;
+                } else if (line.mate !== undefined) {
+                    rawMate = Number(line.mate);
+                    mateIsWhitePerspective = false;
                 }
-                if ((rawMate === null || rawMate === undefined) && result.evaluation && result.evaluation.type === 'mate') {
-                    rawMate = result.evaluation.value;
-                }
-                rawMate = rawMate === null || rawMate === undefined ? null : Number(rawMate);
 
-                const cpWhite = turn === 'w' ? rawCp : -rawCp;
-                const mateWhite = rawMate !== null ? (turn === 'w' ? rawMate : -rawMate) : null;
+                rawMate = rawMate === null || rawMate === undefined ? null : Number(rawMate);
+                if (rawMate !== null && !Number.isFinite(rawMate)) rawMate = null;
+
+                const cpWhite = cpIsWhitePerspective
+                    ? rawCp
+                    : (turn === 'w' ? rawCp : -rawCp);
+
+                const mateWhite = (rawMate !== null && mateIsWhitePerspective)
+                    ? rawMate
+                    : (rawMate !== null ? (turn === 'w' ? rawMate : -rawMate) : null);
 
                 return {
                     cp: cpWhite,
