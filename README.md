@@ -62,19 +62,23 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 - **⚔️ 1v1 Private Battle** - Challenge friends in real-time puzzle races with private room codes
 - **🏆 Global Leaderboard** - Compete worldwide with Firebase-powered cross-device rankings
 - **Daily Puzzle** - Fresh challenge from Lichess every day with animated rating
-- **Game Review** - Professional-grade game analysis with dual-engine system
-  - **Two-Tier Engine System**: Cloudflare Stockfish (fast, depth 12) + HuggingFace Stockfish (deep, depth 22)
-  - **Intelligent Evaluation**: Automatic format detection (pawns vs centipawns) with proper normalization
+- **Game Review** - Production-grade game analysis with unified batch-mode architecture
+  - **Unified Architecture**: Frontend sends FEN history → Backend performs 100% of engine work
+  - **Batch-Mode Analysis**: HuggingFace Stockfish API with 4-engine parallel processing (depth 18, multipv 3)
+  - **Persistent Caching**: Global cache persists across requests, eliminating redundant API calls
+  - **Intelligent Evaluation Normalization**: Explicit perspective tracking (side-to-move vs White's POV) prevents double conversion
+  - **Advanced Move Detection**: Brilliant moves (sacrifice + tactical + gap≥150), Great moves (gap≥120), Only moves (gap≥150)
+  - **Tactical Motifs**: Automatic detection of checks, captures, forks, checkmates
+  - **Blunder Swing Detection**: Identifies significant evaluation swings (≥180 centipawns)
+  - **Engine Trend Analysis**: Tracks position evaluation changes move-by-move
+  - **Full Game Commentary**: Opening, middlegame, endgame summaries with key turning points and narrative
   - **Chess.com Integration**: Import games directly with archive selection and time control filtering
   - **Canvas-Drawn Arrows**: Color-coded best move visualization (green/blue/purple for top 3 lines)
-  - **Move Classification**: Best, Excellent, Good, Inaccuracy, Mistake, Blunder based on CPL
-  - **Performance Metrics**: Accuracy %, ACPL, and estimated rating for both players
-  - **Progressive Analysis**: Non-blocking UI with async yield every 5 moves
-  - **Smart Caching**: Aggressive evaluation caching to minimize redundant API calls
+  - **Move Classification**: Best, Good, Inaccuracy, Mistake, Blunder based on CPL thresholds
+  - **Performance Metrics**: Accuracy %, ACPL, and estimated rating for both players (Stockfish-like formulas)
   - **Preview Mode**: Visualize engine lines with multi-step arrow sequences
   - **Robust PGN Parsing**: Handles Chess.com clock annotations, comments, and variations
-  - **Concurrency Control**: Queue-based engine requests prevent API spam
-  - **Real-time Updates**: Dynamic eval bar, move list, and performance stats
+  - **Real-time Updates**: Dynamic eval bar, move list, accuracy/ACPL charts, and comprehensive summary
 - **Automatic Opponent Responses** - Computer plays opponent moves seamlessly
 - **Color-coded difficulty** - Cyan (Beginner) → Blue (Intermediate) → Yellow (Advanced) → Red (Expert)
 
@@ -88,18 +92,24 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 - Added **safe response verification** to prevent AI hallucinations
 - Integrated **pseudo-legal attack maps** for accurate tactical analysis
 
-### **Game Review Overhaul**
-- Implemented **two-tier engine system**: Cloudflare (fast) + HuggingFace (deep)
-- Added **canvas-drawn arrows** with color-coded move visualization
-- Built **Chess.com API integration** with archive selection and time control filtering
-- Created **intelligent evaluation parser** handling multiple formats (pawns/centipawns)
-- Developed **progressive analysis** with non-blocking UI updates
-- Implemented **preview mode** showing multi-step engine lines with arrows
-- Added **robust PGN parsing** supporting Chess.com annotations
-- Built **evaluation caching system** for instant navigation
-- Created **concurrency control** with queue-based engine requests
-- Unified **accuracy formula** (exponential decay) across client and server
-- Added **performance metrics**: Accuracy %, ACPL, estimated rating for both players
+### **Game Review Overhaul (Production-Grade)**
+- **Unified Architecture Refactor**: Frontend removed all engine logic, backend performs 100% of analysis work
+- **Batch-Mode System**: Upgraded to HuggingFace batch endpoint with 4-engine parallel processing
+- **Persistent Global Cache**: `global.EVAL_CACHE` persists across requests, eliminating redundant API calls
+- **Evaluation Normalization Fix**: Explicit perspective tracking prevents double conversion (side-to-move vs White's POV)
+- **Advanced Move Classification**: Brilliant (sacrifice + tactical + gap≥150), Great (gap≥120), Only Move (gap≥150) detection
+- **Tactical Motif Detection**: Automatic identification of checks, captures, forks, checkmates per move
+- **Blunder Swing Detection**: Identifies significant evaluation swings (≥180 centipawns) as turning points
+- **Engine Trend Analysis**: Tracks position evaluation changes move-by-move (improving/declining/stable)
+- **Full Game Commentary**: Comprehensive summaries with opening/middlegame/endgame analysis, key moments, and narrative
+- **UCI→SAN Conversion**: Unified, bug-free function for converting engine move sequences
+- **MultiPV Synthesis**: Handles single-move responses by synthesizing multiPV arrays for consistent UI
+- **CPL Classification Upgrade**: Updated thresholds (Best≤15, Good≤40, Inaccuracy≤80, Mistake≤200, Blunder>200)
+- **Accuracy & Rating Formulas**: Stockfish-like decay formulas for accuracy and rating estimation
+- **Canvas-Drawn Arrows**: Color-coded best move visualization with multi-PV support
+- **Chess.com API Integration**: Archive selection and time control filtering
+- **Robust PGN Parsing**: Handles Chess.com clock annotations, comments, and variations
+- **Performance Metrics**: Accuracy %, ACPL, estimated rating for both players with charts
 
 ## 🏗️ **System Architecture**
 
@@ -108,17 +118,30 @@ graph TB
     A[Frontend HTML/JS/CSS] --> B[🔥 Custom API Layer]
     A --> C[Lichess API]
     A --> D[Puzzle Database JSON]
-    B --> E[GPT-4 Hints API]
-    B --> F[Stockfish Engine API]
+    
+    B --> E[GPT-4 Hints API<br/>getHint.js]
+    B --> F[Game Analysis API<br/>analyzePosition.js]
     B --> G[Firebase Real-time API]
-    C --> H[Daily Puzzles]
-    D --> I[50,000+ Pre-evaluated Puzzles]
+    B --> H[Chess.com API<br/>chesscom.js]
+    
+    F --> I[HuggingFace Batch API<br/>4 engines parallel]
+    F --> J[Persistent Cache<br/>global.EVAL_CACHE]
+    F --> K[Evaluation Normalization<br/>UCI→SAN, CPL, Motifs]
+    F --> L[Game Commentary<br/>Summary, Trends, Moments]
+    
+    C --> M[Daily Puzzles]
+    D --> N[50,000+ Pre-evaluated Puzzles]
     
     style A fill:#ff8c00,stroke:#fff,color:#fff
     style B fill:#ff6600,stroke:#fff,color:#fff
     style E fill:#00d4ff,stroke:#fff,color:#fff
     style F fill:#00d4ff,stroke:#fff,color:#fff
     style G fill:#00d4ff,stroke:#fff,color:#fff
+    style H fill:#00d4ff,stroke:#fff,color:#fff
+    style I fill:#10b981,stroke:#fff,color:#fff
+    style J fill:#8b5cf6,stroke:#fff,color:#fff
+    style K fill:#f59e0b,stroke:#fff,color:#fff
+    style L fill:#ec4899,stroke:#fff,color:#fff
     style C fill:#ff1744,stroke:#fff,color:#fff
     style D fill:#ffeb3b,stroke:#000,color:#000
 ```
@@ -132,9 +155,10 @@ graph TB
 - **Backend:** Firebase Firestore for real-time multiplayer rooms and global leaderboard
 - **AI Integration:** Agentic GPT-4.1-mini with tool calling, multi-step reasoning, and tactical pattern detection
 - **Engine Integration:** 
-  - Cloudflare Stockfish API (fast, depth 12, 1.8s timeout)
-  - HuggingFace Stockfish API (deep, depth 22, 22s timeout)
-  - Two-tier system with intelligent fallback and caching
+  - HuggingFace Stockfish Batch API (depth 18, multipv 3, 4 engines parallel)
+  - Persistent global caching (`global.EVAL_CACHE`) for cross-request persistence
+  - Unified evaluation normalization with explicit perspective tracking
+  - Batch-mode processing for efficient full-game analysis
 - **External APIs:** Lichess API for daily puzzles
 - **Piece Graphics:** Chess.com piece theme for professional appearance
 - **Styling:** Custom CSS with modern dark theme and vibrant color system
@@ -147,16 +171,24 @@ graph TB
 PawnPush/
 │
 ├── api/                       # 🔥 Custom-built API layer
-│   ├── getHint.js            # Agentic AI Coach with GPT-4.1-mini + Stockfish (1515 lines)
+│   ├── getHint.js            # Agentic AI Coach with GPT-4.1-mini + Stockfish (~1500 lines)
 │   │                         # - Multi-step reasoning with tool calling
 │   │                         # - Tactical pattern detection (forks, pins, skewers)
 │   │                         # - Position facts engine with attack/defense maps
 │   │                         # - Safe response verification system
-│   ├── analyzePosition.js    # Full game analysis API (331 lines)
-│   │                         # - Two-tier engine system (Cloudflare + HuggingFace)
-│   │                         # - Move-by-move CPL calculations
-│   │                         # - Performance metrics (accuracy, ACPL, rating)
-│   │                         # - Key moments detection (blunders, mistakes, swings)
+│   ├── analyzePosition.js    # Production-grade game analysis API (~714 lines)
+│   │                         # - Unified batch-mode architecture (backend does 100% engine work)
+│   │                         # - HuggingFace batch API with 4-engine parallel processing
+│   │                         # - Persistent global caching (global.EVAL_CACHE)
+│   │                         # - Explicit evaluation normalization (side-to-move vs White's POV)
+│   │                         # - Brilliant/Great/Only Move detection
+│   │                         # - Tactical motifs (check, capture, fork, checkmate)
+│   │                         # - Blunder swing detection (≥180 centipawns)
+│   │                         # - Engine trend analysis (improving/declining/stable)
+│   │                         # - Full game commentary (opening/middlegame/endgame summaries)
+│   │                         # - UCI→SAN conversion, CPL classification, accuracy/rating formulas
+│   ├── chesscom.js           # Chess.com API integration for game imports
+│   ├── stockfish.js          # Legacy single-position Stockfish API
 │   └── firebase.js           # Firebase API configuration
 │
 │
@@ -171,7 +203,11 @@ PawnPush/
 ├── audio-manager.js           # Centralized audio management system
 ├── PuzzleScript.js            # Regular puzzle logic with audio integration
 ├── dailyPuzzle.js             # Daily puzzle functionality with audio
-├── game-review.js             # Game analysis with Stockfish, CPL calculations, Chess.com integration
+├── game-review.js             # Game analysis frontend (~937 lines)
+│                             # - Zero engine logic (sends FEN history to backend)
+│                             # - Receives fully processed analysis data
+│                             # - Canvas arrows, eval bar, move list, charts
+│                             # - Accuracy/ACPL visualization, summary display
 ├── survival.js                # Survival mode with lives system and global leaderboard
 ├── pvp.js                     # 1v1 multiplayer with Firebase real-time rooms
 │
@@ -218,6 +254,7 @@ Create a `.env` file in the root directory:
 
 ```env
 OPENAI_API_KEY=your-openai-api-key
+HF_TOKEN=your-huggingface-token
 ```
 
 4. Run the development server:
@@ -294,12 +331,18 @@ Visit [https://pawn-push.vercel.app](https://pawn-push.vercel.app) to start solv
 - **Visual Feedback**: Color-coded move validation and beautiful orange glow effects
 - **Smooth Animations**: Beautiful transitions between puzzles with shine effects on buttons
 - **Game Review Features**: 
-  - Two-Tier Engine System (Cloudflare + HuggingFace)
-  - Canvas-drawn arrows with color-coded move visualization
-  - Smart evaluation parsing (pawns vs centipawns auto-detection)
-  - Progressive analysis with non-blocking UI
+  - Unified batch-mode architecture (backend performs 100% engine work)
+  - HuggingFace batch API with 4-engine parallel processing
+  - Persistent global caching eliminates redundant API calls
+  - Explicit evaluation normalization prevents double conversion
+  - Brilliant/Great/Only Move detection with tactical analysis
+  - Tactical motifs (check, capture, fork, checkmate) per move
+  - Blunder swing detection identifies turning points
+  - Engine trend analysis tracks position evaluation changes
+  - Full game commentary with opening/middlegame/endgame summaries
+  - Canvas-drawn arrows with color-coded multi-PV visualization
+  - Accuracy/ACPL charts and comprehensive performance metrics
   - Chess.com import with archive and time control selection
-  - Aggressive caching and concurrency control
 - **Responsive Design**: Optimized for desktop, tablet, and mobile
 - **No Registration**: Start playing immediately without creating an account
 
@@ -320,11 +363,11 @@ PawnPush empowers chess players with AI-driven insights, improving problem-solvi
 Through developing PawnPush, I've mastered:
 
 - **Full-Stack Development**: Complete application architecture from frontend to API integration
-- **Custom API Development**: Built production-ready serverless APIs from scratch with GPT-4.1-mini and dual Stockfish engines
+- **Custom API Development**: Built production-ready serverless APIs from scratch with GPT-4.1-mini and batch-mode Stockfish engine integration
 - **Agentic AI Systems**: Multi-step reasoning with tool calling, tactical pattern detection, and safe response verification
 - **Real-Time Systems**: Firebase Firestore integration for live multiplayer functionality
 - **AI/ML Integration**: GPT-4.1-mini with tool calling for intelligent coaching, position analysis, and hint systems
-- **API Design & Deployment**: RESTful API design, serverless architecture, two-tier engine system, and production deployment
+- **API Design & Deployment**: RESTful API design, serverless architecture, unified batch-mode engine system, persistent caching, and production deployment
 - **Canvas Graphics**: Dynamic arrow rendering with color-coded move visualization and responsive scaling
 - **Database Design**: NoSQL schema design for real-time collaborative features
 - **UX/UI Design**: Modern dark theme design with cohesive color systems and responsive layouts

@@ -145,7 +145,7 @@ export default async function handler(req, res) {
         }
 
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 20000);
+        const timer = setTimeout(() => controller.abort(), 40000);
 
         let json;
         try {
