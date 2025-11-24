@@ -504,12 +504,16 @@ export default async function handler(req, res) {
         const beforePv = beforeEval.pvs[0];
         const afterPv = afterEval.pvs[0];
 
+        if (!beforePv || !afterPv) {
+            console.warn(`[analyzePosition] Missing PV data at move ${m}, before:`, !!beforePv, 'after:', !!afterPv);
+        }
+
         const beforeNorm = normalizeEval(beforePv, side);
-        const afterNormRaw = normalizeEval(afterPv, 'w');
-        const afterNorm = {
-            cpForPlayer: side === 'w' ? afterNormRaw.cpForPlayer : -afterNormRaw.cpForPlayer,
-            mate: afterNormRaw.mate !== null ? (side === 'w' ? afterNormRaw.mate : -afterNormRaw.mate) : null
-        };
+        const afterNorm = normalizeEval(afterPv, side);
+        
+        if (m < 3) {
+            console.log(`[analyzePosition] Move ${m} (${side}): beforePv.cp=${beforePv?.cp}, afterPv.cp=${afterPv?.cp}, beforeNorm.cpForPlayer=${beforeNorm.cpForPlayer}, afterNorm.cpForPlayer=${afterNorm.cpForPlayer}`);
+        }
         
         let cpLoss = 0;
         if (beforeNorm.mate !== null || afterNorm.mate !== null) {
