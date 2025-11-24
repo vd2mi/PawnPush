@@ -11,7 +11,16 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { fens: fensArray, depth = 18, multipv = 3 } = req.body || {};
+    let body = req.body;
+    if (typeof body === 'string') {
+        try {
+            body = JSON.parse(body);
+        } catch {
+            body = null;
+        }
+    }
+
+    const { fens: fensArray, depth = 18, multipv = 3 } = body || {};
 
     if (!fensArray || !Array.isArray(fensArray)) {
         return res.status(400).json({ error: 'FENs array is required' });
