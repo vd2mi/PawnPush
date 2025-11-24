@@ -1,29 +1,22 @@
 (() => {
-    
-const CONFIG = {
-        TIER1_DEPTH: 12,
-        TIER2_DEPTH: 22,
-        CF_TIMEOUT: 1800,
-    HF_TIMEOUT: 22000,
-        SIGNIFICANT_CPL: 60,
-        TURNING_POINT_SWING: 180,
-        MAX_MULTIPV: 5,
+    const ENGINE_CONFIG = {
+        DEPTH: 18,
+        MULTIPV: 3,
+        TIMEOUT: 20000,
         PREVIEW_MAX_PLIES: 8,
-        MAX_SCORE: 10000,
         MAX_PARALLEL_REQUESTS: 1
     };
 
     const LINE_COLORS = ['#00d47e', '#3b82f6', '#a855f7', '#f97316', '#ec4899'];
 
-    
     const State = {
-    chess: new Chess(),
+        chess: new Chess(),
         scratch: new Chess(),
-    board: null,
-    history: [],
+        board: null,
+        history: [],
         headers: {},
-    moveIndex: 0,
-    moveAnalyses: [],
+        moveIndex: 0,
+        moveAnalyses: [],
         stats: {
             white: { accuracy: 0, acpl: 0, rating: 0 },
             black: { accuracy: 0, acpl: 0, rating: 0 }
@@ -31,12 +24,10 @@ const CONFIG = {
         summary: null,
         preview: null,
         previewTimeout: null,
-        linesExpanded: false,
-        activeLine: 0,
         evaluations: new Map(),
         isAnalyzing: false,
         analysisAbort: null,
-        hfWarned: false
+        accuracyHistory: { white: [], black: [] }
     };
 
     const Runtime = {
@@ -49,13 +40,15 @@ const CONFIG = {
         })()
     };
 
-    
     const Utils = {
         fenKey(fen) {
             return fen.split(' ').slice(0, 4).join(' ');
         },
+        turn(fen) {
+            return fen.split(' ')[1] || 'w';
+        },
         turnLabel(fen) {
-            return (fen.split(' ')[1] || 'w') === 'w' ? 'White' : 'Black';
+            return Utils.turn(fen) === 'w' ? 'White' : 'Black';
         },
         parsePgn(text) {
             const headers = {};
@@ -64,24 +57,19 @@ const CONFIG = {
                 return '';
             });
             
-            
             let body = text.replace(/\[.*?\]\s*/g, '');
-            
-            
             body = body
-                .replace(/\{[^}]*\}/g, ' ') 
-                .replace(/\([^)]*\)/g, ' ')  
-                .replace(/\$[0-9]+/g, ' ')    
-                .replace(/;[^\n]*/g, ' ')     
-                .replace(/\s+/g, ' ')         
+                .replace(/\{[^}]*\}/g, ' ')
+                .replace(/\([^)]*\)/g, ' ')
+                .replace(/\$[0-9]+/g, ' ')
+                .replace(/;[^\n]*/g, ' ')
+                .replace(/\s+/g, ' ')
                 .trim();
             
             return { headers, body };
         },
         loadPgn(body) {
             const temp = new Chess();
-            
-            
             let success = false;
             try {
                 success = temp.load_pgn(body, { sloppy: true });
@@ -89,34 +77,19 @@ const CONFIG = {
                 success = false;
             }
             
-            
             if (!success) {
                 temp.reset();
                 const tokens = body.trim().split(/\s+/);
-                const failedMoves = [];
-                
                 for (const token of tokens) {
                     if (!token) continue;
                     if (/^\d+\.+$/.test(token)) continue;
                     if (['1-0', '0-1', '1/2-1/2', '*'].includes(token)) continue;
-                    
                     try {
-                        const result = temp.move(token, { sloppy: true });
-                        if (!result) {
-                            failedMoves.push(token);
-                        }
-                    } catch (e) {
-                        failedMoves.push(token);
-                    }
+                        temp.move(token, { sloppy: true });
+                    } catch (e) {}
                 }
-                
                 if (temp.history().length === 0) {
                     throw new Error('Unable to parse PGN - no valid moves found.');
-                }
-                
-                
-                if (failedMoves.length > 0) {
-                    console.warn(`Skipped ${failedMoves.length} invalid moves:`, failedMoves.slice(0, 5).join(', '));
                 }
             }
             
@@ -137,127 +110,32 @@ const CONFIG = {
                 return State.scratch.fen() === toFen;
             });
             return found ? found.san : '--';
-        },
-        uciToSan(fen, uciLine, limit = 6) {
-            if (!uciLine) return '';
-            const tmp = new Chess(fen);
-            const steps = uciLine.trim().split(/\s+/).filter(Boolean);
-            const san = [];
-            for (let i = 0; i < Math.min(steps.length, limit); i++) {
-                const move = steps[i];
-                const played = tmp.move({
-                    from: move.slice(0, 2),
-                    to: move.slice(2, 4),
-                    promotion: move[4]
-                });
-                if (!played) break;
-                san.push(played.san);
-            }
-            return san.join(' ');
-        },
-        previewLine(fen, uciLine) {
-            const tmp = new Chess(fen);
-            const steps = uciLine.trim().split(/\s+/).filter(Boolean).slice(0, CONFIG.PREVIEW_MAX_PLIES);
-            const san = [];
-            const arrows = [];
-            steps.forEach((move) => {
-                const from = move.slice(0, 2);
-                const to = move.slice(2, 4);
-                const played = tmp.move({ from, to, promotion: move[4] });
-                if (played) {
-                    san.push(played.san);
-                    arrows.push({ from, to });
-                }
-            });
-            return { fen: tmp.fen(), san, arrows };
         }
     };
 
-    
     const EvalCache = (() => {
         const store = new Map();
-        const bySource = new Map();
 
-        function save(key, source, depth, result) {
-            store.set(`${key}|${source}|${depth}`, result);
-            if (!bySource.has(key)) bySource.set(key, {});
-            const bucket = bySource.get(key);
-            if (!bucket[source]) bucket[source] = new Map();
-            bucket[source].set(depth, result);
+        function save(fen, result) {
+            const key = Utils.fenKey(fen);
+            store.set(key, result);
         }
 
-        function lookup(key, source, minDepth) {
-            const bucket = bySource.get(key);
-            if (!bucket || !bucket[source]) return null;
-            let best = null;
-            bucket[source].forEach((value, depth) => {
-                if (depth >= minDepth && (!best || depth > best.depth)) {
-                    best = value;
-                }
-            });
-            return best;
+        function best(fen) {
+            const key = Utils.fenKey(fen);
+            return store.get(key) || null;
         }
 
-        function best(key) {
-            const bucket = bySource.get(key);
-            if (!bucket) return null;
-            let best = null;
-            ['hf', 'cloudflare'].forEach((source) => {
-                if (!bucket[source]) return;
-                bucket[source].forEach((value) => {
-                    if (!best || value.depth > best.depth) {
-                        best = value;
-                    }
-                });
-            });
-            return best;
-        }
-
-        return { save, lookup, best };
+        return { save, best };
     })();
 
-    
-    const Analysis = {
-        normalize({ cp, mate, turn }) {
-            if (typeof mate === 'number') {
-                const signed = turn === 'w' ? mate : -mate;
-                return { cp: signed > 0 ? CONFIG.MAX_SCORE : -CONFIG.MAX_SCORE, mate: signed };
-            }
-            const score = typeof cp === 'number' ? cp : 0;
-            return { cp: turn === 'w' ? score : -score, mate: null };
-        },
-        perspective(cpWhite, mate, player) {
-            if (mate !== null) return mate > 0 ? CONFIG.MAX_SCORE : -CONFIG.MAX_SCORE;
-            return player === 'White' ? cpWhite : -cpWhite;
-        },
-        cpl(before, after) {
-            return Math.max(0, Math.round(before - after));
-        },
-        classify(cpl) {
-            if (cpl <= 10) return { label: 'Best', icon: '🌟', className: 'move-best' };
-            if (cpl <= 25) return { label: 'Excellent', icon: '👍', className: 'move-excellent' };
-            if (cpl <= 60) return { label: 'Good', icon: '✓', className: 'move-good' };
-            if (cpl <= 150) return { label: 'Inaccuracy', icon: '?!', className: 'move-inaccuracy' };
-            if (cpl <= 300) return { label: 'Mistake', icon: '?', className: 'move-mistake' };
-            return { label: 'Blunder', icon: '??', className: 'move-blunder' };
-        },
-        accuracy(acpl) {
-            
-            return Math.min(100, Math.round(100 * Math.exp(-0.002 * acpl)));
-        },
-        rating(acpl) {
-            return Math.round(Math.max(100, Math.min(3000, 2900 - 250 * Math.log10(acpl + 12))));
-        }
-    };
-
-    
     const RequestQueue = (() => {
         const queue = [];
         const inflight = new Map();
         let active = 0;
 
         function pump() {
-            if (active >= CONFIG.MAX_PARALLEL_REQUESTS) return;
+            if (active >= ENGINE_CONFIG.MAX_PARALLEL_REQUESTS) return;
             const job = queue.shift();
             if (!job) return;
             if (job.signal?.aborted) {
@@ -290,185 +168,69 @@ const CONFIG = {
         return { enqueue };
     })();
 
-    function timeoutSignal(parent, ms) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), ms);
-        if (parent) {
-            if (parent.aborted) controller.abort();
-            else parent.addEventListener('abort', () => controller.abort(), { once: true });
-        }
-        return {
-            signal: controller.signal,
-            clear: () => clearTimeout(timer)
-        };
-    }
-
-    function normalizeCloudflareEval(raw) {
-        if (raw === null || raw === undefined) return 0;
-
-        const str = String(raw).trim().replace(',', '.');
-        if (str === '0' || str === '-0') return 0;
-
-        const num = parseFloat(str);
-        if (isNaN(num)) return 0;
-
-        if (str.includes('.')) return Math.round(num * 100);
-
-        const abs = Math.abs(num);
-
-        if (abs >= 1000) return Math.round(num);
-
-        if (abs < 40) return Math.round(num);
-
-        if (abs <= 300) return Math.round(num);
-
-        if (abs < 900) return Math.round(num);
-
-        return Math.round(num);
-    }
-
-    async function fetchCloudflare(fen, externalSignal) {
-            const params = new URLSearchParams({
-                fen,
-            depth: String(CONFIG.TIER1_DEPTH),
-                mode: 'bestmove'
-            }).toString();
-        const { signal, clear } = timeoutSignal(externalSignal, CONFIG.CF_TIMEOUT);
-        try {
-            const res = await fetch(`https://stockfish.online/api/s/v2.php?${params}`, {
-                method: 'GET',
-                signal: signal.signal
-            });
-            clear();
-            if (!res.ok) return null;
-            const json = await res.json();
-            
-            
-            let cpWhite = 0;
-            let mate = null;
-
-            // Check if there's a mate score
-            if (json.mate !== null && json.mate !== undefined) {
-                mate = parseInt(json.mate, 10);
-            }
-            
-            
-            if (json.evaluation !== undefined && json.evaluation !== null) {
-                cpWhite = normalizeCloudflareEval(json.evaluation);
-            } else if (json.eval !== undefined && json.eval !== null) {
-                cpWhite = normalizeCloudflareEval(json.eval);
-            }
-
-            const bestMove = json.bestmove || '';
-            let bestMoveSan = '';
-            
-            if (bestMove && bestMove.length >= 4) {
-                const temp = new Chess(fen);
-                const move = temp.move({
-                    from: bestMove.slice(0, 2),
-                    to: bestMove.slice(2, 4),
-                    promotion: bestMove[4]
-                });
-                if (move) bestMoveSan = move.san;
-            }
-
-            return {
-                cpWhite,
-                mate,
-                depth: json.depth || CONFIG.TIER1_DEPTH,
-                bestMove,
-                multiPV: bestMoveSan ? [{
-                    cp: cpWhite,
-                    mate,
-                    moves: [bestMoveSan]
-                }] : []
-            };
-        } catch (err) {
-            clear();
-            if (err.name === 'AbortError' && externalSignal?.aborted) throw err;
-            return null;
-        }
-    }
-
-    async function fetchHF(fen, externalSignal) {
-            if (!Runtime.allowProxy) {
-            if (!State.hfWarned) {
-                State.hfWarned = true;
-            }
-            return null;
-        }
-        const { signal, clear } = timeoutSignal(externalSignal, CONFIG.HF_TIMEOUT);
-        try {
-            const res = await fetch('/api/analyzePosition', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    fen,
-                    depth: CONFIG.TIER2_DEPTH,
-                    multipv: CONFIG.MAX_MULTIPV
-                }),
-                signal: signal.signal
-            });
-            clear();
-            if (!res.ok) return null;
-            const json = await res.json();
-            
-            if (json.error) return null;
-
-            return {
-                cpWhite: json.eval || 0,
-                mate: json.mate || null,
-                depth: json.depth || CONFIG.TIER2_DEPTH,
-                bestMove: json.bestmove || '',
-                multiPV: json.pvs || []
-            };
-        } catch (err) {
-            clear();
-            if (err.name === 'AbortError' && externalSignal?.aborted) throw err;
-            return null;
-        }
-    }
-
-    
     const Engine = {
-        async evaluate(fen, tier = 1, signal = null) {
-            const key = Utils.fenKey(fen);
-            const cached = tier === 1 
-                ? EvalCache.lookup(key, 'cloudflare', CONFIG.TIER1_DEPTH)
-                : EvalCache.lookup(key, 'hf', CONFIG.TIER2_DEPTH);
-            
+        async evaluate(fen, signal = null) {
+            const cached = EvalCache.best(fen);
             if (cached) return cached;
 
+            const key = Utils.fenKey(fen);
+
             const task = async () => {
-                if (tier === 1) {
-                    const result = await fetchCloudflare(fen, signal);
-                    if (result) {
-                        EvalCache.save(key, 'cloudflare', result.depth, result);
-                        return result;
+                if (!Runtime.allowProxy) return null;
+
+                try {
+                    const controller = new AbortController();
+                    const timer = setTimeout(() => controller.abort(), ENGINE_CONFIG.TIMEOUT);
+                    
+                    if (signal) {
+                        signal.addEventListener('abort', () => controller.abort(), { once: true });
                     }
+
+                    const res = await fetch('/api/analyzePosition', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            fen,
+                            depth: ENGINE_CONFIG.DEPTH,
+                            multipv: ENGINE_CONFIG.MULTIPV
+                        }),
+                        signal: controller.signal
+                    });
+
+                    clearTimeout(timer);
+
+                    if (!res.ok) return null;
+                    const json = await res.json();
+                    
+                    if (json.error || !json.pvs || !Array.isArray(json.pvs)) return null;
+
+                    const result = {
+                        cpWhite: json.cpWhite ?? json.pvs[0]?.cp ?? 0,
+                        mate: json.mate ?? json.pvs[0]?.mate ?? null,
+                        depth: json.depth ?? ENGINE_CONFIG.DEPTH,
+                        bestMove: json.bestMove ?? json.pvs[0]?.uci?.[0] ?? '',
+                        pvs: json.pvs
+                    };
+
+                    EvalCache.save(fen, result);
+                    return result;
+                } catch (err) {
+                    if (err.name === 'AbortError' && signal?.aborted) throw err;
+                    return null;
                 }
-                const result = await fetchHF(fen, signal);
-                if (result) {
-                    EvalCache.save(key, 'hf', result.depth, result);
-                }
-                return result;
             };
 
-            return RequestQueue.enqueue(`${key}|${tier}`, task, signal);
+            return RequestQueue.enqueue(key, task, signal);
         }
     };
 
-    
     const ArrowLayer = {
         canvas: null,
         ctx: null,
 
         init() {
             this.canvas = document.getElementById('arrowLayer');
-            if (!this.canvas) {
-                console.error('Arrow canvas not found!');
-                return;
-            }
+            if (!this.canvas) return;
             this.ctx = this.canvas.getContext('2d');
             this.resize();
             window.addEventListener('resize', () => this.resize());
@@ -519,7 +281,6 @@ const CONFIG = {
             this.ctx.lineTo(x2, y2);
             this.ctx.stroke();
             
-            
             this.ctx.beginPath();
             this.ctx.moveTo(x2, y2);
             this.ctx.lineTo(
@@ -545,7 +306,115 @@ const CONFIG = {
         }
     };
 
-    
+    const Charts = {
+        accuracyChart: null,
+        acplChart: null,
+
+        initAccuracyChart() {
+            const canvas = document.getElementById('accuracyChart');
+            if (!canvas) return;
+            this.accuracyChart = canvas.getContext('2d');
+            this.drawAccuracyChart();
+        },
+
+        initAcplChart() {
+            const canvas = document.getElementById('acplChart');
+            if (!canvas) return;
+            this.acplChart = canvas.getContext('2d');
+            this.drawAcplChart();
+        },
+
+        drawAccuracyChart() {
+            if (!this.accuracyChart || State.moveAnalyses.length === 0) return;
+
+            const canvas = this.accuracyChart.canvas;
+            const width = canvas.width = canvas.offsetWidth;
+            const height = canvas.height = 200;
+            const ctx = this.accuracyChart;
+
+            ctx.clearRect(0, 0, width, height);
+
+            const whiteData = [];
+            const blackData = [];
+            let whiteSum = 0, blackSum = 0;
+            let whiteCount = 0, blackCount = 0;
+
+            State.moveAnalyses.forEach((move, idx) => {
+                if (idx % 2 === 0) {
+                    whiteSum += move.cpLoss;
+                    whiteCount++;
+                    const acpl = whiteSum / whiteCount;
+                    const acc = Math.round(100 - (100 * Math.pow(acpl / 130, 0.65)));
+                    whiteData.push(acc);
+                } else {
+                    blackSum += move.cpLoss;
+                    blackCount++;
+                    const acpl = blackSum / blackCount;
+                    const acc = Math.round(100 - (100 * Math.pow(acpl / 130, 0.65)));
+                    blackData.push(acc);
+                }
+            });
+
+            const maxMoves = Math.max(whiteData.length, blackData.length);
+            const stepX = width / maxMoves;
+
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            whiteData.forEach((acc, idx) => {
+                const x = idx * stepX;
+                const y = height - (acc / 100) * height;
+                if (idx === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            blackData.forEach((acc, idx) => {
+                const x = idx * stepX;
+                const y = height - (acc / 100) * height;
+                if (idx === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            ctx.fillStyle = '#999';
+            ctx.font = '12px Arial';
+            ctx.fillText('White', 10, 20);
+            ctx.fillText('Black', 10, 40);
+        },
+
+        drawAcplChart() {
+            if (!this.acplChart || State.moveAnalyses.length === 0) return;
+
+            const canvas = this.acplChart.canvas;
+            const width = canvas.width = canvas.offsetWidth;
+            const height = canvas.height = 200;
+            const ctx = this.acplChart;
+
+            ctx.clearRect(0, 0, width, height);
+
+            const barWidth = width / State.moveAnalyses.length;
+            const maxCpl = Math.max(...State.moveAnalyses.map(m => m.cpLoss), 100);
+
+            State.moveAnalyses.forEach((move, idx) => {
+                const x = idx * barWidth;
+                const barHeight = (move.cpLoss / maxCpl) * height;
+                const y = height - barHeight;
+
+                let color = '#4caf50';
+                if (move.cpLoss > 200) color = '#e74c3c';
+                else if (move.cpLoss > 80) color = '#f39c12';
+                else if (move.cpLoss > 40) color = '#f1c40f';
+
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, barWidth - 1, barHeight);
+            });
+        }
+    };
+
     const EvalBar = {
         update(cpWhite, mate) {
             const fill = document.getElementById('evalBarFill');
@@ -587,20 +456,33 @@ const CONFIG = {
                 item.className = `move-item ${State.moveIndex === i ? 'active' : ''}`;
                 item.onclick = () => UI.goToMove(i);
 
+                let badges = '';
+                if (analysis) {
+                    if (analysis.isBrilliant) badges += '<span class="badge brilliant">⚡ Brilliant!</span>';
+                    else if (analysis.isGreat) badges += '<span class="badge great">⭐ Great!</span>';
+                    else if (analysis.isOnlyMove) badges += '<span class="badge only">Only Move</span>';
+                }
+
                 const core = document.createElement('div');
                 core.className = 'move-core';
                 core.innerHTML = `
                     <span class="move-num">${moveNum}${isWhite ? '.' : '...'}</span>
                     <span>${san}</span>
-                    ${analysis ? `<span class="${analysis.className}">${analysis.icon}</span>` : ''}
+                    ${analysis ? `<span class="${analysis.category}">${analysis.label}</span>` : ''}
+                    ${badges}
                 `;
 
                 if (analysis) {
                     const meta = document.createElement('div');
                     meta.className = 'move-meta';
+                    
+                    const bestSan = analysis.bestSan || '';
+                    const motifs = analysis.motifs?.join(', ') || '';
+                    
                     meta.innerHTML = `
-                        <span>CPL: ${analysis.cpl}</span>
-                        <span class="${analysis.className}">${analysis.label}</span>
+                        <span>CPL: ${analysis.cpLoss}</span>
+                        ${bestSan && analysis.cpLoss > 15 ? `<span>Best: ${bestSan}</span>` : ''}
+                        ${motifs ? `<span class="motifs">${motifs}</span>` : ''}
                     `;
                     item.appendChild(core);
                     item.appendChild(meta);
@@ -623,7 +505,7 @@ const CONFIG = {
                 return;
             }
 
-            const { white, black, moments, narrative } = State.summary;
+            const { white, black, moments, narrative, opening, middlegame, endgame, brilliants, blunders, swings } = State.summary;
 
             let html = '<div class="summary-title">Game Summary</div>';
             
@@ -631,12 +513,26 @@ const CONFIG = {
                 html += `<div class="summary-subtitle">${State.headers.Opening || State.headers.Event || 'Unknown Opening'}</div>`;
             }
 
+            html += `<div class="phase-summary">
+                <div><strong>Opening:</strong> ${opening}</div>
+                <div><strong>Middlegame:</strong> ${middlegame}</div>
+                <div><strong>Endgame:</strong> ${endgame}</div>
+            </div>`;
+
+            html += `<div class="stats-summary">
+                <div>⚡ Brilliant Moves: ${brilliants}</div>
+                <div>?? Blunders: ${blunders}</div>
+                <div>🔄 Swings: ${swings}</div>
+            </div>`;
+
             if (moments && moments.length > 0) {
                 html += '<div class="key-moments">';
-                moments.forEach(m => {
+                moments.slice(0, 10).forEach(m => {
                     const typeClass = m.type === 'blunder' ? 'moment-blunder' : 
                                      m.type === 'mistake' ? 'moment-mistake' : 
-                                     m.type === 'swing' ? 'moment-swing' : 'moment-info';
+                                     m.type === 'swing' ? 'moment-swing' : 
+                                     m.type === 'brilliant' ? 'moment-brilliant' :
+                                     m.type === 'great' ? 'moment-great' : 'moment-info';
                     html += `<div class="moment-row ${typeClass}">${m.text}</div>`;
                 });
                 html += '</div>';
@@ -648,7 +544,6 @@ const CONFIG = {
 
             panel.innerHTML = html;
 
-            
             document.getElementById('whiteAccuracy').textContent = `${white.accuracy}%`;
             document.getElementById('whiteAcpl').textContent = white.acpl;
             document.getElementById('whiteRating').textContent = white.rating;
@@ -669,62 +564,32 @@ const CONFIG = {
                 return;
             }
 
-            const eval = EvalCache.best(Utils.fenKey(fen));
-            if (!eval) {
+            const eval = EvalCache.best(fen);
+            if (!eval || !eval.pvs || eval.pvs.length === 0) {
                 panel.style.display = 'none';
                 return;
             }
 
-            
             panel.style.display = 'block';
             let html = '';
             
-            
-            if (eval.multiPV && eval.multiPV.length > 0) {
-                eval.multiPV.slice(0, 3).forEach((line, index) => {
-                    const score = line.mate !== null 
-                        ? `M${Math.abs(line.mate)}` 
-                        : (line.cp / 100).toFixed(2);
-                    const moves = line.moves ? line.moves.join(' ') : '';
-                    const color = LINE_COLORS[index];
-                    
-                    html += `
-                        <div class="top-line-row" data-line-index="${index}">
-                            <div class="line-info">
-                                <div class="line-score" style="color:${color};">${score}</div>
-                                <div class="line-move">${moves}</div>
-                            </div>
-                            <button class="line-preview-btn" onclick="window.previewLine(${index})">Preview</button>
-                        </div>
-                    `;
-                });
-            } else {
+            eval.pvs.slice(0, 3).forEach((pv, index) => {
+                const score = pv.mate !== null 
+                    ? `M${Math.abs(pv.mate)}` 
+                    : ((pv.cp || 0) / 100).toFixed(2);
+                const moves = pv.san ? pv.san.slice(0, 6).join(' ') : '';
+                const color = LINE_COLORS[index];
                 
-                const score = eval.mate !== null 
-                    ? `M${Math.abs(eval.mate)}` 
-                    : (eval.cpWhite / 100).toFixed(2);
-                const bestMoveUci = eval.bestMove || '';
-                let bestMoveSan = '';
-                
-                if (bestMoveUci && bestMoveUci.length >= 4) {
-                    const temp = new Chess(fen);
-                    const move = temp.move({
-                        from: bestMoveUci.slice(0, 2),
-                        to: bestMoveUci.slice(2, 4),
-                        promotion: bestMoveUci[4]
-                    });
-                    if (move) bestMoveSan = move.san;
-                }
-                
-                html = `
-                    <div class="top-line-row">
+                html += `
+                    <div class="top-line-row" data-line-index="${index}">
                         <div class="line-info">
-                            <div class="line-score" style="color:${LINE_COLORS[0]};">${score}</div>
-                            <div class="line-move">${bestMoveSan || bestMoveUci}</div>
+                            <div class="line-score" style="color:${color};">${score}</div>
+                            <div class="line-move">${moves}</div>
                         </div>
+                        <button class="line-preview-btn" onclick="window.previewLine(${index})">Preview</button>
                     </div>
                 `;
-            }
+            });
 
             panel.innerHTML = html;
         }
@@ -750,42 +615,43 @@ const CONFIG = {
             const isWhite = State.moveIndex % 2 === 1;
             const playedMove = Utils.san(State.history[State.moveIndex - 1], State.history[State.moveIndex]);
 
-            // Get best move from previous position
-            const prevFen = State.history[State.moveIndex - 1];
-            const prevEval = EvalCache.best(Utils.fenKey(prevFen));
-            let bestMoveSan = '';
-            
-            if (prevEval && prevEval.bestMove && prevEval.bestMove.length >= 4) {
-                const temp = new Chess(prevFen);
-                const move = temp.move({
-                    from: prevEval.bestMove.slice(0, 2),
-                    to: prevEval.bestMove.slice(2, 4),
-                    promotion: prevEval.bestMove[4]
-                });
-                if (move) bestMoveSan = move.san;
-            }
+            const bestSan = analysis.bestSan || '';
+            const secondBestSan = analysis.secondBestSan || '';
+
+            let badges = '';
+            if (analysis.isBrilliant) badges += '<span class="badge brilliant">⚡ Brilliant!</span>';
+            else if (analysis.isGreat) badges += '<span class="badge great">⭐ Great!</span>';
+            else if (analysis.isOnlyMove) badges += '<span class="badge only">Only Move</span>';
 
             let html = `
                 <div class="analysis-header">
                     <span style="font-weight:bold;">${moveNum}${isWhite ? '.' : '...'} ${playedMove}</span>
-                    <span class="analysis-badge ${analysis.className}">${analysis.label}</span>
+                    <span class="analysis-badge ${analysis.category}">${analysis.label}</span>
+                    ${badges}
                 </div>
-                <div class="analysis-row">CPL: <span class="analysis-score">${analysis.cpl}</span></div>
+                <div class="analysis-row">CPL: <span class="analysis-score">${analysis.cpLoss}</span></div>
+                <div class="analysis-row">Trend: <span>${analysis.engineTrend}</span></div>
             `;
 
-            if (bestMoveSan && analysis.cpl > 10) {
-                html += `<div class="analysis-row">Best: <span class="analysis-score">${bestMoveSan}</span></div>`;
+            if (bestSan && analysis.cpLoss > 15) {
+                html += `<div class="analysis-row">Best: <span class="analysis-score">${bestSan}</span></div>`;
+            }
+            if (secondBestSan && analysis.cpLoss > 15) {
+                html += `<div class="analysis-row">2nd Best: <span class="analysis-score">${secondBestSan}</span></div>`;
             }
 
-            if (analysis.insight) {
-                html += `<div class="insight-row">${analysis.insight}</div>`;
+            if (analysis.motifs && analysis.motifs.length > 0) {
+                html += `<div class="analysis-row">Motifs: <span>${analysis.motifs.join(', ')}</span></div>`;
+            }
+
+            if (analysis.brilliantReason) {
+                html += `<div class="insight-row">${analysis.brilliantReason}</div>`;
             }
 
             display.innerHTML = html;
         }
     };
 
-    
     const UIBoard = {
         init() {
             State.board = Chessboard('board', {
@@ -807,16 +673,14 @@ const CONFIG = {
                 State.board.position(fen);
                 State.chess.load(fen);
                 
-                
-                const eval = EvalCache.best(Utils.fenKey(fen));
+                const eval = EvalCache.best(fen);
                 if (eval) {
                     EvalBar.update(eval.cpWhite, eval.mate);
                 }
                 
-                
                 if (State.moveAnalyses.length > 0 && State.moveIndex > 0) {
                     const prevFen = State.history[State.moveIndex - 1];
-                    const prevEval = EvalCache.best(Utils.fenKey(prevFen));
+                    const prevEval = EvalCache.best(prevFen);
                     if (prevEval && prevEval.bestMove) {
                         this.showBestMoveArrow(prevEval);
                     } else {
@@ -839,11 +703,12 @@ const CONFIG = {
         }
     };
 
-    
     const UI = {
         init() {
             UIBoard.init();
             ArrowLayer.init();
+            Charts.initAccuracyChart();
+            Charts.initAcplChart();
             
             document.getElementById('loadGameBtn').onclick = () => UI.loadGame();
             document.getElementById('clearBtn').onclick = () => UI.clearGame();
@@ -859,9 +724,9 @@ const CONFIG = {
                 if (e.key === 'ArrowLeft') UI.goToMove(Math.max(0, State.moveIndex - 1));
                 if (e.key === 'ArrowRight') UI.goToMove(Math.min(State.history.length - 1, State.moveIndex + 1));
             });
-    },
+        },
 
-    loadGame() {
+        loadGame() {
             const pgnText = document.getElementById('pgnInput').value.trim();
             const fenText = document.getElementById('fenInput').value.trim();
 
@@ -876,7 +741,7 @@ const CONFIG = {
                     State.headers = headers;
                 } else {
                     UI.toast('Please enter PGN or FEN', 'error');
-                return;
+                    return;
                 }
 
                 State.moveIndex = 0;
@@ -890,25 +755,24 @@ const CONFIG = {
             } catch (err) {
                 UI.toast('Failed to load game: ' + err.message, 'error');
             }
-    },
+        },
 
-    clearGame() {
+        clearGame() {
             State.chess.reset();
             State.history = [State.chess.fen()];
             State.moveIndex = 0;
             State.moveAnalyses = [];
             State.summary = null;
             State.headers = {};
-        document.getElementById('pgnInput').value = '';
-        document.getElementById('fenInput').value = '';
+            document.getElementById('pgnInput').value = '';
+            document.getElementById('fenInput').value = '';
             UIBoard.update();
             MoveList.render();
             SummaryPanel.render();
             AnalysisDisplay.update();
-    },
+        },
 
-    goToMove(index) {
-            
+        goToMove(index) {
             if (State.previewTimeout) {
                 clearTimeout(State.previewTimeout);
                 State.previewTimeout = null;
@@ -952,97 +816,44 @@ const CONFIG = {
                 for (let i = 0; i < totalMoves; i++) {
                     if (State.analysisAbort.signal.aborted) break;
                     
-                    
                     UI.showLoading(`Analyzing move ${i}/${totalMoves}...`);
                     
                     const fen = State.history[i];
-                    const eval1 = await Engine.evaluate(fen, 1, State.analysisAbort.signal);
-                    
-                    if (i > 0) {
-                        const prevFen = State.history[i - 1];
-                        const prevEval = EvalCache.best(Utils.fenKey(prevFen));
-                        
-                        if (prevEval && eval1) {
-                            
-                            const player = Utils.turnLabel(prevFen);
-                            
-                           
-                            const before = Analysis.perspective(prevEval.cpWhite, prevEval.mate, player);
-                            const after = Analysis.perspective(eval1.cpWhite, eval1.mate, player);
-                            
-                            
-                            const cpl = Analysis.cpl(before, after);
-                            const classification = Analysis.classify(cpl);
-                            
-                            State.moveAnalyses.push({
-                                cpl,
-                                ...classification,
-                                insight: cpl > 100 ? 'Consider reviewing this move' : null
-                            });
-                        }
-                    }
-                    
+                    await Engine.evaluate(fen, State.analysisAbort.signal);
                     
                     if (i % 5 === 0) {
                         await new Promise(resolve => setTimeout(resolve, 0));
-                        
-                        MoveList.render();
                     }
                 }
 
-                
-                let whiteTotal = 0, blackTotal = 0, whiteCount = 0, blackCount = 0;
-                State.moveAnalyses.forEach((analysis, idx) => {
-                    if (idx % 2 === 0) {
-                        whiteTotal += analysis.cpl;
-                        whiteCount++;
-                    } else {
-                        blackTotal += analysis.cpl;
-                        blackCount++;
-                    }
+                UI.showLoading('Generating analysis...');
+
+                const res = await fetch('/api/analyzePosition', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        pgn: document.getElementById('pgnInput').value,
+                        depth: ENGINE_CONFIG.DEPTH,
+                        multipv: ENGINE_CONFIG.MULTIPV
+                    })
                 });
 
-                const whiteAcpl = whiteCount ? Math.round(whiteTotal / whiteCount) : 0;
-                const blackAcpl = blackCount ? Math.round(blackTotal / blackCount) : 0;
+                if (!res.ok) throw new Error('Analysis failed');
+                const data = await res.json();
 
+                State.moveAnalyses = data.moves || [];
+                State.summary = data.summary || null;
                 State.stats = {
-                    white: {
-                        accuracy: Math.round(Analysis.accuracy(whiteAcpl)),
-                        acpl: whiteAcpl,
-                        rating: Analysis.rating(whiteAcpl)
-                    },
-                    black: {
-                        accuracy: Math.round(Analysis.accuracy(blackAcpl)),
-                        acpl: blackAcpl,
-                        rating: Analysis.rating(blackAcpl)
-                    }
-                };
-
-                
-                const moments = State.moveAnalyses
-                    .map((a, i) => ({ ...a, index: i }))
-                    .filter(a => a.className === 'move-blunder' || a.className === 'move-mistake')
-                    .slice(0, 5)
-                    .map(a => ({
-                        type: a.className === 'move-blunder' ? 'blunder' : 'mistake',
-                        text: `Move ${Math.ceil((a.index + 1) / 2)}: ${a.label} (CPL: ${a.cpl})`
-                    }));
-
-                if (moments.length === 0) {
-                    moments.push({ type: 'info', text: 'Clean game with no major mistakes!' });
-                }
-
-                State.summary = {
-                    white: State.stats.white,
-                    black: State.stats.black,
-                    moments,
-                    narrative: `Analysis complete. White ACPL: ${whiteAcpl}, Black ACPL: ${blackAcpl}.`
+                    white: data.summary?.white || { accuracy: 0, acpl: 0, rating: 0 },
+                    black: data.summary?.black || { accuracy: 0, acpl: 0, rating: 0 }
                 };
 
                 MoveList.render();
                 SummaryPanel.render();
                 AnalysisDisplay.update();
                 TopLinesPanel.update();
+                Charts.drawAccuracyChart();
+                Charts.drawAcplChart();
                 UI.toast('Analysis complete!', 'success');
             } catch (err) {
                 if (err.name !== 'AbortError') {
@@ -1074,7 +885,6 @@ const CONFIG = {
                 
                 const data = await response.json();
                 
-                
                 const archiveOptions = data.archives.slice(-6).reverse().reduce((acc, url, i) => {
                     const match = url.match(/(\d{4})\/(\d{2})$/);
                     const label = match ? `${match[1]}-${match[2]}` : `Archive ${i + 1}`;
@@ -1096,7 +906,6 @@ const CONFIG = {
                 const gamesResponse = await fetch(selectedArchive);
                 const gamesData = await gamesResponse.json();
                 
-                
                 const gamesByType = {};
                 gamesData.games.forEach(g => {
                     const tc = g.time_class || 'unknown';
@@ -1104,7 +913,6 @@ const CONFIG = {
                     gamesByType[tc].push(g);
                 });
 
-                
                 const games = [];
                 Object.keys(gamesByType).forEach(type => {
                     gamesByType[type].slice(-10).forEach((g, i) => {
@@ -1147,6 +955,8 @@ const CONFIG = {
                     <div style="color:#fff;font-size:1.1rem;">${message}</div>
                 `;
                 document.body.appendChild(overlay);
+            } else {
+                overlay.querySelector('div:last-child').textContent = message;
             }
         },
 
@@ -1167,9 +977,7 @@ const CONFIG = {
         }
     };
 
-    
     window.previewLine = (lineIndex) => {
-        
         if (State.previewTimeout) {
             clearTimeout(State.previewTimeout);
             State.previewTimeout = null;
@@ -1178,17 +986,17 @@ const CONFIG = {
         const fen = State.history[State.moveIndex];
         if (!fen) return;
 
-        const eval = EvalCache.best(Utils.fenKey(fen));
-        if (!eval || !eval.multiPV || !eval.multiPV[lineIndex]) return;
+        const eval = EvalCache.best(fen);
+        if (!eval || !eval.pvs || !eval.pvs[lineIndex]) return;
 
-        const line = eval.multiPV[lineIndex];
-        if (!line.moves || line.moves.length === 0) return;
+        const pv = eval.pvs[lineIndex];
+        if (!pv.san || pv.san.length === 0) return;
 
         const arrows = [];
         const temp = new Chess(fen);
         
-        for (let i = 0; i < Math.min(line.moves.length, 3); i++) {
-            const move = line.moves[i];
+        for (let i = 0; i < Math.min(pv.san.length, ENGINE_CONFIG.PREVIEW_MAX_PLIES); i++) {
+            const move = pv.san[i];
             const legalMoves = temp.moves({ verbose: true });
             const found = legalMoves.find(m => m.san === move);
             
@@ -1205,12 +1013,11 @@ const CONFIG = {
             ArrowLayer.drawMultipleArrows(arrows);
             const badge = document.getElementById('previewBadge');
             if (badge) {
-                badge.textContent = `Preview: ${line.moves.slice(0, 3).join(' ')}`;
+                badge.textContent = `Preview: ${pv.san.slice(0, 3).join(' ')}`;
                 badge.style.display = 'block';
             }
             
             State.previewTimeout = setTimeout(() => {
-                
                 if (State.preview && State.preview.moveIndex === State.moveIndex) {
                     if (badge) badge.style.display = 'none';
                     State.preview = null;
@@ -1222,9 +1029,7 @@ const CONFIG = {
         }
     };
 
-    
     document.addEventListener('DOMContentLoaded', () => {
         UI.init();
     });
 })();
-
