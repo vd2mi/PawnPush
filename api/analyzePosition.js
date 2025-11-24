@@ -59,6 +59,64 @@ export default async function handler(req, res) {
         return san;
     }
 
+    function tryApplyToken(chessInstance, token) {
+        if (!token) return null;
+        let str = '';
+        if (typeof token === 'string') {
+            str = token.trim();
+        } else if (typeof token === 'object') {
+            str = token.Move || token.move || token.san || '';
+            if (typeof str === 'string') str = str.trim();
+        }
+        if (!str) return null;
+        const uciPattern = /^[a-h][1-8][a-h][1-8][qnrb]?$/i;
+        if (uciPattern.test(str)) {
+            const normalized = str.toLowerCase();
+            const moveObj = chessInstance.move({
+                from: normalized.slice(0, 2),
+                to: normalized.slice(2, 4),
+                promotion: normalized.length > 4 ? normalized[4] : undefined
+            });
+            if (moveObj) return moveObj;
+        }
+        return chessInstance.move(str, { sloppy: true });
+    }
+
+    function parseLineMoves(positionFen, line) {
+        const chess = new Chess(positionFen);
+        const candidates = [
+            line?.line ?? line?.Line,
+            line?.moves ?? line?.Moves,
+            line?.pv ?? line?.PV,
+            line?.uci ?? line?.UCI
+        ];
+
+        let tokens = [];
+        for (const candidate of candidates) {
+            if (Array.isArray(candidate) && candidate.length) {
+                tokens = candidate.slice();
+                break;
+            }
+            if (typeof candidate === 'string' && candidate.trim()) {
+                tokens = candidate.trim().split(/\s+/);
+                break;
+            }
+        }
+        if (tokens.length === 0 && typeof line?.Move === 'string' && line.Move.trim()) {
+            tokens = [line.Move.trim()];
+        }
+
+        const uciSeq = [];
+        const sanSeq = [];
+        for (const token of tokens) {
+            const moveObj = tryApplyToken(chess, token);
+            if (!moveObj) break;
+            uciSeq.push(`${moveObj.from}${moveObj.to}${moveObj.promotion || ''}`);
+            sanSeq.push(moveObj.san);
+        }
+        return { uciSeq, sanSeq };
+    }
+
     async function fetchBatch(fensToEvaluate, depthVal, multipvVal) {
         if (!HF_TOKEN || fensToEvaluate.length === 0) return null;
 
@@ -137,27 +195,74 @@ export default async function handler(req, res) {
             const chess = new Chess(positionFen);
             const turn = chess.turn();
 
-            let pvs = [];
-            if (result.pvs && Array.isArray(result.pvs)) {
-                pvs = result.pvs.map(pv => {
-                    const rawCp = pv.cp ?? pv.eval ?? 0;
-                    const rawMate = pv.mate ?? null;
+            let rawLines = [];
+            if (Array.isArray(result.pvs)) {
+                rawLines = result.pvs;
+            } else if (Array.isArray(result.top_moves)) {
+                rawLines = result.top_moves;
+            } else if (Array.isArray(result.topMoves)) {
+                rawLines = result.topMoves;
+            }
 
-                    const cpWhite = turn === 'w' ? rawCp : -rawCp;
-                    const mateWhite = rawMate !== null ? (turn === 'w' ? rawMate : -rawMate) : null;
+            if ((!rawLines || rawLines.length === 0) && result.best_move) {
+                rawLines = [{
+                    Move: result.best_move,
+                    evaluation: result.evaluation,
+                    depth: result.depth
+                }];
+            }
 
-                    const uci = pv.pv || pv.moves || pv.uci || [];
-                    const uciArray = Array.isArray(uci) ? uci : uci.split(' ').filter(Boolean);
-                    const san = uciToSan(positionFen, uciArray);
+            const limitedLines = Array.isArray(rawLines) ? rawLines.slice(0, multipvVal) : [];
 
-                    return {
-                        cp: cpWhite,
-                        mate: mateWhite,
-                        depth: pv.depth ?? depthVal,
-                        uci: uciArray,
-                        san
-                    };
-                });
+            let pvs = limitedLines.map(line => {
+                const { uciSeq, sanSeq } = parseLineMoves(positionFen, line);
+                let uciMoves = uciSeq;
+                let sanMoves = sanSeq;
+
+                if (uciMoves.length === 0 && typeof line?.Move === 'string') {
+                    uciMoves = [line.Move];
+                    sanMoves = uciToSan(positionFen, uciMoves);
+                }
+
+                let rawCp = line.cp ?? line.CP ?? line.centipawn ?? line.Centipawn ?? line.eval ?? line.Eval;
+                if (rawCp === undefined && line.evaluation && line.evaluation.type === 'cp') {
+                    rawCp = line.evaluation.value;
+                }
+                if (rawCp === undefined && result.evaluation && result.evaluation.type === 'cp') {
+                    rawCp = result.evaluation.value;
+                }
+                rawCp = Number(rawCp);
+                if (!Number.isFinite(rawCp)) rawCp = 0;
+
+                let rawMate = line.mate ?? line.Mate ?? null;
+                if ((rawMate === null || rawMate === undefined) && line.evaluation && line.evaluation.type === 'mate') {
+                    rawMate = line.evaluation.value;
+                }
+                if ((rawMate === null || rawMate === undefined) && result.evaluation && result.evaluation.type === 'mate') {
+                    rawMate = result.evaluation.value;
+                }
+                rawMate = rawMate === null || rawMate === undefined ? null : Number(rawMate);
+
+                const cpWhite = turn === 'w' ? rawCp : -rawCp;
+                const mateWhite = rawMate !== null ? (turn === 'w' ? rawMate : -rawMate) : null;
+
+                return {
+                    cp: cpWhite,
+                    mate: mateWhite,
+                    depth: line.depth ?? result.depth ?? depthVal,
+                    uci: uciMoves,
+                    san: sanMoves
+                };
+            });
+
+            if (!pvs.length) {
+                pvs = [{
+                    cp: 0,
+                    mate: null,
+                    depth: result.depth ?? depthVal,
+                    uci: [],
+                    san: []
+                }];
             }
 
             pvs.sort((a, b) => {
@@ -173,7 +278,10 @@ export default async function handler(req, res) {
                 return (b.cp - a.cp) * turnFactor;
             });
 
-            let bestMove = pvs[0]?.uci?.[0] || result.bestMove || '';
+            let bestMove = result.best_move || result.bestMove || '';
+            if ((!bestMove || bestMove.length < 4) && pvs[0]?.uci?.length) {
+                bestMove = pvs[0].uci[0];
+            }
             if (typeof bestMove !== 'string' || bestMove.length < 4) {
                 bestMove = '';
             }
