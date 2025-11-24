@@ -401,11 +401,17 @@ export default async function handler(req, res) {
         if (move.captured) motifs.push('Capture');
 
         const chess = new Chess(fen);
-        const applied = chess.move({
-            from: move.from,
-            to: move.to,
-            promotion: move.promotion
-        });
+        let applied = null;
+        if (move?.san) {
+            applied = chess.move(move.san, { sloppy: true });
+        }
+        if (!applied && move?.from && move?.to) {
+            applied = chess.move({
+                from: move.from,
+                to: move.to,
+                promotion: move.promotion
+            });
+        }
 
         if (applied) {
             const attackedSquares = chess.moves({ verbose: true, square: move.to });
@@ -413,6 +419,8 @@ export default async function handler(req, res) {
                 const pieceTypes = new Set(attackedSquares.map(m => m.captured).filter(Boolean));
                 if (pieceTypes.size >= 2) motifs.push('Fork');
             }
+        } else {
+            console.warn('[detectMotifs] Failed to replay move, skipping fork detection for SAN:', move?.san);
         }
 
         return motifs;
