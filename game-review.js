@@ -753,8 +753,8 @@
                 SummaryPanel.render();
                 AnalysisDisplay.update();
                 TopLinesPanel.update();
-                Charts.drawAccuracyChart();
-                Charts.drawAcplChart();
+                Charts.initAccuracyChart();
+                Charts.initAcplChart();
                 UI.toast('Analysis complete!', 'success');
             } catch (err) {
                 if (err.name !== 'AbortError') {

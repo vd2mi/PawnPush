@@ -379,19 +379,20 @@ export default async function handler(req, res) {
     console.log('[analyzePosition] All batches evaluated successfully');
 
     function normalizeEval(raw, sideToMove) {
-        if (!raw || raw.cp === undefined) {
-            return { cpForPlayer: 0, mate: null };
-        }
-        
-        if (raw.mate !== null && raw.mate !== undefined && raw.mate !== 0) {
-            const mateWhite = Number(raw.mate);
+        if (!raw) return { cpForPlayer: 0, mate: null };
+
+        let mate = raw.mate;
+        if (mate === 0 || mate === undefined) mate = null;
+
+        if (mate !== null) {
+            const mateWhite = Number(mate);
             const mateForPlayer = sideToMove === 'w' ? mateWhite : -mateWhite;
-            return { 
-                cpForPlayer: mateForPlayer > 0 ? 10000 : -10000, 
-                mate: mateForPlayer 
+            return {
+                cpForPlayer: mateForPlayer > 0 ? 10000 : -10000,
+                mate: mateForPlayer
             };
         }
-        
+
         const cpWhite = Number(raw.cp ?? 0);
         const cpForPlayer = sideToMove === 'w' ? cpWhite : -cpWhite;
         return { cpForPlayer, mate: null };
@@ -501,31 +502,31 @@ export default async function handler(req, res) {
         const afterEval = analysisResults[m + 1];
         const move = history[m];
 
-        const beforePv = beforeEval.pvs[0];
-        const afterPv = afterEval.pvs[0];
+        const beforeBestPv = beforeEval.pvs[0];
+        const afterActualEval = afterEval;
 
-        if (!beforePv || !afterPv) {
-            console.warn(`[analyzePosition] Missing PV data at move ${m}, before:`, !!beforePv, 'after:', !!afterPv);
+        if (!beforeBestPv || !afterActualEval) {
+            console.warn(`[analyzePosition] Missing PV data at move ${m}, before:`, !!beforeBestPv, 'after:', !!afterActualEval);
         }
 
-        const beforeNorm = normalizeEval(beforePv, side);
-        const afterNorm = normalizeEval(afterPv, side);
+        const beforeBestNorm = normalizeEval(beforeBestPv, side);
+        const afterActualNorm = normalizeEval({ cp: afterActualEval.cpWhite, mate: afterActualEval.mate }, side);
         
         let cpLoss = 0;
-        if (beforeNorm.mate !== null || afterNorm.mate !== null) {
-            if (beforeNorm.mate !== null && beforeNorm.mate > 0 && 
-                (afterNorm.mate === null || afterNorm.mate <= 0)) {
+        if (beforeBestNorm.mate !== null || afterActualNorm.mate !== null) {
+            if (beforeBestNorm.mate !== null && beforeBestNorm.mate > 0 && 
+                (afterActualNorm.mate === null || afterActualNorm.mate <= 0)) {
                 cpLoss = 500;
-            } else if (afterNorm.mate !== null && afterNorm.mate < 0) {
+            } else if (afterActualNorm.mate !== null && afterActualNorm.mate < 0) {
                 cpLoss = 500;
-            } else if (beforeNorm.mate !== null && afterNorm.mate !== null && 
-                       beforeNorm.mate > 0 && afterNorm.mate > 0) {
-                cpLoss = Math.max(0, afterNorm.mate - beforeNorm.mate) * 50;
+            } else if (beforeBestNorm.mate !== null && afterActualNorm.mate !== null && 
+                       beforeBestNorm.mate > 0 && afterActualNorm.mate > 0) {
+                cpLoss = Math.max(0, afterActualNorm.mate - beforeBestNorm.mate) * 50;
             } else {
                 cpLoss = 0;
             }
         } else {
-            cpLoss = Math.max(0, beforeNorm.cpForPlayer - afterNorm.cpForPlayer);
+            cpLoss = Math.max(0, beforeBestNorm.cpForPlayer - afterActualNorm.cpForPlayer);
         }
 
         if (side === 'w') {
@@ -555,7 +556,7 @@ export default async function handler(req, res) {
                 isOnlyMove = true;
             }
 
-            const wasSacrifice = isSacrifice(move, beforePv, afterPv);
+            const wasSacrifice = isSacrifice(move, beforeBestPv, { cp: afterActualEval.cpWhite, mate: afterActualEval.mate });
             const wasTactical = isTactical(beforeEval.pvs[0].san, fensArray[m]);
 
             if (wasSacrifice && cpGap >= 150 && wasTactical && cpLoss <= 15) {
@@ -572,9 +573,10 @@ export default async function handler(req, res) {
 
         let evalTrend = 'stable';
         if (m >= 1) {
-            const prevSide = (m - 1) % 2 === 0 ? 'w' : 'b';
-            const prevNorm = normalizeEval(analysisResults[m].pvs[0], prevSide);
-            const currentNorm = normalizeEval(analysisResults[m + 1].pvs[0], side);
+            const prevEval = analysisResults[m];
+            const currentEval = analysisResults[m + 1];
+            const prevNorm = normalizeEval({ cp: prevEval.cpWhite, mate: prevEval.mate }, side);
+            const currentNorm = normalizeEval({ cp: currentEval.cpWhite, mate: currentEval.mate }, side);
             
             const diff = currentNorm.cpForPlayer - prevNorm.cpForPlayer;
             if (diff > 20) {
