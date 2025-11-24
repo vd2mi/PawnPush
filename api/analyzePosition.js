@@ -11,6 +11,7 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
+    console.log('[analyzePosition] Incoming request');
     let body = req.body;
     if (typeof body === 'string') {
         try {
@@ -21,8 +22,10 @@ export default async function handler(req, res) {
     }
 
     const { fens: fensArray, depth = 18, multipv = 3 } = body || {};
+    console.log(`[analyzePosition] Parsed body: fens=${Array.isArray(fensArray) ? fensArray.length : 'invalid'}, depth=${depth}, multipv=${multipv}`);
 
     if (!fensArray || !Array.isArray(fensArray)) {
+        console.warn('[analyzePosition] Missing or invalid FEN array');
         return res.status(400).json({ error: 'FENs array is required' });
     }
 
@@ -118,7 +121,10 @@ export default async function handler(req, res) {
     }
 
     async function fetchBatch(fensToEvaluate, depthVal, multipvVal) {
-        if (!HF_TOKEN || fensToEvaluate.length === 0) return null;
+        if (!HF_TOKEN || fensToEvaluate.length === 0) {
+            console.warn('[fetchBatch] Missing HF token or empty batch');
+            return null;
+        }
 
         const uncachedFens = [];
         const fenIndexMap = [];
@@ -134,6 +140,7 @@ export default async function handler(req, res) {
         });
 
         if (uncachedFens.length === 0) {
+            console.log('[fetchBatch] All positions served from cache');
             return fensToEvaluate.map((fen, idx) => fenIndexMap[idx].result);
         }
 
@@ -142,6 +149,7 @@ export default async function handler(req, res) {
 
         let json;
         try {
+            console.log(`[fetchBatch] Requesting HF batch: size=${uncachedFens.length}, depth=${depthVal}, multipv=${multipvVal}`);
             const response = await fetch(HF_BATCH_URL, {
                 method: 'POST',
                 headers: {
@@ -155,7 +163,7 @@ export default async function handler(req, res) {
             clearTimeout(timer);
 
             if (!response.ok) {
-                console.error('HF batch failed:', response.status);
+                console.error('[fetchBatch] HF batch failed:', response.status);
                 return null;
             }
 
@@ -163,24 +171,26 @@ export default async function handler(req, res) {
             try {
                 json = JSON.parse(text);
             } catch {
-                console.error('JSON Parse Error:', text.slice(0, 200));
+                console.error('[fetchBatch] JSON Parse Error:', text.slice(0, 200));
                 return null;
             }
         } catch (err) {
             clearTimeout(timer);
-            console.error('Batch fetch error:', err);
+            console.error('[fetchBatch] Network error:', err);
             return null;
         }
 
         if (!json || !json.results || !Array.isArray(json.results)) {
-            console.error('Invalid batch response:', json);
+            console.error('[fetchBatch] Invalid HF response structure:', json);
             return null;
         }
+        console.log(`[fetchBatch] HF batch success: results=${json.results.length}`);
 
         const batchNormalized = json.results.map((result, idx) => {
             const positionFen = uncachedFens[idx];
 
             if (!result) {
+                console.warn('[fetchBatch] Missing result entry, inserting fallback');
                 const fallback = {
                     cpWhite: 0,
                     mate: null,
@@ -210,6 +220,9 @@ export default async function handler(req, res) {
                     evaluation: result.evaluation,
                     depth: result.depth
                 }];
+            }
+            if (!rawLines || rawLines.length === 0) {
+                console.warn('[fetchBatch] No PV data returned for fen:', positionFen);
             }
 
             const limitedLines = Array.isArray(rawLines) ? rawLines.slice(0, multipvVal) : [];
@@ -308,17 +321,20 @@ export default async function handler(req, res) {
     }
 
     const analysisResults = [];
+    console.log(`[analyzePosition] Evaluating ${fensArray.length} positions in batches of ${BATCH_SIZE}`);
 
     for (let i = 0; i < fensArray.length; i += BATCH_SIZE) {
         const batch = fensArray.slice(i, i + BATCH_SIZE);
         const batchResults = await fetchBatch(batch, depth, multipv);
         
         if (!batchResults) {
+            console.error('[analyzePosition] Batch evaluation failed at index', i);
             return res.status(500).json({ error: `Batch analysis failed at position ${i}` });
         }
 
         analysisResults.push(...batchResults);
     }
+    console.log('[analyzePosition] All batches evaluated successfully');
 
     function normalizeEval(raw, sideToMove) {
         if (!raw || raw.cp === undefined) {
@@ -537,6 +553,7 @@ export default async function handler(req, res) {
 
     const acplWhite = movesWhiteCount ? Math.round(totalCpLossWhite / movesWhiteCount) : 0;
     const acplBlack = movesBlackCount ? Math.round(totalCpLossBlack / movesBlackCount) : 0;
+    console.log('[analyzePosition] ACPL White/Black:', acplWhite, acplBlack);
 
     const accuracyWhite = accuracyFromAcpl(acplWhite);
     const accuracyBlack = accuracyFromAcpl(acplBlack);
@@ -621,6 +638,12 @@ export default async function handler(req, res) {
         narrative += firstBlunder.text.replace(/^Blunder – /, 'Critical moment: ').replace('loses', 'losing') + '. ';
     }
 
+    console.log('[analyzePosition] Summary:', {
+        totalMoves,
+        swings: swings.length,
+        brilliants: brilliants.length,
+        greats: greats.length
+    });
     return res.status(200).json({
         evaluations: analysisResults,
         moves: movesAnalysis,
