@@ -383,7 +383,7 @@ export default async function handler(req, res) {
             return { cpForPlayer: 0, mate: null };
         }
         
-        if (raw.mate !== null && raw.mate !== undefined) {
+        if (raw.mate !== null && raw.mate !== undefined && raw.mate !== 0) {
             const mateWhite = Number(raw.mate);
             const mateForPlayer = sideToMove === 'w' ? mateWhite : -mateWhite;
             return { 
@@ -510,10 +510,6 @@ export default async function handler(req, res) {
 
         const beforeNorm = normalizeEval(beforePv, side);
         const afterNorm = normalizeEval(afterPv, side);
-        
-        if (m < 3) {
-            console.log(`[analyzePosition] Move ${m} (${side}): beforePv.cp=${beforePv?.cp}, afterPv.cp=${afterPv?.cp}, beforeNorm.cpForPlayer=${beforeNorm.cpForPlayer}, afterNorm.cpForPlayer=${afterNorm.cpForPlayer}`);
-        }
         
         let cpLoss = 0;
         if (beforeNorm.mate !== null || afterNorm.mate !== null) {
