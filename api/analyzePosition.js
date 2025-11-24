@@ -505,7 +505,11 @@ export default async function handler(req, res) {
         const afterPv = afterEval.pvs[0];
 
         const beforeNorm = normalizeEval(beforePv, side);
-        const afterNorm = normalizeEval(afterPv, side);
+        const afterNormRaw = normalizeEval(afterPv, 'w');
+        const afterNorm = {
+            cpForPlayer: side === 'w' ? afterNormRaw.cpForPlayer : -afterNormRaw.cpForPlayer,
+            mate: afterNormRaw.mate !== null ? (side === 'w' ? afterNormRaw.mate : -afterNormRaw.mate) : null
+        };
         
         let cpLoss = 0;
         if (beforeNorm.mate !== null || afterNorm.mate !== null) {
