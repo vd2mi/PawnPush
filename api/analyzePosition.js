@@ -38,7 +38,7 @@ export default async function handler(req, res) {
 
     const HF_TOKEN = process.env.HF_TOKEN;
     const HF_BATCH_URL = 'https://vd2mi-stockfishapi.hf.space/analyze/batch';
-    const BATCH_SIZE = 4;
+    const BATCH_SIZE = 20;
 
     const PERSISTENT_CACHE = global.EVAL_CACHE || (global.EVAL_CACHE = new Map());
 
@@ -185,6 +185,13 @@ export default async function handler(req, res) {
             return null;
         }
         console.log(`[fetchBatch] HF batch success: results=${json.results.length}`);
+
+        if (json.results.length < uncachedFens.length) {
+            console.warn(`[fetchBatch] HF returned ${json.results.length} results but expected ${uncachedFens.length}, padding with fallbacks`);
+            while (json.results.length < uncachedFens.length) {
+                json.results.push(null);
+            }
+        }
 
         const batchNormalized = json.results.map((result, idx) => {
             const positionFen = uncachedFens[idx];
@@ -471,10 +478,69 @@ export default async function handler(req, res) {
         const afterEval = analysisResults[m + 1];
         const move = history[m];
 
-        const cpBefore = beforeEval.pvs[0]?.cp ?? 0;
-        const cpAfter = afterEval.pvs[0]?.cp ?? 0;
-        const mateBefore = beforeEval.pvs[0]?.mate ?? null;
-        const mateAfter = afterEval.pvs[0]?.mate ?? null;
+        if (!beforeEval || !beforeEval.pvs || !Array.isArray(beforeEval.pvs) || beforeEval.pvs.length === 0) {
+            console.warn(`[analyzePosition] Missing beforeEval at move ${m}, inserting fallback`);
+            movesAnalysis.push({
+                moveNumber: m + 1,
+                side: side,
+                san: move.san,
+                from: move.from,
+                to: move.to,
+                promotion: move.promotion || null,
+                captured: move.captured || null,
+                cpl: 0,
+                label: 'Best',
+                category: 'move-best',
+                cpBefore: 0,
+                cpAfter: 0,
+                bestSan: null,
+                secondBestSan: null,
+                engineTrend: 'stable',
+                motifs: [],
+                isBrilliant: false,
+                isGreat: false,
+                isOnlyMove: false,
+                error: true
+            });
+            continue;
+        }
+
+        if (!afterEval || !afterEval.pvs || !Array.isArray(afterEval.pvs) || afterEval.pvs.length === 0) {
+            console.warn(`[analyzePosition] Missing afterEval at move ${m}, inserting fallback`);
+            const pv0 = beforeEval.pvs?.[0] || { cp: 0, san: [] };
+            movesAnalysis.push({
+                moveNumber: m + 1,
+                side: side,
+                san: move.san,
+                from: move.from,
+                to: move.to,
+                promotion: move.promotion || null,
+                captured: move.captured || null,
+                cpl: 0,
+                label: 'Best',
+                category: 'move-best',
+                cpBefore: pv0.cp ?? 0,
+                cpAfter: 0,
+                bestSan: pv0.san?.[0] || null,
+                secondBestSan: beforeEval.pvs?.[1]?.san?.[0] || null,
+                engineTrend: 'stable',
+                motifs: [],
+                isBrilliant: false,
+                isGreat: false,
+                isOnlyMove: false,
+                error: true
+            });
+            continue;
+        }
+
+        const pv0 = beforeEval.pvs[0] || { cp: 0, mate: null, san: [], uci: [] };
+        const pv1 = beforeEval.pvs[1] || { cp: 0, san: [] };
+        const afterPv0 = afterEval.pvs[0] || { cp: 0, mate: null };
+
+        const cpBefore = pv0.cp ?? 0;
+        const cpAfter = afterPv0.cp ?? 0;
+        const mateBefore = pv0.mate ?? null;
+        const mateAfter = afterPv0.mate ?? null;
 
         let cpLoss = 0;
         if (mateBefore !== null || mateAfter !== null) {
@@ -504,9 +570,9 @@ export default async function handler(req, res) {
         const [label, category] = classifyCpl(cpLoss);
 
         const playedMoveUci = move.from + move.to + (move.promotion || '');
-        const bestMoveUci = beforeEval.pvs[0]?.uci?.[0] || null;
-        const bestSan = beforeEval.pvs[0]?.san?.[0] || null;
-        const secondBestSan = beforeEval.pvs[1]?.san?.[0] || null;
+        const bestMoveUci = pv0.uci?.[0] || null;
+        const bestSan = pv0.san?.[0] || null;
+        const secondBestSan = pv1.san?.[0] || null;
 
         let isGreat = false;
         let isBrilliant = false;
@@ -514,16 +580,16 @@ export default async function handler(req, res) {
         let brilliantReason = null;
 
         if (beforeEval.pvs.length >= 2 && playedMoveUci === bestMoveUci) {
-            const pv0Cp = beforeEval.pvs[0]?.cp ?? 0;
-            const pv1Cp = beforeEval.pvs[1]?.cp ?? 0;
+            const pv0Cp = pv0.cp ?? 0;
+            const pv1Cp = pv1.cp ?? 0;
             const cpGap = Math.abs(pv0Cp - pv1Cp);
 
             if (cpGap >= 150) {
                 isOnlyMove = true;
             }
 
-            const wasSacrifice = isSacrifice(move, beforeEval.pvs[0], afterEval.pvs[0]);
-            const wasTactical = isTactical(beforeEval.pvs[0].san, fensArray[m]);
+            const wasSacrifice = isSacrifice(move, pv0, afterPv0);
+            const wasTactical = isTactical(pv0.san || [], fensArray[m]);
 
             if (wasSacrifice && cpGap >= 150 && wasTactical && cpLoss <= 15) {
                 isBrilliant = true;
