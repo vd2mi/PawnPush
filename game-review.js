@@ -117,13 +117,13 @@
     const EvalCache = (() => {
         const store = new Map();
 
-        function save(fen, result) {
-            const key = Utils.fenKey(fen);
+        function save(fen, result, depth = ENGINE_CONFIG.DEPTH) {
+            const key = `${Utils.fenKey(fen)}:${depth}`;
             store.set(key, result);
         }
 
-        function best(fen) {
-            const key = Utils.fenKey(fen);
+        function best(fen, depth = ENGINE_CONFIG.DEPTH) {
+            const key = `${Utils.fenKey(fen)}:${depth}`;
             return store.get(key) || null;
         }
 
@@ -132,84 +132,137 @@
 
 
     const ArrowLayer = {
-        canvas: null,
-        ctx: null,
+        svg: null,
+        defs: null,
+        lastArrows: [],
+        markerCache: new Map(),
 
         init() {
-            this.canvas = document.getElementById('arrowLayer');
-            if (!this.canvas) return;
-            this.ctx = this.canvas.getContext('2d');
-            this.resize();
-            window.addEventListener('resize', () => this.resize());
+            this.svg = document.getElementById('board-arrows');
+            if (!this.svg) return;
+            this.defs = this.svg.querySelector('defs');
+            if (!this.defs) {
+                this.defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+                this.svg.appendChild(this.defs);
+            }
+            window.addEventListener('resize', () => this.redraw());
         },
 
-        resize() {
-            if (!this.canvas) return;
-            const rect = this.canvas.getBoundingClientRect();
-            this.canvas.width = rect.width;
-            this.canvas.height = rect.height;
+        squareCenter(square) {
+            if (!this.svg || typeof square !== 'string' || square.length < 2) return { x: 0, y: 0 };
+            const normalized = square.toLowerCase();
+            const width = this.svg.clientWidth;
+            const height = this.svg.clientHeight;
+            if (!width || !height) return { x: 0, y: 0 };
+            const squareWidth = width / 8;
+            const squareHeight = height / 8;
+            const file = normalized.charCodeAt(0) - 97;
+            const rank = parseInt(normalized[1], 10) - 1;
+            if (!Number.isFinite(file) || !Number.isFinite(rank)) return { x: 0, y: 0 };
+            if (file < 0 || file > 7 || rank < 0 || rank > 7) return { x: 0, y: 0 };
+            const orientation = State.board && typeof State.board.orientation === 'function'
+                ? State.board.orientation()
+                : 'white';
+            const filePos = orientation === 'white' ? file : 7 - file;
+            const rankPos = orientation === 'white' ? 7 - rank : rank;
+            return {
+                x: filePos * squareWidth + squareWidth / 2,
+                y: rankPos * squareHeight + squareHeight / 2
+            };
+        },
+
+        ensureMarker(color) {
+            if (!this.defs || !color) return null;
+            const key = color.replace(/[^a-z0-9]/gi, '') || 'default';
+            const id = `arrowhead-${key}`;
+            if (this.markerCache.has(id)) return id;
+            const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+            marker.setAttribute('id', id);
+            marker.setAttribute('markerWidth', '10');
+            marker.setAttribute('markerHeight', '10');
+            marker.setAttribute('refX', '5');
+            marker.setAttribute('refY', '3');
+            marker.setAttribute('orient', 'auto');
+            marker.setAttribute('markerUnits', 'strokeWidth');
+            const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            polygon.setAttribute('points', '0 0, 6 3, 0 6');
+            polygon.setAttribute('fill', color);
+            marker.appendChild(polygon);
+            this.defs.appendChild(marker);
+            this.markerCache.set(id, true);
+            return id;
+        },
+
+        removeRenderedLines() {
+            if (!this.svg) return;
+            this.svg.querySelectorAll('line').forEach(line => line.remove());
         },
 
         clear() {
-            if (!this.ctx) return;
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            this.removeRenderedLines();
+            this.lastArrows = [];
         },
 
-        drawArrow(from, to, color = '#00d47e', lineWidth = 4) {
-            if (!this.ctx || !this.canvas.width || !this.canvas.height) return;
-            
-            const squareSize = this.canvas.width / 8;
-            const files = 'abcdefgh';
-            const ranks = '87654321';
-            
-            const fromFile = files.indexOf(from[0]);
-            const fromRank = ranks.indexOf(from[1]);
-            const toFile = files.indexOf(to[0]);
-            const toRank = ranks.indexOf(to[1]);
-            
-            if (fromFile === -1 || fromRank === -1 || toFile === -1 || toRank === -1) return;
-            
-            const x1 = (fromFile + 0.5) * squareSize;
-            const y1 = (fromRank + 0.5) * squareSize;
-            const x2 = (toFile + 0.5) * squareSize;
-            const y2 = (toRank + 0.5) * squareSize;
-            
-            const angle = Math.atan2(y2 - y1, x2 - x1);
-            const headLength = squareSize * 0.3;
-            
-            this.ctx.strokeStyle = color;
-            this.ctx.fillStyle = color;
-            this.ctx.lineWidth = lineWidth;
-            this.ctx.lineCap = 'round';
-            this.ctx.globalAlpha = 0.8;
-            
-            this.ctx.beginPath();
-            this.ctx.moveTo(x1, y1);
-            this.ctx.lineTo(x2, y2);
-            this.ctx.stroke();
-            
-            this.ctx.beginPath();
-            this.ctx.moveTo(x2, y2);
-            this.ctx.lineTo(
-                x2 - headLength * Math.cos(angle - Math.PI / 6),
-                y2 - headLength * Math.sin(angle - Math.PI / 6)
-            );
-            this.ctx.lineTo(
-                x2 - headLength * Math.cos(angle + Math.PI / 6),
-                y2 - headLength * Math.sin(angle + Math.PI / 6)
-            );
-            this.ctx.closePath();
-            this.ctx.fill();
-            
-            this.ctx.globalAlpha = 1.0;
+        drawArrowElement(arrow) {
+            if (!this.svg || !arrow?.from || !arrow?.to) return;
+            const { color = '#00d47e', width = 8 } = arrow;
+            const start = this.squareCenter(arrow.from);
+            const end = this.squareCenter(arrow.to);
+            if (!Number.isFinite(start.x) || !Number.isFinite(end.x)) return;
+
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', start.x);
+            line.setAttribute('y1', start.y);
+            line.setAttribute('x2', end.x);
+            line.setAttribute('y2', end.y);
+            line.setAttribute('stroke', color);
+            line.setAttribute('stroke-width', width);
+            line.setAttribute('stroke-linecap', 'round');
+            line.setAttribute('opacity', '0.85');
+
+            const markerId = this.ensureMarker(color) || 'arrowhead';
+            line.setAttribute('marker-end', `url(#${markerId})`);
+
+            this.svg.appendChild(line);
+        },
+
+        applyArrows(arrows) {
+            if (!this.svg) return;
+            this.removeRenderedLines();
+            this.lastArrows = arrows;
+            arrows.forEach(arrow => this.drawArrowElement(arrow));
+        },
+
+        drawArrow(from, to, color = LINE_COLORS[0], width = 8) {
+            if (!from || !to) {
+                this.clear();
+                return;
+            }
+            this.applyArrows([{ from, to, color, width }]);
         },
 
         drawMultipleArrows(arrows) {
-            this.clear();
-            arrows.forEach((arrow, index) => {
-                const color = LINE_COLORS[index] || LINE_COLORS[0];
-                this.drawArrow(arrow.from, arrow.to, color);
-            });
+            if (!arrows || arrows.length === 0) {
+                this.clear();
+                return;
+            }
+            const normalized = arrows.map((arrow, idx) => ({
+                from: arrow.from,
+                to: arrow.to,
+                color: arrow.color || LINE_COLORS[idx] || LINE_COLORS[0],
+                width: arrow.width || 8
+            }));
+            this.applyArrows(normalized);
+        },
+
+        redraw() {
+            if (!this.lastArrows.length) {
+                this.clear();
+                return;
+            }
+            // Recalculate positions with current board state
+            const updatedArrows = this.lastArrows.map(arrow => ({ ...arrow }));
+            this.applyArrows(updatedArrows);
         }
     };
 
@@ -380,6 +433,8 @@
     };
 
     const EvalBar = {
+        lastMate: null,
+
         update(cpWhite, mate) {
             const fill = document.getElementById('evalBarFill');
             const text = document.getElementById('evalScoreBoard');
@@ -387,16 +442,23 @@
 
             let displayText = '+0.00';
             let percent = 50;
+            const previousMate = this.lastMate;
 
             if (mate !== null) {
                 displayText = mate > 0 ? `M${mate}` : `M${Math.abs(mate)}`;
                 percent = mate > 0 ? 100 : 0;
-                } else {
+            } else {
                 const pawns = cpWhite / 100;
                 displayText = pawns >= 0 ? `+${pawns.toFixed(2)}` : pawns.toFixed(2);
                 const clamped = Math.max(-500, Math.min(500, cpWhite));
                 percent = 50 + (clamped / 10);
             }
+
+            if (previousMate !== null && mate !== null) {
+                percent = mate > 0 ? 100 : 0;
+            }
+
+            this.lastMate = mate;
 
             fill.style.width = `${percent}%`;
             fill.style.background = percent > 50 ? '#4caf50' : '#e74c3c';
@@ -528,16 +590,25 @@
                 return;
             }
 
-            const eval = EvalCache.best(fen);
+            const eval = EvalCache.best(fen, ENGINE_CONFIG.DEPTH);
             if (!eval || !eval.pvs || eval.pvs.length === 0) {
                 panel.style.display = 'none';
                 return;
             }
 
             panel.style.display = 'block';
+            const lines = eval.pvs
+                .filter(pv => Array.isArray(pv.uci) && pv.uci.length > 0)
+                .slice(0, 3);
+
+            if (lines.length === 0) {
+                panel.innerHTML = '<div class="top-line-row empty">Engine did not return principal variations for this move.</div>';
+                return;
+            }
+
             let html = '';
             
-            eval.pvs.slice(0, 3).forEach((pv, index) => {
+            lines.forEach((pv, index) => {
                 const score = pv.mate !== null 
                     ? `M${Math.abs(pv.mate)}` 
                     : ((pv.cp || 0) / 100).toFixed(2);
@@ -627,7 +698,7 @@
             });
             window.addEventListener('resize', () => {
                 State.board.resize();
-                ArrowLayer.resize();
+                ArrowLayer.redraw();
             });
         },
         update() {
@@ -637,7 +708,7 @@
                 State.board.position(fen);
                 State.chess.load(fen);
                 
-                const eval = EvalCache.best(fen);
+                const eval = EvalCache.best(fen, ENGINE_CONFIG.DEPTH);
                 if (eval) {
                     EvalBar.update(eval.cpWhite, eval.mate);
                 }
@@ -794,7 +865,7 @@
                 if (data.evaluations && Array.isArray(data.evaluations)) {
                     data.evaluations.forEach((eval, idx) => {
                         if (eval && State.history[idx]) {
-                            EvalCache.save(State.history[idx], eval);
+                            EvalCache.save(State.history[idx], eval, ENGINE_CONFIG.DEPTH);
                 }
             });
         }
@@ -949,22 +1020,46 @@
         if (!eval || !eval.pvs || !eval.pvs[lineIndex]) return;
 
         const pv = eval.pvs[lineIndex];
-        if (!pv.san || pv.san.length === 0) return;
+        const pvSan = Array.isArray(pv.san) ? pv.san : [];
+        const pvUci = Array.isArray(pv.uci) ? pv.uci : [];
+        if (pvSan.length === 0 && pvUci.length === 0) return;
+        if (pv.dummy) return;
 
         const arrows = [];
         const temp = new Chess(fen);
 
-        for (let i = 0; i < Math.min(pv.san.length, ENGINE_CONFIG.PREVIEW_MAX_PLIES); i++) {
-            const move = pv.san[i];
-            const legalMoves = temp.moves({ verbose: true });
-            const found = legalMoves.find(m => m.san === move);
+        for (let i = 0; i < ENGINE_CONFIG.PREVIEW_MAX_PLIES; i++) {
+            if (!pvSan[i] && !pvUci[i]) break;
 
-            if (found) {
-                arrows.push({ from: found.from, to: found.to });
-                temp.move(found);
-            } else {
-                break;
+            let moveObj = null;
+            const uciToken = pvUci[i];
+            if (uciToken && uciToken.length >= 4 && uciToken.length <= 5) {
+                const from = uciToken.slice(0, 2);
+                const to = uciToken.slice(2, 4);
+                const promo = uciToken.length === 5 ? uciToken[4].toLowerCase() : undefined;
+                // Validate UCI format
+                if (/^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(uciToken)) {
+                    try {
+                        moveObj = temp.move({
+                            from, to, promotion: promo
+                        });
+                    } catch {
+                        moveObj = null;
+                    }
+                }
             }
+
+            if (!moveObj && pvSan[i]) {
+                try {
+                    moveObj = temp.move(pvSan[i], { sloppy: true });
+                } catch {
+                    moveObj = null;
+                }
+            }
+
+            if (!moveObj) break;
+
+            arrows.push({ from: moveObj.from, to: moveObj.to });
         }
 
         if (arrows.length > 0) {
@@ -972,7 +1067,8 @@
             ArrowLayer.drawMultipleArrows(arrows);
             const badge = document.getElementById('previewBadge');
             if (badge) {
-                badge.textContent = `Preview: ${pv.san.slice(0, 3).join(' ')}`;
+                const badgeMoves = pvSan.length ? pvSan : pvUci;
+                badge.textContent = `Preview: ${badgeMoves.slice(0, 3).join(' ')}`;
                 badge.style.display = 'block';
             }
 
@@ -981,7 +1077,16 @@
                     if (badge) badge.style.display = 'none';
                     State.preview = null;
                     ArrowLayer.clear();
-                    UIBoard.update();
+                    // Redraw best move arrow if we should
+                    if (State.moveIndex > 0) {
+                        const prevFen = State.history[State.moveIndex - 1];
+                        const prevEval = EvalCache.best(prevFen, ENGINE_CONFIG.DEPTH);
+                        if (prevEval && prevEval.bestMove && prevEval.bestMove.length >= 4) {
+                            const from = prevEval.bestMove.slice(0, 2);
+                            const to = prevEval.bestMove.slice(2, 4);
+                            ArrowLayer.drawArrow(from, to, LINE_COLORS[0], 6);
+                        }
+                    }
                 }
                 State.previewTimeout = null;
             }, 3000);

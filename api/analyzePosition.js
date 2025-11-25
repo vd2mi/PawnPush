@@ -42,8 +42,8 @@ export default async function handler(req, res) {
 
     const PERSISTENT_CACHE = global.EVAL_CACHE || (global.EVAL_CACHE = new Map());
 
-    function getCacheKey(fen) {
-        return fen;
+    function getCacheKey(fen, depth) {
+        return `${fen}:${depth}`;
     }
 
     function uciToSan(fen, uciMoves) {
@@ -140,7 +140,9 @@ export default async function handler(req, res) {
         const mateVal = evalObj.mate ?? evalObj.mateScore ?? null;
         if (mateVal !== null && mateVal !== undefined) {
             if (mateVal === 0) return 0;
-            return mateVal > 0 ? 10000 : -10000;
+            const distance = Math.abs(mateVal);
+            const mateScore = 10000 - Math.min(9900, distance * 100);
+            return mateVal > 0 ? mateScore : -mateScore;
         }
 
         if (typeof evalObj.cpWhite === 'number') return evalObj.cpWhite;
@@ -156,8 +158,8 @@ export default async function handler(req, res) {
     }
 
     function evalForSide(evalObj, side) {
-        const base = normalizeEvalValue(evalObj);
-        return side === 'w' ? base : -base;
+        // cp is already White POV, do NOT flip anymore
+        return normalizeEvalValue(evalObj);
     }
 
     async function fetchBatch(fensToEvaluate, depthVal, multipvVal) {
@@ -170,7 +172,7 @@ export default async function handler(req, res) {
         const fenIndexMap = [];
 
         fensToEvaluate.forEach((fen, idx) => {
-            const cacheKey = getCacheKey(fen);
+            const cacheKey = getCacheKey(fen, depthVal);
             if (PERSISTENT_CACHE.has(cacheKey)) {
                 fenIndexMap[idx] = { cached: true, result: PERSISTENT_CACHE.get(cacheKey) };
             } else {
@@ -251,7 +253,7 @@ export default async function handler(req, res) {
                         san: []
                     }]
                 };
-                PERSISTENT_CACHE.set(getCacheKey(positionFen), fallback);
+                PERSISTENT_CACHE.set(getCacheKey(positionFen, depthVal), fallback);
                 return fallback;
             }
 
@@ -284,20 +286,7 @@ export default async function handler(req, res) {
             // 3. Handle cases where Stockfish returns fewer PVs than requested (add fallback/dummy PVs)
             // 4. Add engine crash detection if "depth" not in pv_data
             
-            let limitedLines = Array.isArray(rawLines) ? rawLines.slice(0, multipvVal) : [];
-            
-            // Fallback: If fewer PVs than requested, pad with dummy entries to maintain consistency
-            if (limitedLines.length < multipvVal && limitedLines.length > 0) {
-                const lastLine = limitedLines[limitedLines.length - 1];
-                while (limitedLines.length < multipvVal) {
-                    limitedLines.push({
-                        ...lastLine,
-                        Move: '',
-                        evaluation: { type: 'cp', value: lastLine.evaluation?.value || 0 },
-                        depth: lastLine.depth || depthVal
-                    });
-                }
-            }
+            const limitedLines = Array.isArray(rawLines) ? rawLines.slice(0, multipvVal) : [];
 
             let pvs = limitedLines.length > 0 ? limitedLines.map((line, idx) => {
                 // Engine crash detection: validate PV data structure
@@ -362,9 +351,8 @@ export default async function handler(req, res) {
                 if (rawMate !== null && !Number.isFinite(rawMate)) rawMate = null;
                 if (rawMate === 0) rawMate = null;
 
-                const cpWhite = line.cpWhite !== undefined
-                    ? rawCp
-                    : (turn === 'w' ? rawCp : -rawCp);
+                // HF always returns side-to-move POV, convert to White POV
+                const cpWhite = turn === 'w' ? rawCp : -rawCp;
 
                 const mateWhite = line.mateWhite !== undefined
                     ? rawMate
@@ -379,13 +367,16 @@ export default async function handler(req, res) {
                 };
             }) : [];
 
+            // Removed depth filtering - Stockfish may return PVs with varying depths
+
             if (!pvs.length) {
                 pvs = [{
                     cp: 0,
                     mate: null,
                     depth: result.depth ?? depthVal,
                     uci: [],
-                    san: []
+                    san: [],
+                    dummy: true
                 }];
             }
 
@@ -397,9 +388,7 @@ export default async function handler(req, res) {
                     if (aMate < 0 && bMate < 0) return bMate - aMate;
                     return aMate > 0 ? -1 : 1;
                 }
-                const aSide = turn === 'w' ? a.cp : -a.cp;
-                const bSide = turn === 'w' ? b.cp : -b.cp;
-                return bSide - aSide;
+                return b.cp - a.cp;
             });
 
             let bestMove = result.best_move || result.bestMove || '';
@@ -418,7 +407,7 @@ export default async function handler(req, res) {
                 pvs
             };
 
-            PERSISTENT_CACHE.set(getCacheKey(positionFen), normalized);
+            PERSISTENT_CACHE.set(getCacheKey(positionFen, depthVal), normalized);
             return normalized;
         });
 
@@ -448,17 +437,24 @@ export default async function handler(req, res) {
     console.log('[analyzePosition] All batches evaluated successfully');
 
     function classifyMove(playedUci, beforeEval, afterEval, side) {
-        const pvs = beforeEval.pvs;
+        const pvs = beforeEval.pvs.filter(pv => !pv.dummy);
+        if (pvs.length === 0) {
+            return ['Best', 'move-best'];
+        }
+
         const pv1 = pvs[0] || { cp: 0, uci: [], san: [], mate: null };
         const pv2 = pvs[1] || { cp: pv1.cp - 60, uci: [], san: [] };
         const pv3 = pvs[2] || { cp: pv2.cp - 60, uci: [], san: [] };
         const playedLine = afterEval.pvs[0] || { cp: 0, mate: null };
 
-        const evalBeforeSide = evalForSide(pv1, side);
-        const evalSecondBestSide = evalForSide(pv2, side);
-        const evalAfterSide = evalForSide(playedLine, side);
+        const evalBefore = normalizeEvalValue(pv1);
+        const evalSecondBest = normalizeEvalValue(pv2);
+        const evalAfter = normalizeEvalValue(playedLine);
 
-        if (pv1.mate !== null || playedLine.mate !== null) {
+        // Only treat as Best if mate is for the player to move, not against them
+        const turn = m % 2 === 0 ? 'w' : 'b';
+        const mateForPlayer = pv1.mate !== null && Math.sign(pv1.mate) === (turn === 'w' ? 1 : -1);
+        if (mateForPlayer) {
             return ['Best', 'move-best'];
         }
 
@@ -467,10 +463,10 @@ export default async function handler(req, res) {
         const isPv3 = playedUci === (pv3.uci?.[0] || '');
 
         if (isPv1) {
-            const gap12 = Math.abs(evalBeforeSide - evalSecondBestSide);
-            const evalMaintains = Math.abs(evalBeforeSide - evalAfterSide) <= 40;
-            const secondBestLosesAdvantage = (evalBeforeSide > 0 && evalSecondBestSide <= 0) || (evalBeforeSide < 0 && evalSecondBestSide >= 0);
-            const notTriviallyWinning = Math.abs(evalBeforeSide) < 800;
+            const gap12 = Math.abs(evalBefore - evalSecondBest);
+            const evalMaintains = Math.abs(evalBefore - evalAfter) <= 40;
+            const secondBestLosesAdvantage = (evalBefore > 0 && evalSecondBest <= 0) || (evalBefore < 0 && evalSecondBest >= 0);
+            const notTriviallyWinning = Math.abs(evalBefore) < 800;
 
             if (evalMaintains && secondBestLosesAdvantage && gap12 >= 100 && notTriviallyWinning) {
                 return ['Great', 'move-great'];
@@ -481,7 +477,17 @@ export default async function handler(req, res) {
         if (isPv2) return ['Excellent', 'move-excellent'];
         if (isPv3) return ['Good', 'move-good'];
 
-        const cpLoss = Math.max(0, Math.abs(evalBeforeSide - evalAfterSide));
+        let cpLoss;
+        if (pv1.mate !== null || playedLine.mate !== null) {
+            cpLoss = 0;
+        } else {
+            cpLoss = Math.abs(evalBefore - evalAfter);
+        }
+
+        // Opening moves: if position is roughly equal and loss is small, treat as best
+        if (Math.abs(evalBefore) <= 50 && cpLoss <= 80) {
+            return ['Best', 'move-best'];
+        }
 
         if (cpLoss <= 80) return ['Inaccuracy', 'move-inaccuracy'];
         if (cpLoss <= 200) return ['Mistake', 'move-mistake'];
@@ -489,8 +495,9 @@ export default async function handler(req, res) {
     }
 
     function accuracyFromAcpl(acpl) {
-        acpl = Math.min(300, Math.max(0, acpl));
-        return Math.round(100 - (100 * Math.pow(acpl / 130, 0.65)));
+        const safe = Math.min(350, Math.max(0, acpl));
+        const value = 100 - (100 * Math.pow(safe / 130, 0.65));
+        return Math.max(0, Math.min(100, Math.round(value)));
     }
 
     function ratingFromAcpl(acpl) {
@@ -661,25 +668,32 @@ export default async function handler(req, res) {
         const bestSan = pv1.san?.[0] || null;
         const secondBestSan = pv2.san?.[0] || null;
 
-        const evalBeforeSide = evalForSide(pv1, side);
-        const evalSecondBestSide = evalForSide(pv2, side);
-        const evalAfterSide = evalForSide(afterPv0, side);
+        const evalBefore = normalizeEvalValue(pv1);
+        const evalSecondBest = normalizeEvalValue(pv2);
+        const evalAfter = normalizeEvalValue(afterPv0);
 
         let [label, category] = classifyMove(playedMoveUci, beforeEval, afterEval, side);
 
-        const gap12 = Math.abs(evalBeforeSide - evalSecondBestSide);
+        const gap12 = Math.abs(evalBefore - evalSecondBest);
         const isPv1 = playedMoveUci === (pv1.uci?.[0] || '');
-        
-        const cpLoss = Math.max(0, Math.abs(evalBeforeSide - evalAfterSide));
-        const evalDrop = Math.abs(evalBeforeSide - evalAfterSide);
-        const evalMaintains = evalAfterSide >= evalBeforeSide - 40;
-        const evalIncreases = evalAfterSide > evalBeforeSide;
+        let cpLoss;
+        if (pv1.mate !== null || afterPv0.mate !== null) {
+            cpLoss = 0;
+        } else {
+            cpLoss = Math.abs(evalBefore - evalAfter);
+        }
+        const evalDrop = Math.abs(evalBefore - evalAfter);
+        const evalMaintains = evalAfter >= evalBefore - 40;
+        const evalIncreases = evalAfter > evalBefore;
+
+        // For ACPL calculation, skip moves in mate contexts entirely
+        const acplContribution = (pv1.mate !== null || afterPv0.mate !== null) ? 0 : cpLoss;
 
         if (side === 'w') {
-            totalCpLossWhite += cpLoss;
+            totalCpLossWhite += acplContribution;
             movesWhiteCount++;
         } else {
-            totalCpLossBlack += cpLoss;
+            totalCpLossBlack += acplContribution;
             movesBlackCount++;
         }
 
@@ -713,17 +727,17 @@ export default async function handler(req, res) {
             const currentEval = analysisResults[m + 1];
             const prevPv1 = prevEval.pvs[0]?.cp ?? 0;
             const currentPv1 = currentEval.pvs[0]?.cp ?? 0;
-            
+
             let diff = currentPv1 - prevPv1;
-            if (side === 'b') {
-                diff = -diff;
+
+            if (side === 'w') {
+                if (diff > 50) evalTrend = 'improving';
+                else if (diff < -50) evalTrend = 'declining';
+            } else {
+                if (diff < -50) evalTrend = 'improving';   // black improved
+                else if (diff > 50) evalTrend = 'declining';
             }
-            
-            if (diff > 20) {
-                evalTrend = 'improving';
-            } else if (diff < -20) {
-                evalTrend = 'declining';
-            }
+            if (Math.abs(diff) <= 50) evalTrend = 'stable';
         }
 
         const mateBefore = pv1.mate ?? null;
