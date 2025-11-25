@@ -238,9 +238,40 @@ export default async function handler(req, res) {
                 console.warn('[fetchBatch] No PV data returned for fen:', positionFen);
             }
 
-            const limitedLines = Array.isArray(rawLines) ? rawLines.slice(0, multipvVal) : [];
+            // NOTE: HuggingFace API fixes needed:
+            // 1. Static eval should use set_depth(0), not set_depth(1)
+            // 2. Engine config order: update_engine_parameters({"MultiPV": multipv}) → set_fen_position(fen) → set_depth(depth)
+            // 3. Handle cases where Stockfish returns fewer PVs than requested (add fallback/dummy PVs)
+            // 4. Add engine crash detection if "depth" not in pv_data
+            
+            let limitedLines = Array.isArray(rawLines) ? rawLines.slice(0, multipvVal) : [];
+            
+            // Fallback: If fewer PVs than requested, pad with dummy entries to maintain consistency
+            if (limitedLines.length < multipvVal && limitedLines.length > 0) {
+                const lastLine = limitedLines[limitedLines.length - 1];
+                while (limitedLines.length < multipvVal) {
+                    limitedLines.push({
+                        ...lastLine,
+                        Move: '',
+                        evaluation: { type: 'cp', value: lastLine.evaluation?.value || 0 },
+                        depth: lastLine.depth || depthVal
+                    });
+                }
+            }
 
-            let pvs = limitedLines.length > 0 ? limitedLines.map(line => {
+            let pvs = limitedLines.length > 0 ? limitedLines.map((line, idx) => {
+                // Engine crash detection: validate PV data structure
+                if (!line || (line.depth === undefined && line.evaluation === undefined && !line.Move)) {
+                    console.warn(`[fetchBatch] Corrupted engine output at PV ${idx} for fen: ${positionFen.substring(0, 30)}...`);
+                    return {
+                        cp: 0,
+                        mate: null,
+                        depth: depthVal,
+                        uci: [],
+                        san: []
+                    };
+                }
+
                 const { uciSeq, sanSeq } = parseLineMoves(positionFen, line);
                 let uciMoves = uciSeq;
                 let sanMoves = sanSeq;
@@ -318,7 +349,6 @@ export default async function handler(req, res) {
                 }];
             }
 
-            // Ensure PVs are sorted for side to move
             pvs.sort((a, b) => {
                 if (a.mate !== null || b.mate !== null) {
                     const aMate = a.mate ?? 99999;
@@ -363,11 +393,6 @@ export default async function handler(req, res) {
 
     const analysisResults = [];
     console.log(`[analyzePosition] Evaluating ${fensArray.length} positions in batches of ${BATCH_SIZE}`);
-
-    // NOTE: Dynamic multipv optimization (multipv=1 for non-critical, multipv=3 for critical)
-    // would require either: (1) per-FEN API calls, or (2) two-pass analysis (multipv=1 first, then re-analyze critical with multipv=3)
-    // Current implementation uses multipv=3 for all positions for accuracy
-    // Future optimization: identify critical positions (eval near 0, forced moves, large swings) and use two-pass approach
 
     for (let i = 0; i < fensArray.length; i += BATCH_SIZE) {
         const batch = fensArray.slice(i, i + BATCH_SIZE);
