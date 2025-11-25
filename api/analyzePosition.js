@@ -38,7 +38,7 @@ export default async function handler(req, res) {
 
     const HF_TOKEN = process.env.HF_TOKEN;
     const HF_BATCH_URL = 'https://vd2mi-stockfishapi.hf.space/analyze/batch';
-    const BATCH_SIZE = 12;
+    const BATCH_SIZE = 20;
 
     const PERSISTENT_CACHE = global.EVAL_CACHE || (global.EVAL_CACHE = new Map());
 
@@ -203,7 +203,13 @@ export default async function handler(req, res) {
                     mate: null,
                     depth: depthVal,
                     bestMove: '',
-                    pvs: []
+                    pvs: [{
+                        cp: 0,
+                        mate: null,
+                        depth: depthVal,
+                        uci: [],
+                        san: []
+                    }]
                 };
                 PERSISTENT_CACHE.set(getCacheKey(positionFen), fallback);
                 return fallback;
@@ -234,7 +240,7 @@ export default async function handler(req, res) {
 
             const limitedLines = Array.isArray(rawLines) ? rawLines.slice(0, multipvVal) : [];
 
-            let pvs = limitedLines.map(line => {
+            let pvs = limitedLines.length > 0 ? limitedLines.map(line => {
                 const { uciSeq, sanSeq } = parseLineMoves(positionFen, line);
                 let uciMoves = uciSeq;
                 let sanMoves = sanSeq;
@@ -300,7 +306,7 @@ export default async function handler(req, res) {
                     uci: uciMoves,
                     san: sanMoves
                 };
-            });
+            }) : [];
 
             if (!pvs.length) {
                 pvs = [{
@@ -369,12 +375,50 @@ export default async function handler(req, res) {
     }
     console.log('[analyzePosition] All batches evaluated successfully');
 
+    function classifyMove(playedUci, beforeEval, afterEval) {
+        const pvs = beforeEval.pvs;
+        const pv1 = pvs[0] || { cp: 0, uci: [], san: [], mate: null };
+        const pv2 = pvs[1] || { cp: pv1.cp - 60, uci: [], san: [] };
+        const pv3 = pvs[2] || { cp: pv2.cp - 60, uci: [], san: [] };
+        const playedCp = afterEval.pvs[0]?.cp ?? 0;
+        const playedMate = afterEval.pvs[0]?.mate ?? null;
 
-    function classifyCpl(cpl) {
-        if (cpl <= 15) return ['Best', 'move-best'];
-        if (cpl <= 40) return ['Good', 'move-good'];
-        if (cpl <= 80) return ['Inaccuracy', 'move-inaccuracy'];
-        if (cpl <= 200) return ['Mistake', 'move-mistake'];
+        if (pv1.mate !== null || playedMate !== null) {
+            return ['Best', 'move-best'];
+        }
+
+        const isPv1 = playedUci === (pv1.uci?.[0] || '');
+        const isPv2 = playedUci === (pv2.uci?.[0] || '');
+        const isPv3 = playedUci === (pv3.uci?.[0] || '');
+
+        function category(cp) {
+            if (cp >= 140) return "winning";
+            if (cp <= -140) return "losing";
+            return "equal";
+        }
+
+        const beforeCat = category(beforeEval.pvs[0]?.cp ?? 0);
+        const afterCat = category(playedCp);
+        const pv2Cat = category(pv2.cp);
+
+        const gap12 = pv1.cp - pv2.cp;
+        const isOnlyMove = 
+            (afterCat === beforeCat) &&
+            (pv2Cat !== beforeCat) &&
+            (gap12 >= 100);
+        const notTriviallyWinning = Math.abs(pv1.cp) < 800;
+
+        if (isPv1 && isOnlyMove && notTriviallyWinning) {
+            return ['Great', 'move-great'];
+        }
+
+        if (isPv1) return ['Best', 'move-best'];
+        if (isPv2) return ['Excellent', 'move-excellent'];
+        if (isPv3) return ['Good', 'move-good'];
+
+        const loss = Math.max(0, pv1.cp - playedCp);
+        if (loss <= 80) return ['Inaccuracy', 'move-inaccuracy'];
+        if (loss <= 200) return ['Mistake', 'move-mistake'];
         return ['Blunder', 'move-blunder'];
     }
 
@@ -390,27 +434,31 @@ export default async function handler(req, res) {
     function isSacrifice(move, beforePv, afterPv) {
         if (!move.captured) return false;
         const materialLoss = { p: 1, n: 3, b: 3, r: 5, q: 9 }[move.captured] || 0;
-        if (materialLoss === 0) return false;
+        if (materialLoss < 1.5) return false;
         
         const beforeCp = beforePv?.cp ?? 0;
         const afterCp = afterPv?.cp ?? 0;
         
         const evalDrop = beforeCp - afterCp;
-        return evalDrop <= 50;
+        return evalDrop <= 30;
     }
 
-    function isTactical(pvMoves, positionFen) {
-        if (!pvMoves || pvMoves.length < 3) return false;
+    function isTactical(uciMoves, positionFen) {
+        if (!uciMoves || uciMoves.length < 3) return false;
         const chess = new Chess(positionFen);
         let forcingCount = 0;
-        for (const san of pvMoves.slice(0, 6)) {
-            const move = chess.move(san);
+        for (const uci of uciMoves.slice(0, 6)) {
+            if (uci.length < 4) break;
+            const from = uci.substring(0, 2);
+            const to = uci.substring(2, 4);
+            const promo = uci.length > 4 ? uci.substring(4, 5).toUpperCase() : null;
+            const move = chess.move({ from, to, promotion: promo });
             if (!move) break;
-            if (chess.in_check() || move.captured || san.includes('+') || san.includes('#')) {
+            if (chess.in_check() || move.captured || move.san.includes('+') || move.san.includes('#')) {
                 forcingCount++;
             }
         }
-        return forcingCount >= 2;
+        return forcingCount > 2;
     }
 
     function detectMotifs(move, fen) {
@@ -519,9 +567,9 @@ export default async function handler(req, res) {
                 cpl: 0,
                 label: 'Best',
                 category: 'move-best',
-                cpBefore: pv0.cp ?? 0,
+                cpBefore: beforeEval.pvs?.[0]?.cp ?? 0,
                 cpAfter: 0,
-                bestSan: pv0.san?.[0] || null,
+                bestSan: beforeEval.pvs?.[0]?.san?.[0] || null,
                 secondBestSan: beforeEval.pvs?.[1]?.san?.[0] || null,
                 engineTrend: 'stable',
                 motifs: [],
@@ -533,31 +581,29 @@ export default async function handler(req, res) {
             continue;
         }
 
-        const pv0 = beforeEval.pvs[0] || { cp: 0, mate: null, san: [], uci: [] };
-        const pv1 = beforeEval.pvs[1] || { cp: 0, san: [] };
+        const pvs = beforeEval.pvs;
+        const pv1 = pvs[0] || { cp: 0, uci: [], san: [], mate: null };
+        const pv2 = pvs[1] || { cp: pv1.cp - 60, uci: [], san: [] };
+        const pv3 = pvs[2] || { cp: pv2.cp - 60, uci: [], san: [] };
         const afterPv0 = afterEval.pvs[0] || { cp: 0, mate: null };
 
-        const cpBefore = pv0.cp ?? 0;
-        const cpAfter = afterPv0.cp ?? 0;
-        const mateBefore = pv0.mate ?? null;
-        const mateAfter = afterPv0.mate ?? null;
+        const promo = move.promotion ? move.promotion.toLowerCase() : '';
+        const playedMoveUci = move.from + move.to + promo;
+        const playedCp = afterEval.pvs[0]?.cp ?? 0;
+        const bestSan = pv1.san?.[0] || null;
+        const secondBestSan = pv2.san?.[0] || null;
 
-        let cpLoss = 0;
-        if (mateBefore !== null || mateAfter !== null) {
-            if (mateBefore !== null && mateBefore > 0 && (mateAfter === null || mateAfter <= 0)) {
-                cpLoss = 500;
-            } else if (mateBefore !== null && mateBefore < 0 && (mateAfter === null || mateAfter >= 0)) {
-                cpLoss = 500;
-            } else if (mateBefore !== null && mateAfter !== null && mateBefore > 0 && mateAfter > 0) {
-                cpLoss = Math.max(0, mateAfter - mateBefore) * 50;
-            } else if (mateBefore !== null && mateAfter !== null && mateBefore < 0 && mateAfter < 0) {
-                cpLoss = Math.max(0, mateBefore - mateAfter) * 50;
-            } else {
-                cpLoss = 0;
-            }
-        } else {
-            cpLoss = Math.max(0, cpBefore - cpAfter);
-        }
+        let [label, category] = classifyMove(playedMoveUci, beforeEval, afterEval);
+
+        const p1 = pv1.cp ?? 0;
+        const p2 = pv2.cp ?? 0;
+        const gap12 = Math.abs(p1 - p2);
+        const isPv1 = playedMoveUci === (pv1.uci?.[0] || '');
+        const evalLoss = Math.max(0, p1 - playedCp);
+        const cpLoss = evalLoss;
+        const evalDrop = Math.abs(p1 - playedCp);
+        const evalMaintains = playedCp >= p1 - 40;
+        const evalIncreases = playedCp > p1;
 
         if (side === 'w') {
             totalCpLossWhite += cpLoss;
@@ -567,38 +613,26 @@ export default async function handler(req, res) {
             movesBlackCount++;
         }
 
-        const [label, category] = classifyCpl(cpLoss);
-
-        const playedMoveUci = move.from + move.to + (move.promotion || '');
-        const bestMoveUci = pv0.uci?.[0] || null;
-        const bestSan = pv0.san?.[0] || null;
-        const secondBestSan = pv1.san?.[0] || null;
-
         let isGreat = false;
         let isBrilliant = false;
-        let isOnlyMove = false;
         let brilliantReason = null;
 
-        if (beforeEval.pvs.length >= 2 && playedMoveUci === bestMoveUci) {
-            const pv0Cp = pv0.cp ?? 0;
-            const pv1Cp = pv1.cp ?? 0;
-            const cpGap = Math.abs(pv0Cp - pv1Cp);
-
-            if (cpGap >= 150) {
-                isOnlyMove = true;
+        if (isPv1) {
+            const wasSacrifice = isSacrifice(move, pv1, afterPv0);
+            if (wasSacrifice) {
+                const wasTactical = isTactical(pv1.uci || [], fensArray[m]);
+                const onlyMove = (p1 - p2) >= 100;
+                if (wasTactical && evalDrop <= 40 && evalMaintains && (onlyMove || evalIncreases)) {
+                    isBrilliant = true;
+                    brilliantReason = 'Sacrificial forcing move with no alternatives';
+                    brilliants.push({ moveIndex: m, san: move.san, reason: brilliantReason });
+                }
             }
+        }
 
-            const wasSacrifice = isSacrifice(move, pv0, afterPv0);
-            const wasTactical = isTactical(pv0.san || [], fensArray[m]);
-
-            if (wasSacrifice && cpGap >= 150 && wasTactical && cpLoss <= 15) {
-                isBrilliant = true;
-                brilliantReason = 'Sacrificial forcing move with no alternatives';
-                brilliants.push({ moveIndex: m, san: move.san, reason: brilliantReason });
-            } else if (!wasSacrifice && cpGap >= 120 && cpLoss <= 15) {
-                isGreat = true;
-                greats.push({ moveIndex: m, san: move.san });
-            }
+        isGreat = (label === 'Great');
+        if (isGreat) {
+            greats.push({ moveIndex: m, san: move.san });
         }
 
         const motifs = detectMotifs(move, fensArray[m]);
@@ -607,12 +641,12 @@ export default async function handler(req, res) {
         if (m >= 1) {
             const prevEval = analysisResults[m];
             const currentEval = analysisResults[m + 1];
-            const prevCp = prevEval.pvs[0]?.cp ?? 0;
-            const currentCp = currentEval.pvs[0]?.cp ?? 0;
+            const prevPv1 = prevEval.pvs[0]?.cp ?? 0;
+            const currentPv1 = currentEval.pvs[0]?.cp ?? 0;
             
-            let diff = currentCp - prevCp;
+            let diff = currentPv1 - prevPv1;
             if (side === 'b') {
-                diff = prevCp - currentCp;
+                diff = -diff;
             }
             
             if (diff > 20) {
@@ -622,7 +656,9 @@ export default async function handler(req, res) {
             }
         }
 
-        if (cpLoss >= 180) {
+        const mateBefore = pv1.mate ?? null;
+        const mateAfter = afterPv0.mate ?? null;
+        if (!mateBefore && !mateAfter && cpLoss >= 250) {
             swings.push({ type: 'swing', amount: cpLoss, moveIndex: m, san: move.san });
         }
 
@@ -637,7 +673,6 @@ export default async function handler(req, res) {
             motifs,
             isBrilliant,
             isGreat,
-            isOnlyMove,
             brilliantReason,
             pv: beforeEval.pvs
         });
@@ -654,6 +689,19 @@ export default async function handler(req, res) {
     const ratingBlack = ratingFromAcpl(acplBlack);
 
     const keyMoments = [];
+
+    movesAnalysis.forEach((move, idx) => {
+        if (move.category === 'move-blunder' || move.category === 'move-mistake') {
+            const moveNum = Math.floor(idx / 2) + 1;
+            const isBlackMove = idx % 2 === 1;
+            const notation = `${moveNum}${isBlackMove ? '...' : '.'} ${move.san}`;
+            const pawnsLost = (move.cpLoss / 100).toFixed(1).replace('.0', '');
+            keyMoments.push({
+                type: move.category === 'move-blunder' ? 'blunder' : 'mistake',
+                text: `${move.category === 'move-blunder' ? 'Blunder' : 'Mistake'} – ${notation} (loses ${pawnsLost} pawns)`
+            });
+        }
+    });
 
     brilliants.forEach(b => {
         const moveNum = Math.floor(b.moveIndex / 2) + 1;
@@ -673,19 +721,6 @@ export default async function handler(req, res) {
             type: 'great',
             text: `⭐ Great Move! – ${notation}`
         });
-    });
-
-    movesAnalysis.forEach((move, idx) => {
-        if (move.category === 'move-blunder' || move.category === 'move-mistake') {
-            const moveNum = Math.floor(idx / 2) + 1;
-            const isBlackMove = idx % 2 === 1;
-            const notation = `${moveNum}${isBlackMove ? '...' : '.'} ${move.san}`;
-            const pawnsLost = (move.cpLoss / 100).toFixed(1).replace('.0', '');
-            keyMoments.push({
-                type: move.category === 'move-blunder' ? 'blunder' : 'mistake',
-                text: `${move.category === 'move-blunder' ? 'Blunder' : 'Mistake'} – ${notation} (loses ${pawnsLost} pawns)`
-            });
-        }
     });
 
     swings.forEach(s => {
@@ -709,7 +744,9 @@ export default async function handler(req, res) {
     const openingErrors = openingMoves.filter(m => m.category === 'move-mistake' || m.category === 'move-blunder').length;
     const openingSummary = openingErrors === 0 ? 'Both players handled the opening well.' : `${openingErrors} mistake(s) in the opening phase.`;
 
-    const middlegameMoves = movesAnalysis.slice(10, Math.max(10, totalMoves - 10));
+    const middlegameStart = Math.min(10, totalMoves);
+    const middlegameEnd = Math.max(middlegameStart, totalMoves - 10);
+    const middlegameMoves = movesAnalysis.slice(middlegameStart, middlegameEnd);
     const middlegameBlunders = middlegameMoves.filter(m => m.category === 'move-blunder').length;
     const middlegameSummary = middlegameBlunders > 0 ? `${middlegameBlunders} critical error(s) in the middlegame.` : 'Solid middlegame play.';
 
@@ -723,6 +760,14 @@ export default async function handler(req, res) {
 
     if (brilliants.length > 0) {
         narrative += `${brilliants.length} brilliant move(s) played! `;
+    }
+
+    const firstGreat = greats.length > 0 ? greats[0] : null;
+    if (firstGreat) {
+        const moveNum = Math.floor(firstGreat.moveIndex / 2) + 1;
+        const isBlackMove = firstGreat.moveIndex % 2 === 1;
+        const notation = `${moveNum}${isBlackMove ? '...' : '.'} ${firstGreat.san}`;
+        narrative += `First great move: ${notation}. `;
     }
 
     const firstBlunder = keyMoments.find(m => m.type === 'blunder');

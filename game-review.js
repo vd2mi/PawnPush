@@ -217,6 +217,50 @@
         accuracyChart: null,
         acplChart: null,
 
+        drawHeatmap() {
+            if (!State.moveAnalyses || State.moveAnalyses.length === 0) return;
+            
+            const colors = State.moveAnalyses.map(m => {
+                if (m.category === 'move-best') return 0;
+                if (m.category === 'move-excellent') return 10;
+                if (m.category === 'move-good') return 20;
+                if (m.category === 'move-inaccuracy') return 50;
+                if (m.category === 'move-mistake') return 100;
+                return 150;
+            });
+
+            const data = [{
+                z: [colors],
+                type: 'heatmap',
+                colorscale: [
+                    [0, '#4caf50'],
+                    [0.2, '#8bc34a'],
+                    [0.4, '#ffeb3b'],
+                    [0.6, '#ff9800'],
+                    [1, '#f44336']
+                ],
+                showscale: false,
+                hoverinfo: 'skip'
+            }];
+
+            const layout = {
+                title: '',
+                margin: { l: 0, r: 0, t: 0, b: 0 },
+                xaxis: { showticklabels: false, showgrid: false, zeroline: false },
+                yaxis: { showticklabels: false, showgrid: false, zeroline: false },
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                height: 60
+            };
+
+            const config = {
+                displayModeBar: false,
+                responsive: true
+            };
+
+            Plotly.newPlot('heatmap', data, layout, config);
+        },
+
         initAccuracyChart() {
             const canvas = document.getElementById('accuracyChart');
             if (!canvas) return;
@@ -334,7 +378,7 @@
             if (mate !== null) {
                 displayText = mate > 0 ? `M${mate}` : `M${Math.abs(mate)}`;
                 percent = mate > 0 ? 100 : 0;
-            } else {
+                } else {
                 const pawns = cpWhite / 100;
                 displayText = pawns >= 0 ? `+${pawns.toFixed(2)}` : pawns.toFixed(2);
                 const clamped = Math.max(-500, Math.min(500, cpWhite));
@@ -616,6 +660,7 @@
             ArrowLayer.init();
             Charts.initAccuracyChart();
             Charts.initAcplChart();
+            Charts.drawHeatmap();
             
             document.getElementById('loadGameBtn').onclick = () => UI.loadGame();
             document.getElementById('clearBtn').onclick = () => UI.clearGame();
@@ -738,9 +783,9 @@
                     data.evaluations.forEach((eval, idx) => {
                         if (eval && State.history[idx]) {
                             EvalCache.save(State.history[idx], eval);
-                        }
-                    });
                 }
+            });
+        }
 
                 State.moveAnalyses = data.moves || [];
                 State.summary = data.summary || null;
@@ -755,6 +800,7 @@
                 TopLinesPanel.update();
                 Charts.initAccuracyChart();
                 Charts.initAcplChart();
+                Charts.drawHeatmap();
                 UI.toast('Analysis complete!', 'success');
             } catch (err) {
                 if (err.name !== 'AbortError') {

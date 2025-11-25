@@ -11,6 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
   <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.js"></script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
   <link rel="stylesheet" href="style.css">
   <script src="audio-manager.js"></script>
@@ -667,6 +668,10 @@
             <div class="stat-row"><span>ACPL</span><span id="blackAcpl">--</span></div>
             <div class="stat-row"><span>Est. Rating</span><span id="blackRating">--</span></div>
           </div>
+        </div>
+        <div style="padding: 1rem; border-top: 1px solid rgba(255,255,255,0.08);">
+          <div style="margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">Move Quality Heatmap</div>
+          <div id="heatmap" style="width: 100%; height: 60px; background: rgba(0,0,0,0.2); border-radius: 6px;"></div>
         </div>
         <div id="moveList" class="move-list"></div>
         <div style="padding: 1rem; border-top: 1px solid rgba(255,255,255,0.08);">
