@@ -314,8 +314,7 @@ export default async function handler(req, res) {
                 if (a.mate !== null) return a.mate > 0 ? -1 : 1;
                 if (b.mate !== null) return b.mate > 0 ? 1 : -1;
                 
-                const turnFactor = turn === 'w' ? 1 : -1;
-                return (b.cp - a.cp) * turnFactor;
+                return b.cp - a.cp;
             });
 
             let bestMove = result.best_move || result.bestMove || '';
@@ -363,26 +362,6 @@ export default async function handler(req, res) {
     }
     console.log('[analyzePosition] All batches evaluated successfully');
 
-    function normalizeEval(raw, sideToMove) {
-        if (!raw) return { cpForPlayer: 0, mate: null };
-
-        let mate = raw.mate;
-        if (mate === 0) mate = null;
-        if (mate === undefined) mate = null;
-
-        if (mate !== null) {
-            const mateWhite = Number(mate);
-            const mateForPlayer = sideToMove === 'w' ? mateWhite : -mateWhite;
-            return {
-                cpForPlayer: mateForPlayer > 0 ? 10000 : -10000,
-                mate: mateForPlayer
-            };
-        }
-
-        const cpWhite = Number(raw.cp ?? 0);
-        const cpForPlayer = sideToMove === 'w' ? cpWhite : -cpWhite;
-        return { cpForPlayer, mate: null };
-    }
 
     function classifyCpl(cpl) {
         if (cpl <= 15) return ['Best', 'move-best'];
@@ -401,12 +380,16 @@ export default async function handler(req, res) {
         return Math.max(400, Math.round(2850 - 220 * Math.log10(acpl + 10)));
     }
 
-    function isSacrifice(move, beforeNorm, afterNorm) {
+    function isSacrifice(move, beforePv, afterPv) {
         if (!move.captured) return false;
         const materialLoss = { p: 1, n: 3, b: 3, r: 5, q: 9 }[move.captured] || 0;
         if (materialLoss === 0) return false;
-        const evalDiff = Math.abs((afterNorm?.cpForPlayer ?? 0) - (beforeNorm?.cpForPlayer ?? 0));
-        return evalDiff <= 50;
+        
+        const beforeCp = beforePv?.cp ?? 0;
+        const afterCp = afterPv?.cp ?? 0;
+        
+        const evalDrop = beforeCp - afterCp;
+        return evalDrop <= 50;
     }
 
     function isTactical(pvMoves, positionFen) {
@@ -488,40 +471,26 @@ export default async function handler(req, res) {
         const afterEval = analysisResults[m + 1];
         const move = history[m];
 
-        function movesMatch(a, b) {
-            if (!a || !b) return false;
-            return a.slice(0, 4) === b.slice(0, 4);
-        }
+        const cpBefore = beforeEval.pvs[0]?.cp ?? 0;
+        const cpAfter = afterEval.pvs[0]?.cp ?? 0;
+        const mateBefore = beforeEval.pvs[0]?.mate ?? null;
+        const mateAfter = afterEval.pvs[0]?.mate ?? null;
 
-        const moveUci = move.from + move.to + (move.promotion || '');
-        const matchingPv = beforeEval.pvs.find(pv => {
-            return pv.uci && pv.uci.length > 0 && movesMatch(pv.uci[0], moveUci);
-        }) || beforeEval.pvs[0];
-
-        const afterActualEval = afterEval;
-
-        if (!matchingPv || !afterActualEval) {
-            console.warn(`[analyzePosition] Missing PV data at move ${m}, before:`, !!matchingPv, 'after:', !!afterActualEval);
-        }
-
-        const beforeBestNorm = normalizeEval(matchingPv, side);
-        const afterActualNorm = normalizeEval(afterEval.pvs[0], side);
-        
         let cpLoss = 0;
-        if (beforeBestNorm.mate !== null || afterActualNorm.mate !== null) {
-            if (beforeBestNorm.mate !== null && beforeBestNorm.mate > 0 && 
-                (afterActualNorm.mate === null || afterActualNorm.mate <= 0)) {
+        if (mateBefore !== null || mateAfter !== null) {
+            if (mateBefore !== null && mateBefore > 0 && (mateAfter === null || mateAfter <= 0)) {
                 cpLoss = 500;
-            } else if (afterActualNorm.mate !== null && afterActualNorm.mate < 0) {
+            } else if (mateBefore !== null && mateBefore < 0 && (mateAfter === null || mateAfter >= 0)) {
                 cpLoss = 500;
-            } else if (beforeBestNorm.mate !== null && afterActualNorm.mate !== null && 
-                       beforeBestNorm.mate > 0 && afterActualNorm.mate > 0) {
-                cpLoss = Math.max(0, afterActualNorm.mate - beforeBestNorm.mate) * 50;
+            } else if (mateBefore !== null && mateAfter !== null && mateBefore > 0 && mateAfter > 0) {
+                cpLoss = Math.max(0, mateAfter - mateBefore) * 50;
+            } else if (mateBefore !== null && mateAfter !== null && mateBefore < 0 && mateAfter < 0) {
+                cpLoss = Math.max(0, mateBefore - mateAfter) * 50;
             } else {
                 cpLoss = 0;
             }
         } else {
-            cpLoss = Math.max(0, beforeBestNorm.cpForPlayer - afterActualNorm.cpForPlayer);
+            cpLoss = Math.max(0, cpBefore - cpAfter);
         }
 
         if (side === 'w') {
@@ -534,6 +503,8 @@ export default async function handler(req, res) {
 
         const [label, category] = classifyCpl(cpLoss);
 
+        const playedMoveUci = move.from + move.to + (move.promotion || '');
+        const bestMoveUci = beforeEval.pvs[0]?.uci?.[0] || null;
         const bestSan = beforeEval.pvs[0]?.san?.[0] || null;
         const secondBestSan = beforeEval.pvs[1]?.san?.[0] || null;
 
@@ -542,18 +513,16 @@ export default async function handler(req, res) {
         let isOnlyMove = false;
         let brilliantReason = null;
 
-        if (beforeEval.pvs.length >= 2 && move.san === bestSan) {
-            const pv0Norm = normalizeEval(beforeEval.pvs[0], side);
-            const pv1Norm = normalizeEval(beforeEval.pvs[1], side);
-            const cpGap = Math.abs(pv0Norm.cpForPlayer - pv1Norm.cpForPlayer);
+        if (beforeEval.pvs.length >= 2 && playedMoveUci === bestMoveUci) {
+            const pv0Cp = beforeEval.pvs[0]?.cp ?? 0;
+            const pv1Cp = beforeEval.pvs[1]?.cp ?? 0;
+            const cpGap = Math.abs(pv0Cp - pv1Cp);
 
             if (cpGap >= 150) {
                 isOnlyMove = true;
             }
 
-            const beforeNormForSacrifice = normalizeEval(matchingPv, side);
-            const afterNormForSacrifice = normalizeEval(afterEval.pvs[0], side);
-            const wasSacrifice = isSacrifice(move, beforeNormForSacrifice, afterNormForSacrifice);
+            const wasSacrifice = isSacrifice(move, beforeEval.pvs[0], afterEval.pvs[0]);
             const wasTactical = isTactical(beforeEval.pvs[0].san, fensArray[m]);
 
             if (wasSacrifice && cpGap >= 150 && wasTactical && cpLoss <= 15) {
@@ -572,10 +541,14 @@ export default async function handler(req, res) {
         if (m >= 1) {
             const prevEval = analysisResults[m];
             const currentEval = analysisResults[m + 1];
-            const prevNorm = normalizeEval(prevEval.pvs[0], side);
-            const currentNorm = normalizeEval(currentEval.pvs[0], side);
+            const prevCp = prevEval.pvs[0]?.cp ?? 0;
+            const currentCp = currentEval.pvs[0]?.cp ?? 0;
             
-            const diff = currentNorm.cpForPlayer - prevNorm.cpForPlayer;
+            let diff = currentCp - prevCp;
+            if (side === 'b') {
+                diff = prevCp - currentCp;
+            }
+            
             if (diff > 20) {
                 evalTrend = 'improving';
             } else if (diff < -20) {
@@ -657,7 +630,7 @@ export default async function handler(req, res) {
             type: 'swing',
             text: `🔄 Turning Point – ${notation} (${(s.amount / 100).toFixed(1)} pawn swing)`
         });
-    });
+    }); 
 
     if (keyMoments.length === 0) {
         keyMoments.push({
