@@ -133,6 +133,33 @@ export default async function handler(req, res) {
         }
     }
 
+    function normalizeEvalValue(evalObj) {
+        if (!evalObj) return 0;
+        if (typeof evalObj === 'number') return evalObj;
+
+        const mateVal = evalObj.mate ?? evalObj.mateScore ?? null;
+        if (mateVal !== null && mateVal !== undefined) {
+            if (mateVal === 0) return 0;
+            return mateVal > 0 ? 10000 : -10000;
+        }
+
+        if (typeof evalObj.cpWhite === 'number') return evalObj.cpWhite;
+        if (typeof evalObj.cp === 'number') return evalObj.cp;
+        if (typeof evalObj.eval === 'number') return evalObj.eval;
+        if (Array.isArray(evalObj.pvs) && evalObj.pvs[0]) {
+            return normalizeEvalValue(evalObj.pvs[0]);
+        }
+        if (evalObj.evaluation) {
+            return normalizeEvalValue(evalObj.evaluation);
+        }
+        return 0;
+    }
+
+    function evalForSide(evalObj, side) {
+        const base = normalizeEvalValue(evalObj);
+        return side === 'w' ? base : -base;
+    }
+
     async function fetchBatch(fensToEvaluate, depthVal, multipvVal) {
         if (!HF_TOKEN || fensToEvaluate.length === 0) {
             console.warn('[fetchBatch] Missing HF token or empty batch');
@@ -425,15 +452,13 @@ export default async function handler(req, res) {
         const pv1 = pvs[0] || { cp: 0, uci: [], san: [], mate: null };
         const pv2 = pvs[1] || { cp: pv1.cp - 60, uci: [], san: [] };
         const pv3 = pvs[2] || { cp: pv2.cp - 60, uci: [], san: [] };
-        const playedCpWhite = afterEval.pvs[0]?.cp ?? 0;
-        const playedMate = afterEval.pvs[0]?.mate ?? null;
+        const playedLine = afterEval.pvs[0] || { cp: 0, mate: null };
 
-        const evalBeforeWhite = pv1.cp ?? 0;
-        const evalAfterWhite = playedCpWhite;
-        const evalBeforeSide = side === 'w' ? evalBeforeWhite : -evalBeforeWhite;
-        const evalAfterSide = side === 'w' ? evalAfterWhite : -evalAfterWhite;
+        const evalBeforeSide = evalForSide(pv1, side);
+        const evalSecondBestSide = evalForSide(pv2, side);
+        const evalAfterSide = evalForSide(playedLine, side);
 
-        if (pv1.mate !== null || playedMate !== null) {
+        if (pv1.mate !== null || playedLine.mate !== null) {
             return ['Best', 'move-best'];
         }
 
@@ -442,14 +467,9 @@ export default async function handler(req, res) {
         const isPv3 = playedUci === (pv3.uci?.[0] || '');
 
         if (isPv1) {
-            const pv2CpWhite = pv2.cp ?? 0;
-            const evalBefore2Side = side === 'w' ? evalBeforeWhite : -evalBeforeWhite;
-            const evalAfter2Side = side === 'w' ? evalAfterWhite : -evalAfterWhite;
-            const evalPv2Side = side === 'w' ? pv2CpWhite : -pv2CpWhite;
-
-            const gap12 = Math.abs(evalBeforeSide - evalPv2Side);
+            const gap12 = Math.abs(evalBeforeSide - evalSecondBestSide);
             const evalMaintains = Math.abs(evalBeforeSide - evalAfterSide) <= 40;
-            const secondBestLosesAdvantage = (evalBeforeSide > 0 && evalPv2Side <= 0) || (evalBeforeSide < 0 && evalPv2Side >= 0);
+            const secondBestLosesAdvantage = (evalBeforeSide > 0 && evalSecondBestSide <= 0) || (evalBeforeSide < 0 && evalSecondBestSide >= 0);
             const notTriviallyWinning = Math.abs(evalBeforeSide) < 800;
 
             if (evalMaintains && secondBestLosesAdvantage && gap12 >= 100 && notTriviallyWinning) {
@@ -461,7 +481,7 @@ export default async function handler(req, res) {
         if (isPv2) return ['Excellent', 'move-excellent'];
         if (isPv3) return ['Good', 'move-good'];
 
-        const cpLoss = Math.max(0, evalBeforeSide - evalAfterSide);
+        const cpLoss = Math.max(0, Math.abs(evalBeforeSide - evalAfterSide));
 
         if (cpLoss <= 80) return ['Inaccuracy', 'move-inaccuracy'];
         if (cpLoss <= 200) return ['Mistake', 'move-mistake'];
@@ -638,23 +658,19 @@ export default async function handler(req, res) {
         const promo = move.promotion ? move.promotion.toLowerCase() : '';
         const fallbackUci = (move.from && move.to) ? (move.from + move.to + promo) : null;
         const playedMoveUci = sanDerivedUci || fallbackUci || '';
-        const playedCpWhite = afterEval.pvs[0]?.cp ?? 0;
         const bestSan = pv1.san?.[0] || null;
         const secondBestSan = pv2.san?.[0] || null;
 
-        const evalBeforeWhite = pv1.cp ?? 0;
-        const evalAfterWhite = playedCpWhite;
-        const evalBeforeSide = side === 'w' ? evalBeforeWhite : -evalBeforeWhite;
-        const evalAfterSide = side === 'w' ? evalAfterWhite : -evalAfterWhite;
+        const evalBeforeSide = evalForSide(pv1, side);
+        const evalSecondBestSide = evalForSide(pv2, side);
+        const evalAfterSide = evalForSide(afterPv0, side);
 
         let [label, category] = classifyMove(playedMoveUci, beforeEval, afterEval, side);
 
-        const p1 = pv1.cp ?? 0;
-        const p2 = pv2.cp ?? 0;
-        const gap12 = Math.abs(evalBeforeSide - (side === 'w' ? p2 : -p2));
+        const gap12 = Math.abs(evalBeforeSide - evalSecondBestSide);
         const isPv1 = playedMoveUci === (pv1.uci?.[0] || '');
         
-        const cpLoss = Math.max(0, evalBeforeSide - evalAfterSide);
+        const cpLoss = Math.max(0, Math.abs(evalBeforeSide - evalAfterSide));
         const evalDrop = Math.abs(evalBeforeSide - evalAfterSide);
         const evalMaintains = evalAfterSide >= evalBeforeSide - 40;
         const evalIncreases = evalAfterSide > evalBeforeSide;
