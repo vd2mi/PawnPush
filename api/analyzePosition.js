@@ -120,6 +120,19 @@ export default async function handler(req, res) {
         return { uciSeq, sanSeq };
     }
 
+    function sanToUci(fen, san) {
+        if (!fen || !san) return null;
+        try {
+            const chess = new Chess(fen);
+            const move = chess.move(san, { sloppy: true });
+            if (!move) return null;
+            const promo = move.promotion ? move.promotion.toLowerCase() : '';
+            return move.from + move.to + promo;
+        } catch {
+            return null;
+        }
+    }
+
     async function fetchBatch(fensToEvaluate, depthVal, multipvVal) {
         if (!HF_TOKEN || fensToEvaluate.length === 0) {
             console.warn('[fetchBatch] Missing HF token or empty batch');
@@ -620,8 +633,11 @@ export default async function handler(req, res) {
         const pv3 = pvs[2] || { cp: pv2.cp - 60, uci: [], san: [] };
         const afterPv0 = afterEval.pvs[0] || { cp: 0, mate: null };
 
+        const prevFen = fensArray[m] || null;
+        const sanDerivedUci = sanToUci(prevFen, move.san);
         const promo = move.promotion ? move.promotion.toLowerCase() : '';
-        const playedMoveUci = move.from + move.to + promo;
+        const fallbackUci = (move.from && move.to) ? (move.from + move.to + promo) : null;
+        const playedMoveUci = sanDerivedUci || fallbackUci || '';
         const playedCpWhite = afterEval.pvs[0]?.cp ?? 0;
         const bestSan = pv1.san?.[0] || null;
         const secondBestSan = pv2.san?.[0] || null;

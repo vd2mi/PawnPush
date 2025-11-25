@@ -219,35 +219,38 @@
 
         drawHeatmap() {
             if (!State.moveAnalyses || State.moveAnalyses.length === 0) return;
-            
+
             const colors = State.moveAnalyses.map(m => {
-                if (m.category === 'move-best') return 0;
-                if (m.category === 'move-excellent') return 10;
-                if (m.category === 'move-good') return 20;
-                if (m.category === 'move-inaccuracy') return 50;
-                if (m.category === 'move-mistake') return 100;
-                return 150;
+                switch (m.category) {
+                    case 'move-best': return 0.1;
+                    case 'move-excellent': return 0.25;
+                    case 'move-good': return 0.4;
+                    case 'move-inaccuracy': return 0.6;
+                    case 'move-mistake': return 0.8;
+                    case 'move-blunder': return 1.0;
+                    default: return 0.5;
+                }
             });
 
             const data = [{
                 z: [colors],
                 type: 'heatmap',
                 colorscale: [
-                    [0, '#4caf50'],
-                    [0.2, '#8bc34a'],
-                    [0.4, '#ffeb3b'],
-                    [0.6, '#ff9800'],
-                    [1, '#f44336']
+                    [0, '#00d47e'],
+                    [0.25, '#3b82f6'],
+                    [0.4, '#a855f7'],
+                    [0.6, '#facc15'],
+                    [0.8, '#fb923c'],
+                    [1.0, '#ef4444']
                 ],
                 showscale: false,
                 hoverinfo: 'skip'
             }];
 
             const layout = {
-                title: '',
                 margin: { l: 0, r: 0, t: 0, b: 0 },
-                xaxis: { showticklabels: false, showgrid: false, zeroline: false },
-                yaxis: { showticklabels: false, showgrid: false, zeroline: false },
+                xaxis: { visible: false },
+                yaxis: { visible: false },
                 plot_bgcolor: 'rgba(0,0,0,0)',
                 paper_bgcolor: 'rgba(0,0,0,0)',
                 height: 60
@@ -284,6 +287,11 @@
             const ctx = this.accuracyChart;
 
             ctx.clearRect(0, 0, width, height);
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#0f172a');
+            gradient.addColorStop(1, '#1e293b');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
 
             const whiteData = [];
             const blackData = [];
@@ -309,7 +317,7 @@
             const maxMoves = Math.max(whiteData.length, blackData.length);
             const stepX = width / maxMoves;
 
-            ctx.strokeStyle = '#ffffff';
+            ctx.strokeStyle = '#f8fafc';
             ctx.lineWidth = 2;
             ctx.beginPath();
             whiteData.forEach((acc, idx) => {
@@ -320,7 +328,7 @@
             });
             ctx.stroke();
 
-            ctx.strokeStyle = '#000000';
+            ctx.strokeStyle = '#94a3b8';
             ctx.lineWidth = 2;
             ctx.beginPath();
             blackData.forEach((acc, idx) => {
@@ -331,7 +339,7 @@
             });
             ctx.stroke();
 
-            ctx.fillStyle = '#999';
+            ctx.fillStyle = '#e2e8f0';
             ctx.font = '12px Arial';
             ctx.fillText('White', 10, 20);
             ctx.fillText('Black', 10, 40);
@@ -346,6 +354,11 @@
             const ctx = this.acplChart;
 
             ctx.clearRect(0, 0, width, height);
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#0f172a');
+            gradient.addColorStop(1, '#1e293b');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
 
             const barWidth = width / State.moveAnalyses.length;
             const maxCpl = Math.max(...State.moveAnalyses.map(m => m.cpLoss), 100);
@@ -660,7 +673,6 @@
             ArrowLayer.init();
             Charts.initAccuracyChart();
             Charts.initAcplChart();
-            Charts.drawHeatmap();
             
             document.getElementById('loadGameBtn').onclick = () => UI.loadGame();
             document.getElementById('clearBtn').onclick = () => UI.clearGame();
