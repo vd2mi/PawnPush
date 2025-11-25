@@ -318,16 +318,18 @@ export default async function handler(req, res) {
                 }];
             }
 
+            // Ensure PVs are sorted for side to move
             pvs.sort((a, b) => {
-                if (a.mate !== null && b.mate !== null) {
-                    if (a.mate > 0 && b.mate > 0) return a.mate - b.mate;
-                    if (a.mate < 0 && b.mate < 0) return b.mate - a.mate;
-                    return a.mate > 0 ? -1 : 1;
+                if (a.mate !== null || b.mate !== null) {
+                    const aMate = a.mate ?? 99999;
+                    const bMate = b.mate ?? 99999;
+                    if (aMate > 0 && bMate > 0) return aMate - bMate;
+                    if (aMate < 0 && bMate < 0) return bMate - aMate;
+                    return aMate > 0 ? -1 : 1;
                 }
-                if (a.mate !== null) return a.mate > 0 ? -1 : 1;
-                if (b.mate !== null) return b.mate > 0 ? 1 : -1;
-                
-                return b.cp - a.cp;
+                const aSide = turn === 'w' ? a.cp : -a.cp;
+                const bSide = turn === 'w' ? b.cp : -b.cp;
+                return bSide - aSide;
             });
 
             let bestMove = result.best_move || result.bestMove || '';
@@ -362,6 +364,11 @@ export default async function handler(req, res) {
     const analysisResults = [];
     console.log(`[analyzePosition] Evaluating ${fensArray.length} positions in batches of ${BATCH_SIZE}`);
 
+    // NOTE: Dynamic multipv optimization (multipv=1 for non-critical, multipv=3 for critical)
+    // would require either: (1) per-FEN API calls, or (2) two-pass analysis (multipv=1 first, then re-analyze critical with multipv=3)
+    // Current implementation uses multipv=3 for all positions for accuracy
+    // Future optimization: identify critical positions (eval near 0, forced moves, large swings) and use two-pass approach
+
     for (let i = 0; i < fensArray.length; i += BATCH_SIZE) {
         const batch = fensArray.slice(i, i + BATCH_SIZE);
         const batchResults = await fetchBatch(batch, depth, multipv);
@@ -375,13 +382,18 @@ export default async function handler(req, res) {
     }
     console.log('[analyzePosition] All batches evaluated successfully');
 
-    function classifyMove(playedUci, beforeEval, afterEval) {
+    function classifyMove(playedUci, beforeEval, afterEval, side) {
         const pvs = beforeEval.pvs;
         const pv1 = pvs[0] || { cp: 0, uci: [], san: [], mate: null };
         const pv2 = pvs[1] || { cp: pv1.cp - 60, uci: [], san: [] };
         const pv3 = pvs[2] || { cp: pv2.cp - 60, uci: [], san: [] };
-        const playedCp = afterEval.pvs[0]?.cp ?? 0;
+        const playedCpWhite = afterEval.pvs[0]?.cp ?? 0;
         const playedMate = afterEval.pvs[0]?.mate ?? null;
+
+        const evalBeforeWhite = pv1.cp ?? 0;
+        const evalAfterWhite = playedCpWhite;
+        const evalBeforeSide = side === 'w' ? evalBeforeWhite : -evalBeforeWhite;
+        const evalAfterSide = side === 'w' ? evalAfterWhite : -evalAfterWhite;
 
         if (pv1.mate !== null || playedMate !== null) {
             return ['Best', 'move-best'];
@@ -391,34 +403,30 @@ export default async function handler(req, res) {
         const isPv2 = playedUci === (pv2.uci?.[0] || '');
         const isPv3 = playedUci === (pv3.uci?.[0] || '');
 
-        function category(cp) {
-            if (cp >= 140) return "winning";
-            if (cp <= -140) return "losing";
-            return "equal";
+        if (isPv1) {
+            const pv2CpWhite = pv2.cp ?? 0;
+            const evalBefore2Side = side === 'w' ? evalBeforeWhite : -evalBeforeWhite;
+            const evalAfter2Side = side === 'w' ? evalAfterWhite : -evalAfterWhite;
+            const evalPv2Side = side === 'w' ? pv2CpWhite : -pv2CpWhite;
+
+            const gap12 = Math.abs(evalBeforeSide - evalPv2Side);
+            const evalMaintains = Math.abs(evalBeforeSide - evalAfterSide) <= 40;
+            const secondBestLosesAdvantage = (evalBeforeSide > 0 && evalPv2Side <= 0) || (evalBeforeSide < 0 && evalPv2Side >= 0);
+            const notTriviallyWinning = Math.abs(evalBeforeSide) < 800;
+
+            if (evalMaintains && secondBestLosesAdvantage && gap12 >= 100 && notTriviallyWinning) {
+                return ['Great', 'move-great'];
+            }
+            return ['Best', 'move-best'];
         }
 
-        const beforeCat = category(beforeEval.pvs[0]?.cp ?? 0);
-        const afterCat = category(playedCp);
-        const pv2Cat = category(pv2.cp);
-
-        const gap12 = pv1.cp - pv2.cp;
-        const isOnlyMove = 
-            (afterCat === beforeCat) &&
-            (pv2Cat !== beforeCat) &&
-            (gap12 >= 100);
-        const notTriviallyWinning = Math.abs(pv1.cp) < 800;
-
-        if (isPv1 && isOnlyMove && notTriviallyWinning) {
-            return ['Great', 'move-great'];
-        }
-
-        if (isPv1) return ['Best', 'move-best'];
         if (isPv2) return ['Excellent', 'move-excellent'];
         if (isPv3) return ['Good', 'move-good'];
 
-        const loss = Math.max(0, pv1.cp - playedCp);
-        if (loss <= 80) return ['Inaccuracy', 'move-inaccuracy'];
-        if (loss <= 200) return ['Mistake', 'move-mistake'];
+        const cpLoss = Math.max(0, evalBeforeSide - evalAfterSide);
+
+        if (cpLoss <= 80) return ['Inaccuracy', 'move-inaccuracy'];
+        if (cpLoss <= 200) return ['Mistake', 'move-mistake'];
         return ['Blunder', 'move-blunder'];
     }
 
@@ -589,21 +597,26 @@ export default async function handler(req, res) {
 
         const promo = move.promotion ? move.promotion.toLowerCase() : '';
         const playedMoveUci = move.from + move.to + promo;
-        const playedCp = afterEval.pvs[0]?.cp ?? 0;
+        const playedCpWhite = afterEval.pvs[0]?.cp ?? 0;
         const bestSan = pv1.san?.[0] || null;
         const secondBestSan = pv2.san?.[0] || null;
 
-        let [label, category] = classifyMove(playedMoveUci, beforeEval, afterEval);
+        const evalBeforeWhite = pv1.cp ?? 0;
+        const evalAfterWhite = playedCpWhite;
+        const evalBeforeSide = side === 'w' ? evalBeforeWhite : -evalBeforeWhite;
+        const evalAfterSide = side === 'w' ? evalAfterWhite : -evalAfterWhite;
+
+        let [label, category] = classifyMove(playedMoveUci, beforeEval, afterEval, side);
 
         const p1 = pv1.cp ?? 0;
         const p2 = pv2.cp ?? 0;
-        const gap12 = Math.abs(p1 - p2);
+        const gap12 = Math.abs(evalBeforeSide - (side === 'w' ? p2 : -p2));
         const isPv1 = playedMoveUci === (pv1.uci?.[0] || '');
-        const evalLoss = Math.max(0, p1 - playedCp);
-        const cpLoss = evalLoss;
-        const evalDrop = Math.abs(p1 - playedCp);
-        const evalMaintains = playedCp >= p1 - 40;
-        const evalIncreases = playedCp > p1;
+        
+        const cpLoss = Math.max(0, evalBeforeSide - evalAfterSide);
+        const evalDrop = Math.abs(evalBeforeSide - evalAfterSide);
+        const evalMaintains = evalAfterSide >= evalBeforeSide - 40;
+        const evalIncreases = evalAfterSide > evalBeforeSide;
 
         if (side === 'w') {
             totalCpLossWhite += cpLoss;
@@ -621,8 +634,8 @@ export default async function handler(req, res) {
             const wasSacrifice = isSacrifice(move, pv1, afterPv0);
             if (wasSacrifice) {
                 const wasTactical = isTactical(pv1.uci || [], fensArray[m]);
-                const onlyMove = (p1 - p2) >= 100;
-                if (wasTactical && evalDrop <= 40 && evalMaintains && (onlyMove || evalIncreases)) {
+                const onlyMove = gap12 >= 100;
+                if (wasTactical && evalDrop <= 30 && (evalMaintains || evalIncreases) && (onlyMove || evalIncreases)) {
                     isBrilliant = true;
                     brilliantReason = 'Sacrificial forcing move with no alternatives';
                     brilliants.push({ moveIndex: m, san: move.san, reason: brilliantReason });
