@@ -451,9 +451,9 @@ export default async function handler(req, res) {
         const evalSecondBest = normalizeEvalValue(pv2);
         const evalAfter = normalizeEvalValue(playedLine);
 
-        // Only treat as Best if mate is for the player to move, not against them
-        const turn = m % 2 === 0 ? 'w' : 'b';
-        const mateForPlayer = pv1.mate !== null && Math.sign(pv1.mate) === (turn === 'w' ? 1 : -1);
+        const mateForPlayer =
+        pv1.mate !== null &&
+        Math.sign(pv1.mate) === (side === 'w' ? 1 : -1);    
         if (mateForPlayer) {
             return ['Best', 'move-best'];
         }
