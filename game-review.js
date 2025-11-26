@@ -462,7 +462,7 @@
                     else if (analysis.isOnlyMove) badges += '<span class="badge only">Only Move</span>';
                 }
 
-                const hasOpeningInfo = State.summary?.openingInfo && moveIdx < 20;
+                const hasOpeningInfo = State.summary?.openingInfo && i < 20;
                 const isBookMove = (analysis?.opening || (hasOpeningInfo && (analysis?.cpLoss === undefined || analysis?.cpLoss === 0)));
                 const displayLabel = isBookMove ? 'Book' : (analysis?.label || '');
                 const displayCategory = isBookMove ? 'move-book' : (analysis?.category || '');
@@ -483,7 +483,7 @@
                     const bestSan = analysis.bestSan || '';
                     const motifs = analysis.motifs?.join(', ') || '';
                     const opening = analysis.opening ? `${analysis.opening.eco}: ${analysis.opening.name}` : '';
-                    const hasOpeningInfo = State.summary?.openingInfo && moveIdx < 20;
+                    const hasOpeningInfo = State.summary?.openingInfo && i < 20;
                     const isBookMove = (analysis.opening || (hasOpeningInfo && (analysis.cpLoss === undefined || analysis.cpLoss === 0)));
                     
                     const openingDisplay = opening || (hasOpeningInfo && State.summary.openingInfo ? `${State.summary.openingInfo.eco}: ${State.summary.openingInfo.name}` : '');
