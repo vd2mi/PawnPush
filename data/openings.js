@@ -22,27 +22,28 @@ const rawOpenings = {
     ...ecoInterpolated
 };
 
-const openings = {};
-for (const [fen, data] of Object.entries(rawOpenings)) {
+function normalizeFenKey(fen) {
+    if (!fen) return null;
     const parts = fen.split(" ");
-    const key4 = parts.slice(0, 4).join(" ");
-    if (!openings[key4]) {
+    if (parts.length < 4) return null;
+    return `${parts[0]} ${parts[1]} ${parts[2]} -`;
+}
+
+const openings = {};
+
+for (const [fen, data] of Object.entries(rawOpenings)) {
+    const key4 = normalizeFenKey(fen);
+    if (key4 && !openings[key4]) {
         openings[key4] = data;
     }
 }
 
 export function getOpening(fen) {
     if (!fen) return null;
-    const parts = fen.split(" ");
-    if (parts.length < 4) return null;
-    
-    const normalizedParts = [
-        parts[0],
-        parts[1],
-        parts[2],
-        '-'
-    ];
-    const key4 = normalizedParts.join(" ");
+
+    const key4 = normalizeFenKey(fen);
+    if (!key4) return null;
+
     const data = openings[key4];
     if (!data) return null;
 
@@ -55,4 +56,3 @@ export function getOpening(fen) {
 }
 
 export default openings;
-
