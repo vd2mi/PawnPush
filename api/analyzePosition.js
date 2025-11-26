@@ -33,7 +33,9 @@ export default async function handler(req, res) {
     let getOpening;
     try {
         Chess = (await import('chess.js')).Chess;
-        const openingsModule = await import('../data/openings.js');
+        const { createRequire } = await import('module');
+        const require = createRequire(import.meta.url);
+        const openingsModule = require('../data/openings.js');
         getOpening = openingsModule.getOpening;
     } catch (error) {
         console.warn('[analyzePosition] Module import error:', error.message);
@@ -590,7 +592,9 @@ export default async function handler(req, res) {
     }
 
     function normalizeFen(fen) {
+        if (!fen) return '';
         const parts = fen.split(' ');
+        if (parts.length < 4) return fen;
         return parts.slice(0, 4).join(' ');
     }
 
@@ -599,17 +603,28 @@ export default async function handler(req, res) {
     for (let i = 1; i < fensArray.length; i++) {
         const prevFen = fensArray[i - 1];
         const currentFen = fensArray[i];
+        
+        if (!prevFen || !currentFen) {
+            console.warn(`[analyzePosition] Missing FEN at position ${i}`);
+            history.push({ san: null, invalid: true });
+            continue;
+        }
+        
         const tempGame = new Chess(prevFen);
         const moves = tempGame.moves({ verbose: true });
         const foundMove = moves.find(m => {
             const testGame = new Chess(prevFen);
             testGame.move(m);
-            return normalizeFen(testGame.fen()) === normalizeFen(currentFen);
+            const resultFen = testGame.fen();
+            return normalizeFen(resultFen) === normalizeFen(currentFen);
         });
+        
         if (foundMove) {
             history.push(foundMove);
         } else {
-            console.warn(`[analyzePosition] Failed to reconstruct move ${i}: ${prevFen.substring(0, 30)}... -> ${currentFen.substring(0, 30)}...`);
+            console.warn(`[analyzePosition] Failed to reconstruct move ${i}`);
+            console.warn(`  From: ${normalizeFen(prevFen)}`);
+            console.warn(`  To:   ${normalizeFen(currentFen)}`);
             history.push({ san: null, invalid: true });
         }
     }

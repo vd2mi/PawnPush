@@ -10,8 +10,7 @@
       "maxDuration": 60
     },
     "api/analyzePosition.js": {
-      "maxDuration": 60,
-      "includeFiles": "data/**"
+      "maxDuration": 60
     }
   },
   "headers": [

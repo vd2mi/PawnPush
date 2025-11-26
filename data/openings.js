@@ -1,22 +1,17 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-function loadJSON(filename) {
-    const filePath = path.join(__dirname, filename);
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-}
+const ecoA = require("./ecoA.json");
+const ecoB = require("./ecoB.json");
+const ecoC = require("./ecoC.json");
+const ecoD = require("./ecoD.json");
+const ecoE = require("./ecoE.json");
+const ecoInterpolated = require("./eco_interpolated.json");
 
 const rawOpenings = {
-    ...loadJSON("ecoA.json"),
-    ...loadJSON("ecoB.json"),
-    ...loadJSON("ecoC.json"),
-    ...loadJSON("ecoD.json"),
-    ...loadJSON("ecoE.json"),
-    ...loadJSON("eco_interpolated.json")
+    ...ecoA,
+    ...ecoB,
+    ...ecoC,
+    ...ecoD,
+    ...ecoE,
+    ...ecoInterpolated
 };
 
 const openings = {};
@@ -29,7 +24,7 @@ for (const [fen, data] of Object.entries(rawOpenings)) {
     }
 }
 
-export function getOpening(fen) {
+function getOpening(fen) {
     if (!fen) return null;
     const parts = fen.split(" ");
     if (parts.length < 4) return null;
@@ -37,4 +32,5 @@ export function getOpening(fen) {
     return openings[normalized] || null;
 }
 
-export default openings;
+module.exports = { getOpening, openings };
+exports.default = openings;
