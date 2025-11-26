@@ -33,9 +33,7 @@ export default async function handler(req, res) {
     let getOpening;
     try {
         Chess = (await import('chess.js')).Chess;
-        const { createRequire } = await import('module');
-        const require = createRequire(import.meta.url);
-        const openingsModule = require('../data/openings.js');
+        const openingsModule = await import('../data/openings.js');
         getOpening = openingsModule.getOpening;
     } catch (error) {
         console.warn('[analyzePosition] Module import error:', error.message);
@@ -610,22 +608,28 @@ export default async function handler(req, res) {
             continue;
         }
         
-        const tempGame = new Chess(prevFen);
-        const moves = tempGame.moves({ verbose: true });
-        const foundMove = moves.find(m => {
-            const testGame = new Chess(prevFen);
-            testGame.move(m);
-            const resultFen = testGame.fen();
-            return normalizeFen(resultFen) === normalizeFen(currentFen);
-        });
-        
-        if (foundMove) {
-            history.push(foundMove);
-        } else {
-            console.warn(`[analyzePosition] Failed to reconstruct move ${i}`);
-            console.warn(`  From: ${normalizeFen(prevFen)}`);
-            console.warn(`  To:   ${normalizeFen(currentFen)}`);
-            history.push({ san: null, invalid: true });
+        try {
+            const tempGame = new Chess(prevFen);
+            const moves = tempGame.moves({ verbose: true });
+            const foundMove = moves.find(m => {
+                try {
+                    const testGame = new Chess(prevFen);
+                    testGame.move(m);
+                    const resultFen = testGame.fen();
+                    return resultFen === currentFen;
+                } catch {
+                    return false;
+                }
+            });
+            
+            if (foundMove) {
+                history.push(foundMove);
+            } else {
+                history.push({ san: '?', from: '?', to: '?', invalid: true });
+            }
+        } catch (error) {
+            console.warn(`[analyzePosition] Error reconstructing move ${i}:`, error.message);
+            history.push({ san: '?', from: '?', to: '?', invalid: true });
         }
     }
 

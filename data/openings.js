@@ -1,18 +1,6 @@
-const ecoA = require("./ecoA.json");
-const ecoB = require("./ecoB.json");
-const ecoC = require("./ecoC.json");
-const ecoD = require("./ecoD.json");
-const ecoE = require("./ecoE.json");
-const ecoInterpolated = require("./eco_interpolated.json");
+import { openingsData } from './openings-data.js';
 
-const rawOpenings = {
-    ...ecoA,
-    ...ecoB,
-    ...ecoC,
-    ...ecoD,
-    ...ecoE,
-    ...ecoInterpolated
-};
+const rawOpenings = openingsData;
 
 const openings = {};
 for (const [fen, data] of Object.entries(rawOpenings)) {
@@ -24,7 +12,7 @@ for (const [fen, data] of Object.entries(rawOpenings)) {
     }
 }
 
-function getOpening(fen) {
+export function getOpening(fen) {
     if (!fen) return null;
     const parts = fen.split(" ");
     if (parts.length < 4) return null;
@@ -32,5 +20,4 @@ function getOpening(fen) {
     return openings[normalized] || null;
 }
 
-module.exports = { getOpening, openings };
-exports.default = openings;
+export default openings;
