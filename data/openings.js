@@ -1,11 +1,19 @@
-import ecoA from "./ecoA.json" assert { type: "json" };
-import ecoB from "./ecoB.json" assert { type: "json" };
-import ecoC from "./ecoC.json" assert { type: "json" };
-import ecoD from "./ecoD.json" assert { type: "json" };
-import ecoE from "./ecoE.json" assert { type: "json" };
-import ecoInterpolated from "./eco_interpolated.json" assert { type: "json" };
+import fs from "fs";
+import path from "path";
 
-const openings = {
+function loadJSON(filename) {
+    const filePath = path.join(process.cwd(), "data", filename);
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+const ecoA = loadJSON("ecoA.json");
+const ecoB = loadJSON("ecoB.json");
+const ecoC = loadJSON("ecoC.json");
+const ecoD = loadJSON("ecoD.json");
+const ecoE = loadJSON("ecoE.json");
+const ecoInterpolated = loadJSON("eco_interpolated.json");
+
+const rawOpenings = {
     ...ecoA,
     ...ecoB,
     ...ecoC,
@@ -14,9 +22,28 @@ const openings = {
     ...ecoInterpolated
 };
 
+const openings = {};
+for (const [fen, data] of Object.entries(rawOpenings)) {
+    const parts = fen.split(" ");
+    const key4 = parts.slice(0, 4).join(" ");
+    if (!openings[key4]) {
+        openings[key4] = data;
+    }
+}
+
 export function getOpening(fen) {
-    const trimmedFen = fen.split(" ").slice(0, 4).join(" ");
-    const data = openings[trimmedFen];
+    if (!fen) return null;
+    const parts = fen.split(" ");
+    if (parts.length < 4) return null;
+    
+    const normalizedParts = [
+        parts[0],
+        parts[1],
+        parts[2],
+        '-'
+    ];
+    const key4 = normalizedParts.join(" ");
+    const data = openings[key4];
     if (!data) return null;
 
     return {

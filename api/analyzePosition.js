@@ -714,8 +714,7 @@ export default async function handler(req, res) {
         const bestSan = pv1.san?.[0] || null;
         const secondBestSan = pv2.san?.[0] || null;
 
-        const cleanFen = prevFen.split(" ").slice(0, 4).join(" ");
-        const openingInfo = getOpening ? getOpening(cleanFen) : null;
+        const openingInfo = getOpening ? getOpening(prevFen) : null;
 
         const evalBefore = normalizeEvalValue(pv1);
         const evalSecondBest = normalizeEvalValue(pv2);
