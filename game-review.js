@@ -431,9 +431,13 @@
 
             fill.style.width = `${percent}%`;
             if (percent > 50) {
-                fill.style.background = `linear-gradient(90deg, #808080 0%, #ffffff ${Math.min(100, (percent - 50) * 2)}%)`;
+                const whiteIntensity = Math.min(100, (percent - 50) * 2);
+                fill.style.background = `linear-gradient(90deg, #666666 0%, #ffffff ${whiteIntensity}%)`;
+                text.style.color = whiteIntensity > 60 ? '#000' : '#fff';
             } else {
-                fill.style.background = `linear-gradient(90deg, #1a1a1a ${Math.max(0, 100 - percent * 2)}%, #808080 100%)`;
+                const blackIntensity = 100 - Math.max(0, percent * 2);
+                fill.style.background = `linear-gradient(90deg, #000000 ${blackIntensity}%, #666666 100%)`;
+                text.style.color = blackIntensity > 60 ? '#fff' : '#000';
             }
             text.textContent = displayText;
         }
@@ -482,16 +486,12 @@
                     
                     const bestSan = analysis.bestSan || '';
                     const motifs = analysis.motifs?.join(', ') || '';
-                    const opening = analysis.opening ? `${analysis.opening.eco}: ${analysis.opening.name}` : '';
                     const hasOpeningInfo = State.summary?.openingInfo && i < 20;
                     const isBookMove = (analysis.opening || (hasOpeningInfo && (analysis.cpLoss === undefined || analysis.cpLoss === 0)));
-                    
-                    const openingDisplay = opening || (hasOpeningInfo && State.summary.openingInfo ? `${State.summary.openingInfo.eco}: ${State.summary.openingInfo.name}` : '');
                     
                     meta.innerHTML = `
                         ${isBookMove ? '<span style="color:#10b981;">📖 Book Move</span>' : `<span>CPL: ${analysis.cpLoss ?? 0}</span>`}
                         ${bestSan && analysis.cpLoss > 15 && !isBookMove ? `<span>Best: ${bestSan}</span>` : ''}
-                        ${openingDisplay ? `<span style="color:#10b981;">${openingDisplay}</span>` : ''}
                         ${motifs ? `<span class="motifs">${motifs}</span>` : ''}
                     `;
                     item.appendChild(core);
@@ -644,7 +644,7 @@
             else if (analysis.isGreat) badges += '<span class="badge great">⭐ Great!</span>';
             else if (analysis.isOnlyMove) badges += '<span class="badge only">Only Move</span>';
 
-            const hasOpeningInfo = State.summary?.openingInfo && State.currentMove < 20;
+            const hasOpeningInfo = State.summary?.openingInfo && State.moveIndex < 20;
             const isBookMove = (analysis.opening || (hasOpeningInfo && (analysis.cpLoss === undefined || analysis.cpLoss === 0)));
             const displayLabel = isBookMove ? 'Book Move' : analysis.label;
             const displayCategory = isBookMove ? 'move-book' : analysis.category;
@@ -664,7 +664,7 @@
 
             if (analysis.opening) {
                 html += `<div class="analysis-row">Opening: <span style="color:#10b981;">${analysis.opening.eco} - ${analysis.opening.name}</span></div>`;
-            } else if (State.summary?.openingInfo && State.currentMove < 20) {
+            } else if (State.summary?.openingInfo && State.moveIndex < 20) {
                 html += `<div class="analysis-row">Opening: <span style="color:#10b981;">${State.summary.openingInfo.eco} - ${State.summary.openingInfo.name}</span></div>`;
             }
 
@@ -700,16 +700,7 @@
                 const evaluation = EvalCache.best(fen, ENGINE_CONFIG.DEPTH);
                 if (evaluation) {
                     EvalBar.update(evaluation.cpWhite, evaluation.mate);
-                }
-                
-                if (State.moveAnalyses.length > 0 && State.moveIndex > 0) {
-                    const prevFen = State.history[State.moveIndex - 1];
-                    const prevEval = EvalCache.best(prevFen);
-                    if (prevEval && prevEval.bestMove && prevEval.bestMove.length >= 4) {
-                        this.showBestMoveArrow(prevEval);
-                    } else {
-                        ArrowLayer.clear();
-                    }
+                    this.showBestMoveArrow(evaluation);
                 } else {
                     ArrowLayer.clear();
                 }

@@ -518,22 +518,40 @@ export default async function handler(req, res) {
     }
 
     function accuracyFromAcpl(acpl) {
-        const safe = Math.min(350, Math.max(0, acpl));
-        const value = 100 - (100 * Math.pow(safe / 130, 0.65));
-        return Math.max(0, Math.min(100, Math.round(value)));
+        if (acpl <= 0) return 100;
+        if (acpl < 10) return 99;
+        if (acpl < 20) return 97;
+        if (acpl < 30) return 95;
+        if (acpl < 40) return 93;
+        if (acpl < 50) return 90;
+        if (acpl < 60) return 87;
+        if (acpl < 75) return 84;
+        if (acpl < 100) return 80;
+        if (acpl < 125) return 75;
+        if (acpl < 150) return 70;
+        if (acpl < 200) return 60;
+        if (acpl < 250) return 50;
+        if (acpl < 300) return 40;
+        if (acpl < 400) return 30;
+        if (acpl < 500) return 20;
+        return 10;
     }
 
     function ratingFromAcpl(acpl) {
         if (acpl < 10) return 2800;
-        if (acpl < 20) return 2600;
-        if (acpl < 30) return 2400;
-        if (acpl < 50) return 2200;
-        if (acpl < 75) return 2000;
-        if (acpl < 100) return 1800;
-        if (acpl < 150) return 1600;
-        if (acpl < 200) return 1400;
-        if (acpl < 300) return 1200;
-        return 1000;
+        if (acpl < 15) return 2700;
+        if (acpl < 25) return 2600;
+        if (acpl < 40) return 2500;
+        if (acpl < 60) return 2400;
+        if (acpl < 80) return 2300;
+        if (acpl < 100) return 2200;
+        if (acpl < 125) return 2100;
+        if (acpl < 150) return 2000;
+        if (acpl < 200) return 1900;
+        if (acpl < 250) return 1800;
+        if (acpl < 300) return 1700;
+        if (acpl < 400) return 1600;
+        return 1500;
     }
 
     function isSacrifice(move, beforePv, afterPv) {
