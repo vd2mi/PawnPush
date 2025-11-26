@@ -4,8 +4,7 @@
   "type": "module",
   "dependencies": {
     "chess.js": "^1.4.0",
-    "firebase": "^12.3.0",
-    "node-fetch": "^3.3.2"
+    "firebase": "^12.3.0"
   },
   "main": "IndexScript.js",
   "scripts": {

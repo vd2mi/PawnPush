@@ -66,15 +66,18 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
   - **Unified Architecture**: Frontend sends FEN history → Backend performs 100% of engine work
   - **Batch-Mode Analysis**: HuggingFace Stockfish API with 4-engine parallel processing (depth 18, multipv 3)
   - **Persistent Caching**: Global cache persists across requests, eliminating redundant API calls
-  - **Intelligent Evaluation Normalization**: Explicit perspective tracking (side-to-move vs White's POV) prevents double conversion
-  - **Advanced Move Detection**: Brilliant moves (sacrifice + tactical + gap≥150), Great moves (gap≥120), Only moves (gap≥150)
+  - **Opening Book Integration**: 132K+ ECO positions (A-E + interpolated) with O(1) FEN lookup
+  - **Correct Mate Sorting**: Fixed PV ordering for both White and Black (no more reversed mate lines)
+  - **POV-Aware Evaluation**: Proper side-to-move perspective tracking prevents double conversion
+  - **Forced Move Detection**: Identifies positions with only one legal move
+  - **Advanced Move Detection**: Brilliant moves (sacrifice + tactical + gap≥150), Great moves (gap≥120)
   - **Tactical Motifs**: Automatic detection of checks, captures, forks, checkmates
-  - **Blunder Swing Detection**: Identifies significant evaluation swings (≥180 centipawns)
+  - **Blunder Swing Detection**: Identifies significant evaluation swings (≥250 centipawns)
   - **Engine Trend Analysis**: Tracks position evaluation changes move-by-move
   - **Full Game Commentary**: Opening, middlegame, endgame summaries with key turning points and narrative
   - **Chess.com Integration**: Import games directly with archive selection and time control filtering
   - **Canvas-Drawn Arrows**: Color-coded best move visualization (green/blue/purple for top 3 lines)
-  - **Move Classification**: Best, Good, Inaccuracy, Mistake, Blunder based on CPL thresholds
+  - **Move Classification**: Best, Forced, Good, Inaccuracy, Mistake, Blunder based on CPL thresholds
   - **Performance Metrics**: Accuracy %, ACPL, and estimated rating for both players (Stockfish-like formulas)
   - **Preview Mode**: Visualize engine lines with multi-step arrow sequences
   - **Robust PGN Parsing**: Handles Chess.com clock annotations, comments, and variations
@@ -96,10 +99,13 @@ PawnPush is a modern, interactive chess puzzle platform designed to help players
 - **Unified Architecture Refactor**: Frontend removed all engine logic, backend performs 100% of analysis work
 - **Batch-Mode System**: Upgraded to HuggingFace batch endpoint with 4-engine parallel processing
 - **Persistent Global Cache**: `global.EVAL_CACHE` persists across requests, eliminating redundant API calls
-- **Evaluation Normalization Fix**: Explicit perspective tracking prevents double conversion (side-to-move vs White's POV)
-- **Advanced Move Classification**: Brilliant (sacrifice + tactical + gap≥150), Great (gap≥120), Only Move (gap≥150) detection
+- **Opening Book Integration**: 132K+ ECO positions merged from A-E + interpolated databases with O(1) lookup
+- **Correct Mate Sorting**: Fixed critical PV ordering bug - Black's mate lines now sort correctly
+- **POV-Aware Evaluation**: Proper side-to-move perspective tracking prevents double conversion
+- **Forced Move Detection**: Identifies and labels positions with only one legal move
+- **Advanced Move Classification**: Brilliant (sacrifice + tactical + gap≥150), Great (gap≥120), Forced (only move)
 - **Tactical Motif Detection**: Automatic identification of checks, captures, forks, checkmates per move
-- **Blunder Swing Detection**: Identifies significant evaluation swings (≥180 centipawns) as turning points
+- **Blunder Swing Detection**: Identifies significant evaluation swings (≥250 centipawns) as turning points
 - **Engine Trend Analysis**: Tracks position evaluation changes move-by-move (improving/declining/stable)
 - **Full Game Commentary**: Comprehensive summaries with opening/middlegame/endgame analysis, key moments, and narrative
 - **UCI→SAN Conversion**: Unified, bug-free function for converting engine move sequences
@@ -176,20 +182,33 @@ PawnPush/
 │   │                         # - Tactical pattern detection (forks, pins, skewers)
 │   │                         # - Position facts engine with attack/defense maps
 │   │                         # - Safe response verification system
-│   ├── analyzePosition.js    # Production-grade game analysis API (~714 lines)
+│   ├── analyzePosition.js    # Production-grade game analysis API (~946 lines)
 │   │                         # - Unified batch-mode architecture (backend does 100% engine work)
 │   │                         # - HuggingFace batch API with 4-engine parallel processing
 │   │                         # - Persistent global caching (global.EVAL_CACHE)
-│   │                         # - Explicit evaluation normalization (side-to-move vs White's POV)
+│   │                         # - Opening book integration (132K+ ECO positions)
+│   │                         # - Correct mate sorting for both White and Black
+│   │                         # - POV-aware evaluation and move classification
+│   │                         # - Forced move detection (only legal move)
 │   │                         # - Brilliant/Great/Only Move detection
 │   │                         # - Tactical motifs (check, capture, fork, checkmate)
-│   │                         # - Blunder swing detection (≥180 centipawns)
+│   │                         # - Blunder swing detection (≥250 centipawns)
 │   │                         # - Engine trend analysis (improving/declining/stable)
 │   │                         # - Full game commentary (opening/middlegame/endgame summaries)
 │   │                         # - UCI→SAN conversion, CPL classification, accuracy/rating formulas
 │   ├── chesscom.js           # Chess.com API integration for game imports
 │   ├── stockfish.js          # Legacy single-position Stockfish API
 │   └── firebase.js           # Firebase API configuration
+│
+├── data/                      # Opening book database
+│   ├── openings.js           # Merged ECO database with O(1) FEN lookup
+│   ├── ecoA.json             # ECO A openings (22,362 positions)
+│   ├── ecoB.json             # ECO B openings (22,576 positions)
+│   ├── ecoC.json             # ECO C openings (26,513 positions)
+│   ├── ecoD.json             # ECO D openings (18,936 positions)
+│   ├── ecoE.json             # ECO E openings (14,338 positions)
+│   ├── eco_interpolated.json # Interpolated openings (28,005 positions)
+│   └── fromTo.json           # Opening tree navigation data
 │
 │
 ├── index.html                 # Main landing page
@@ -334,10 +353,13 @@ Visit [https://pawn-push.vercel.app](https://pawn-push.vercel.app) to start solv
   - Unified batch-mode architecture (backend performs 100% engine work)
   - HuggingFace batch API with 4-engine parallel processing
   - Persistent global caching eliminates redundant API calls
-  - Explicit evaluation normalization prevents double conversion
-  - Brilliant/Great/Only Move detection with tactical analysis
+  - Opening book integration with 132K+ ECO positions (A-E + interpolated)
+  - Correct mate sorting for both White and Black (fixed critical PV ordering bug)
+  - POV-aware evaluation prevents double conversion
+  - Forced move detection identifies only-legal-move positions
+  - Brilliant/Great/Forced Move detection with tactical analysis
   - Tactical motifs (check, capture, fork, checkmate) per move
-  - Blunder swing detection identifies turning points
+  - Blunder swing detection identifies turning points (≥250 centipawns)
   - Engine trend analysis tracks position evaluation changes
   - Full game commentary with opening/middlegame/endgame summaries
   - Canvas-drawn arrows with color-coded multi-PV visualization

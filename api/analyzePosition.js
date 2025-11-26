@@ -30,10 +30,16 @@ export default async function handler(req, res) {
     }
 
     let Chess;
+    let getOpening;
     try {
         Chess = (await import('chess.js')).Chess;
-    } catch {
-        return res.status(500).json({ error: 'Chess library not available' });
+        const openingsModule = await import('../data/openings.js');
+        getOpening = openingsModule.getOpening;
+    } catch (error) {
+        console.warn('[analyzePosition] Module import error:', error.message);
+        if (!Chess) {
+            return res.status(500).json({ error: 'Chess library not available' });
+        }
     }
 
     const HF_TOKEN = process.env.HF_TOKEN;
@@ -117,6 +123,11 @@ export default async function handler(req, res) {
             uciSeq.push(`${moveObj.from}${moveObj.to}${moveObj.promotion || ''}`);
             sanSeq.push(moveObj.san);
         }
+        
+        if (uciSeq.length < 1) {
+            return { uciSeq: [], sanSeq: [] };
+        }
+        
         return { uciSeq, sanSeq };
     }
 
@@ -140,6 +151,7 @@ export default async function handler(req, res) {
         const mateVal = evalObj.mate ?? evalObj.mateScore ?? null;
         if (mateVal !== null && mateVal !== undefined) {
             if (mateVal === 0) return 0;
+            if (Math.abs(mateVal) <= 1) return 0;
             const distance = Math.abs(mateVal);
             const mateScore = 10000 - Math.min(9900, distance * 100);
             return mateVal > 0 ? mateScore : -mateScore;
@@ -158,7 +170,6 @@ export default async function handler(req, res) {
     }
 
     function evalForSide(evalObj, side) {
-        // cp is already White POV, do NOT flip anymore
         return normalizeEvalValue(evalObj);
     }
 
@@ -280,16 +291,9 @@ export default async function handler(req, res) {
                 console.warn('[fetchBatch] No PV data returned for fen:', positionFen);
             }
 
-            // NOTE: HuggingFace API fixes needed:
-            // 1. Static eval should use set_depth(0), not set_depth(1)
-            // 2. Engine config order: update_engine_parameters({"MultiPV": multipv}) → set_fen_position(fen) → set_depth(depth)
-            // 3. Handle cases where Stockfish returns fewer PVs than requested (add fallback/dummy PVs)
-            // 4. Add engine crash detection if "depth" not in pv_data
-            
             const limitedLines = Array.isArray(rawLines) ? rawLines.slice(0, multipvVal) : [];
 
             let pvs = limitedLines.length > 0 ? limitedLines.map((line, idx) => {
-                // Engine crash detection: validate PV data structure
                 if (!line || (line.depth === undefined && line.evaluation === undefined && !line.Move)) {
                     console.warn(`[fetchBatch] Corrupted engine output at PV ${idx} for fen: ${positionFen.substring(0, 30)}...`);
                     return {
@@ -351,7 +355,6 @@ export default async function handler(req, res) {
                 if (rawMate !== null && !Number.isFinite(rawMate)) rawMate = null;
                 if (rawMate === 0) rawMate = null;
 
-                // HF always returns side-to-move POV, convert to White POV
                 const cpWhite = turn === 'w' ? rawCp : -rawCp;
 
                 const mateWhite = line.mateWhite !== undefined
@@ -367,8 +370,6 @@ export default async function handler(req, res) {
                 };
             }) : [];
 
-            // Removed depth filtering - Stockfish may return PVs with varying depths
-
             if (!pvs.length) {
                 pvs = [{
                     cp: 0,
@@ -380,15 +381,24 @@ export default async function handler(req, res) {
                 }];
             }
 
-            pvs.sort((a, b) => {
-                if (a.mate !== null || b.mate !== null) {
-                    const aMate = a.mate ?? 99999;
-                    const bMate = b.mate ?? 99999;
-                    if (aMate > 0 && bMate > 0) return aMate - bMate;
-                    if (aMate < 0 && bMate < 0) return bMate - aMate;
-                    return aMate > 0 ? -1 : 1;
+            if (!pvs.length || !pvs[0]?.uci || pvs[0].uci.length === 0) {
+                if (pvs[0]) {
+                    pvs[0].uci = [];
+                    pvs[0].san = [];
                 }
-                return b.cp - a.cp;
+            }
+
+            pvs.sort((a, b) => {
+                if (a.mate !== null && b.mate !== null) {
+                    return (turn === 'w' ? a.mate - b.mate : b.mate - a.mate);
+                }
+
+                if (a.mate !== null) return turn === 'w' ? -1 : 1;
+                if (b.mate !== null) return turn === 'w' ? 1 : -1;
+
+                const aScore = turn === 'w' ? a.cp : -a.cp;
+                const bScore = turn === 'w' ? b.cp : -b.cp;
+                return bScore - aScore;
             });
 
             let bestMove = result.best_move || result.bestMove || '';
@@ -436,10 +446,15 @@ export default async function handler(req, res) {
     }
     console.log('[analyzePosition] All batches evaluated successfully');
 
-    function classifyMove(playedUci, beforeEval, afterEval, side) {
+    function classifyMove(playedUci, beforeEval, afterEval, side, fen) {
         const pvs = beforeEval.pvs.filter(pv => !pv.dummy);
         if (pvs.length === 0) {
             return ['Best', 'move-best'];
+        }
+
+        const game = new Chess(fen);
+        if (game.moves().length === 1) {
+            return ['Forced', 'move-forced'];
         }
 
         const pv1 = pvs[0] || { cp: 0, uci: [], san: [], mate: null };
@@ -481,10 +496,14 @@ export default async function handler(req, res) {
         if (pv1.mate !== null || playedLine.mate !== null) {
             cpLoss = 0;
         } else {
-            cpLoss = Math.abs(evalBefore - evalAfter);
+            if (side === 'w') {
+                cpLoss = evalBefore - evalAfter;
+            } else {
+                cpLoss = evalAfter - evalBefore;
+            }
+            cpLoss = Math.abs(cpLoss);
         }
 
-        // Opening moves: if position is roughly equal and loss is small, treat as best
         if (Math.abs(evalBefore) <= 50 && cpLoss <= 80) {
             return ['Best', 'move-best'];
         }
@@ -581,7 +600,7 @@ export default async function handler(req, res) {
         if (foundMove) {
             history.push(foundMove);
         } else {
-            history.push({ san: '--', piece: 'p', from: 'e2', to: 'e4', captured: null, flags: '' });
+            history.push({ san: null, invalid: true });
         }
     }
 
@@ -598,6 +617,33 @@ export default async function handler(req, res) {
         const beforeEval = analysisResults[m];
         const afterEval = analysisResults[m + 1];
         const move = history[m];
+
+        if (move.invalid) {
+            console.warn(`[analyzePosition] Skipping invalid move at position ${m}`);
+            movesAnalysis.push({
+                moveNumber: m + 1,
+                side: side,
+                san: '--',
+                from: null,
+                to: null,
+                promotion: null,
+                captured: null,
+                cpl: 0,
+                label: 'Unknown',
+                category: 'move-unknown',
+                cpBefore: 0,
+                cpAfter: 0,
+                bestSan: null,
+                secondBestSan: null,
+                engineTrend: 'stable',
+                motifs: [],
+                isBrilliant: false,
+                isGreat: false,
+                isOnlyMove: false,
+                error: true
+            });
+            continue;
+        }
 
         if (!beforeEval || !beforeEval.pvs || !Array.isArray(beforeEval.pvs) || beforeEval.pvs.length === 0) {
             console.warn(`[analyzePosition] Missing beforeEval at move ${m}, inserting fallback`);
@@ -668,11 +714,14 @@ export default async function handler(req, res) {
         const bestSan = pv1.san?.[0] || null;
         const secondBestSan = pv2.san?.[0] || null;
 
+        const cleanFen = prevFen.split(" ").slice(0, 4).join(" ");
+        const openingInfo = getOpening ? getOpening(cleanFen) : null;
+
         const evalBefore = normalizeEvalValue(pv1);
         const evalSecondBest = normalizeEvalValue(pv2);
         const evalAfter = normalizeEvalValue(afterPv0);
 
-        let [label, category] = classifyMove(playedMoveUci, beforeEval, afterEval, side);
+        let [label, category] = classifyMove(playedMoveUci, beforeEval, afterEval, side, fensArray[m]);
 
         const gap12 = Math.abs(evalBefore - evalSecondBest);
         const isPv1 = playedMoveUci === (pv1.uci?.[0] || '');
@@ -680,13 +729,17 @@ export default async function handler(req, res) {
         if (pv1.mate !== null || afterPv0.mate !== null) {
             cpLoss = 0;
         } else {
-            cpLoss = Math.abs(evalBefore - evalAfter);
+            if (side === 'w') {
+                cpLoss = evalBefore - evalAfter;
+            } else {
+                cpLoss = evalAfter - evalBefore;
+            }
+            cpLoss = Math.abs(cpLoss);
         }
         const evalDrop = Math.abs(evalBefore - evalAfter);
         const evalMaintains = evalAfter >= evalBefore - 40;
         const evalIncreases = evalAfter > evalBefore;
 
-        // For ACPL calculation, skip moves in mate contexts entirely
         const acplContribution = (pv1.mate !== null || afterPv0.mate !== null) ? 0 : cpLoss;
 
         if (side === 'w') {
@@ -734,7 +787,7 @@ export default async function handler(req, res) {
                 if (diff > 50) evalTrend = 'improving';
                 else if (diff < -50) evalTrend = 'declining';
             } else {
-                if (diff < -50) evalTrend = 'improving';   // black improved
+                if (diff < -50) evalTrend = 'improving';
                 else if (diff > 50) evalTrend = 'declining';
             }
             if (Math.abs(diff) <= 50) evalTrend = 'stable';
@@ -758,7 +811,13 @@ export default async function handler(req, res) {
             isBrilliant,
             isGreat,
             brilliantReason,
-            pv: beforeEval.pvs
+            pv: beforeEval.pvs,
+            opening: openingInfo ? {
+                eco: openingInfo.eco,
+                name: openingInfo.name,
+                line: openingInfo.moves,
+                src: openingInfo.src
+            } : null
         });
     }
 
@@ -859,6 +918,8 @@ export default async function handler(req, res) {
         narrative += firstBlunder.text.replace(/^Blunder – /, 'Critical moment: ').replace('loses', 'losing') + '. ';
     }
 
+    const firstOpening = movesAnalysis.find(m => m.opening)?.opening || null;
+
     console.log('[analyzePosition] Summary:', {
         totalMoves,
         swings: swings.length,
@@ -871,6 +932,7 @@ export default async function handler(req, res) {
         summary: {
             white: { accuracy: accuracyWhite, acpl: acplWhite, rating: ratingWhite },
             black: { accuracy: accuracyBlack, acpl: acplBlack, rating: ratingBlack },
+            openingInfo: firstOpening,
             moments: keyMoments,
             narrative: narrative.trim(),
             opening: openingSummary,
