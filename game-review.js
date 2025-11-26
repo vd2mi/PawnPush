@@ -476,7 +476,7 @@
                 const analysis = State.moveAnalyses[i - 1];
                 const moveNum = Math.ceil(i / 2);
                 const isWhite = i % 2 === 1;
-                const san = Utils.san(State.history[i - 1], State.history[i]);
+                const san = analysis?.san || Utils.san(State.history[i - 1], State.history[i]);
 
                 const item = document.createElement('div');
                 item.className = `move-item ${State.moveIndex === i ? 'active' : ''}`;
@@ -504,10 +504,12 @@
                     
                     const bestSan = analysis.bestSan || '';
                     const motifs = analysis.motifs?.join(', ') || '';
+                    const opening = analysis.opening ? `${analysis.opening.eco}: ${analysis.opening.name}` : '';
                     
                     meta.innerHTML = `
                         <span>CPL: ${analysis.cpLoss}</span>
                         ${bestSan && analysis.cpLoss > 15 ? `<span>Best: ${bestSan}</span>` : ''}
+                        ${opening ? `<span style="color:#10b981;">${opening}</span>` : ''}
                         ${motifs ? `<span class="motifs">${motifs}</span>` : ''}
                     `;
                     item.appendChild(core);
@@ -531,11 +533,13 @@
                 return;
             }
 
-            const { white, black, moments, narrative, opening, middlegame, endgame, brilliants, blunders, swings } = State.summary;
+            const { white, black, moments, narrative, opening, middlegame, endgame, brilliants, blunders, swings, openingInfo } = State.summary;
 
             let html = '<div class="summary-title">Game Summary</div>';
             
-            if (State.headers.Event || State.headers.Opening) {
+            if (openingInfo) {
+                html += `<div class="summary-subtitle">${openingInfo.eco}: ${openingInfo.name}</div>`;
+            } else if (State.headers.Event || State.headers.Opening) {
                 html += `<div class="summary-subtitle">${State.headers.Opening || State.headers.Event || 'Unknown Opening'}</div>`;
             }
 
@@ -590,14 +594,14 @@
                 return;
             }
 
-            const eval = EvalCache.best(fen, ENGINE_CONFIG.DEPTH);
-            if (!eval || !eval.pvs || eval.pvs.length === 0) {
+            const evaluation = EvalCache.best(fen, ENGINE_CONFIG.DEPTH);
+            if (!evaluation || !evaluation.pvs || evaluation.pvs.length === 0) {
                 panel.style.display = 'none';
                 return;
             }
 
             panel.style.display = 'block';
-            const lines = eval.pvs
+            const lines = evaluation.pvs
                 .filter(pv => Array.isArray(pv.uci) && pv.uci.length > 0)
                 .slice(0, 3);
 
@@ -679,6 +683,10 @@
                 html += `<div class="analysis-row">Motifs: <span>${analysis.motifs.join(', ')}</span></div>`;
             }
 
+            if (analysis.opening) {
+                html += `<div class="analysis-row">Opening: <span style="color:#10b981;">${analysis.opening.eco} - ${analysis.opening.name}</span></div>`;
+            }
+
             if (analysis.brilliantReason) {
                 html += `<div class="insight-row">${analysis.brilliantReason}</div>`;
             }
@@ -708,9 +716,9 @@
                 State.board.position(fen);
                 State.chess.load(fen);
                 
-                const eval = EvalCache.best(fen, ENGINE_CONFIG.DEPTH);
-                if (eval) {
-                    EvalBar.update(eval.cpWhite, eval.mate);
+                const evaluation = EvalCache.best(fen, ENGINE_CONFIG.DEPTH);
+                if (evaluation) {
+                    EvalBar.update(evaluation.cpWhite, evaluation.mate);
                 }
                 
                 if (State.moveAnalyses.length > 0 && State.moveIndex > 0) {
@@ -863,9 +871,9 @@
                 const data = await res.json();
 
                 if (data.evaluations && Array.isArray(data.evaluations)) {
-                    data.evaluations.forEach((eval, idx) => {
-                        if (eval && State.history[idx]) {
-                            EvalCache.save(State.history[idx], eval, ENGINE_CONFIG.DEPTH);
+                    data.evaluations.forEach((evaluation, idx) => {
+                        if (evaluation && State.history[idx]) {
+                            EvalCache.save(State.history[idx], evaluation, ENGINE_CONFIG.DEPTH);
                 }
             });
         }
@@ -1016,10 +1024,10 @@
         const fen = State.history[State.moveIndex];
         if (!fen) return;
 
-        const eval = EvalCache.best(fen);
-        if (!eval || !eval.pvs || !eval.pvs[lineIndex]) return;
+        const evaluation = EvalCache.best(fen);
+        if (!evaluation || !evaluation.pvs || !evaluation.pvs[lineIndex]) return;
 
-        const pv = eval.pvs[lineIndex];
+        const pv = evaluation.pvs[lineIndex];
         const pvSan = Array.isArray(pv.san) ? pv.san : [];
         const pvUci = Array.isArray(pv.uci) ? pv.uci : [];
         if (pvSan.length === 0 && pvUci.length === 0) return;

@@ -48,8 +48,8 @@ export default async function handler(req, res) {
 
     const PERSISTENT_CACHE = global.EVAL_CACHE || (global.EVAL_CACHE = new Map());
 
-    function getCacheKey(fen, depth) {
-        return `${fen}:${depth}`;
+    function getCacheKey(fen, depth, multipv) {
+        return `${fen}:${depth}:${multipv}`;
     }
 
     function uciToSan(fen, uciMoves) {
@@ -183,7 +183,7 @@ export default async function handler(req, res) {
         const fenIndexMap = [];
 
         fensToEvaluate.forEach((fen, idx) => {
-            const cacheKey = getCacheKey(fen, depthVal);
+            const cacheKey = getCacheKey(fen, depthVal, multipvVal);
             if (PERSISTENT_CACHE.has(cacheKey)) {
                 fenIndexMap[idx] = { cached: true, result: PERSISTENT_CACHE.get(cacheKey) };
             } else {
@@ -264,7 +264,7 @@ export default async function handler(req, res) {
                         san: []
                     }]
                 };
-                PERSISTENT_CACHE.set(getCacheKey(positionFen, depthVal), fallback);
+                PERSISTENT_CACHE.set(getCacheKey(positionFen, depthVal, multipvVal), fallback);
                 return fallback;
             }
 
@@ -417,7 +417,7 @@ export default async function handler(req, res) {
                 pvs
             };
 
-            PERSISTENT_CACHE.set(getCacheKey(positionFen, depthVal), normalized);
+            PERSISTENT_CACHE.set(getCacheKey(positionFen, depthVal, multipvVal), normalized);
             return normalized;
         });
 
@@ -625,18 +625,10 @@ export default async function handler(req, res) {
         if (move.invalid) {
             console.warn(`[analyzePosition] Skipping invalid move at position ${m}`);
             movesAnalysis.push({
-                moveNumber: m + 1,
-                side: side,
-                san: '--',
-                from: null,
-                to: null,
-                promotion: null,
-                captured: null,
-                cpl: 0,
-                label: 'Unknown',
+                san: null,
+                cpLoss: 0,
                 category: 'move-unknown',
-                cpBefore: 0,
-                cpAfter: 0,
+                label: 'Unknown',
                 bestSan: null,
                 secondBestSan: null,
                 engineTrend: 'stable',
@@ -644,7 +636,9 @@ export default async function handler(req, res) {
                 isBrilliant: false,
                 isGreat: false,
                 isOnlyMove: false,
-                error: true
+                brilliantReason: null,
+                pv: [],
+                opening: null
             });
             continue;
         }
@@ -652,18 +646,10 @@ export default async function handler(req, res) {
         if (!beforeEval || !beforeEval.pvs || !Array.isArray(beforeEval.pvs) || beforeEval.pvs.length === 0) {
             console.warn(`[analyzePosition] Missing beforeEval at move ${m}, inserting fallback`);
             movesAnalysis.push({
-                moveNumber: m + 1,
-                side: side,
                 san: move.san,
-                from: move.from,
-                to: move.to,
-                promotion: move.promotion || null,
-                captured: move.captured || null,
-                cpl: 0,
-                label: 'Best',
+                cpLoss: 0,
                 category: 'move-best',
-                cpBefore: 0,
-                cpAfter: 0,
+                label: 'Best',
                 bestSan: null,
                 secondBestSan: null,
                 engineTrend: 'stable',
@@ -671,27 +657,20 @@ export default async function handler(req, res) {
                 isBrilliant: false,
                 isGreat: false,
                 isOnlyMove: false,
-                error: true
+                brilliantReason: null,
+                pv: [],
+                opening: null
             });
             continue;
         }
 
         if (!afterEval || !afterEval.pvs || !Array.isArray(afterEval.pvs) || afterEval.pvs.length === 0) {
             console.warn(`[analyzePosition] Missing afterEval at move ${m}, inserting fallback`);
-            const pv0 = beforeEval.pvs?.[0] || { cp: 0, san: [] };
             movesAnalysis.push({
-                moveNumber: m + 1,
-                side: side,
                 san: move.san,
-                from: move.from,
-                to: move.to,
-                promotion: move.promotion || null,
-                captured: move.captured || null,
-                cpl: 0,
-                label: 'Best',
+                cpLoss: 0,
                 category: 'move-best',
-                cpBefore: beforeEval.pvs?.[0]?.cp ?? 0,
-                cpAfter: 0,
+                label: 'Best',
                 bestSan: beforeEval.pvs?.[0]?.san?.[0] || null,
                 secondBestSan: beforeEval.pvs?.[1]?.san?.[0] || null,
                 engineTrend: 'stable',
@@ -699,7 +678,9 @@ export default async function handler(req, res) {
                 isBrilliant: false,
                 isGreat: false,
                 isOnlyMove: false,
-                error: true
+                brilliantReason: null,
+                pv: beforeEval.pvs || [],
+                opening: null
             });
             continue;
         }
@@ -719,10 +700,13 @@ export default async function handler(req, res) {
         const secondBestSan = pv2.san?.[0] || null;
 
         let openingInfo = null;
-        try {
-            openingInfo = getOpening ? getOpening(prevFen) : null;
-        } catch (e) {
-            console.warn("[opening lookup failed]", e.message);
+        const moveNumber = Math.floor(m / 2) + 1;
+        if (moveNumber <= 15) {
+            try {
+                openingInfo = getOpening ? getOpening(prevFen) : null;
+            } catch (e) {
+                console.warn("[opening lookup failed]", e.message);
+            }
         }
 
         let evalBefore = normalizeEvalValue(pv1);
@@ -764,13 +748,20 @@ export default async function handler(req, res) {
 
         let isGreat = false;
         let isBrilliant = false;
+        let isOnlyMove = false;
         let brilliantReason = null;
+
+        const game = new Chess(fensArray[m]);
+        if (game.moves().length === 1) {
+            isOnlyMove = true;
+        }
 
         if (isPv1) {
             const wasSacrifice = isSacrifice(move, pv1, afterPv0);
             if (wasSacrifice) {
                 const wasTactical = isTactical(pv1.uci || [], fensArray[m]);
                 const onlyMove = gap12 >= 100;
+                if (onlyMove) isOnlyMove = true;
                 if (wasTactical && evalDrop <= 30 && (evalMaintains || evalIncreases) && (onlyMove || evalIncreases)) {
                     isBrilliant = true;
                     brilliantReason = 'Sacrificial forcing move with no alternatives';
@@ -822,6 +813,7 @@ export default async function handler(req, res) {
             motifs,
             isBrilliant,
             isGreat,
+            isOnlyMove,
             brilliantReason,
             pv: beforeEval.pvs,
             opening: openingInfo ? {
