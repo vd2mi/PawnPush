@@ -352,14 +352,15 @@
             let whiteCount = 0, blackCount = 0;
 
             State.moveAnalyses.forEach((move, idx) => {
+                const cpLoss = move.cpLoss ?? 0;
                 if (idx % 2 === 0) {
-                    whiteSum += move.cpLoss;
+                    whiteSum += cpLoss;
                     whiteCount++;
                     const acpl = whiteSum / whiteCount;
                     const acc = Math.round(100 - (100 * Math.pow(acpl / 130, 0.65)));
                     whiteData.push(acc);
                 } else {
-                    blackSum += move.cpLoss;
+                    blackSum += cpLoss;
                     blackCount++;
                     const acpl = blackSum / blackCount;
                     const acc = Math.round(100 - (100 * Math.pow(acpl / 130, 0.65)));
@@ -414,17 +415,18 @@
             ctx.fillRect(0, 0, width, height);
 
             const barWidth = width / State.moveAnalyses.length;
-            const maxCpl = Math.max(...State.moveAnalyses.map(m => m.cpLoss), 100);
+            const maxCpl = Math.max(...State.moveAnalyses.map(m => m.cpLoss ?? 0), 100);
 
             State.moveAnalyses.forEach((move, idx) => {
+                const cpLoss = move.cpLoss ?? 0;
                 const x = idx * barWidth;
-                const barHeight = (move.cpLoss / maxCpl) * height;
+                const barHeight = (cpLoss / maxCpl) * height;
                 const y = height - barHeight;
 
                 let color = '#4caf50';
-                if (move.cpLoss > 200) color = '#e74c3c';
-                else if (move.cpLoss > 80) color = '#f39c12';
-                else if (move.cpLoss > 40) color = '#f1c40f';
+                if (cpLoss > 200) color = '#e74c3c';
+                else if (cpLoss > 80) color = '#f39c12';
+                else if (cpLoss > 40) color = '#f1c40f';
 
                 ctx.fillStyle = color;
                 ctx.fillRect(x, y, barWidth - 1, barHeight);
@@ -489,12 +491,16 @@
                     else if (analysis.isOnlyMove) badges += '<span class="badge only">Only Move</span>';
                 }
 
+                const isBookMove = analysis?.opening && (analysis.cpLoss === undefined || analysis.cpLoss === 0);
+                const displayLabel = isBookMove ? 'Book' : (analysis?.label || '');
+                const displayCategory = isBookMove ? 'move-book' : (analysis?.category || '');
+                
                 const core = document.createElement('div');
                 core.className = 'move-core';
                 core.innerHTML = `
                     <span class="move-num">${moveNum}${isWhite ? '.' : '...'}</span>
                     <span>${san}</span>
-                    ${analysis ? `<span class="${analysis.category}">${analysis.label}</span>` : ''}
+                    ${analysis ? `<span class="${displayCategory}">${displayLabel}</span>` : ''}
                     ${badges}
                 `;
 
@@ -505,10 +511,11 @@
                     const bestSan = analysis.bestSan || '';
                     const motifs = analysis.motifs?.join(', ') || '';
                     const opening = analysis.opening ? `${analysis.opening.eco}: ${analysis.opening.name}` : '';
+                    const isBookMove = analysis.opening && (analysis.cpLoss === undefined || analysis.cpLoss === 0);
                     
                     meta.innerHTML = `
-                        <span>CPL: ${analysis.cpLoss}</span>
-                        ${bestSan && analysis.cpLoss > 15 ? `<span>Best: ${bestSan}</span>` : ''}
+                        ${isBookMove ? '<span style="color:#10b981;">📖 Book Move</span>' : `<span>CPL: ${analysis.cpLoss ?? 0}</span>`}
+                        ${bestSan && analysis.cpLoss > 15 && !isBookMove ? `<span>Best: ${bestSan}</span>` : ''}
                         ${opening ? `<span style="color:#10b981;">${opening}</span>` : ''}
                         ${motifs ? `<span class="motifs">${motifs}</span>` : ''}
                     `;
@@ -662,13 +669,17 @@
             else if (analysis.isGreat) badges += '<span class="badge great">⭐ Great!</span>';
             else if (analysis.isOnlyMove) badges += '<span class="badge only">Only Move</span>';
 
+            const isBookMove = analysis.opening && (analysis.cpLoss === undefined || analysis.cpLoss === 0);
+            const displayLabel = isBookMove ? 'Book Move' : analysis.label;
+            const displayCategory = isBookMove ? 'move-book' : analysis.category;
+            
             let html = `
                 <div class="analysis-header">
                     <span style="font-weight:bold;">${moveNum}${isWhite ? '.' : '...'} ${playedMove}</span>
-                    <span class="analysis-badge ${analysis.category}">${analysis.label}</span>
+                    <span class="analysis-badge ${displayCategory}">${displayLabel}</span>
                     ${badges}
                 </div>
-                <div class="analysis-row">CPL: <span class="analysis-score">${analysis.cpLoss}</span></div>
+                ${isBookMove ? '<div class="analysis-row">📖 <span style="color:#10b981;">Book Move</span></div>' : `<div class="analysis-row">CPL: <span class="analysis-score">${analysis.cpLoss ?? 0}</span></div>`}
                 <div class="analysis-row">Trend: <span>${analysis.engineTrend}</span></div>
             `;
 
