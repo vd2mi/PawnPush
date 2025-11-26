@@ -8,8 +8,14 @@
     },
     "api/getHint.js": {
       "maxDuration": 60
+    },
+    "api/analyzePosition.js": {
+      "maxDuration": 60
     }
   },
+  "includeFiles": [
+    "data/**/*.json"
+  ],
   "headers": [
     {
       "source": "/(.*)",

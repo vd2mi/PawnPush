@@ -589,6 +589,11 @@ export default async function handler(req, res) {
         return motifs;
     }
 
+    function normalizeFen(fen) {
+        const parts = fen.split(' ');
+        return parts.slice(0, 4).join(' ');
+    }
+
     const history = [];
     
     for (let i = 1; i < fensArray.length; i++) {
@@ -599,11 +604,12 @@ export default async function handler(req, res) {
         const foundMove = moves.find(m => {
             const testGame = new Chess(prevFen);
             testGame.move(m);
-            return testGame.fen() === currentFen;
+            return normalizeFen(testGame.fen()) === normalizeFen(currentFen);
         });
         if (foundMove) {
             history.push(foundMove);
         } else {
+            console.warn(`[analyzePosition] Failed to reconstruct move ${i}: ${prevFen.substring(0, 30)}... -> ${currentFen.substring(0, 30)}...`);
             history.push({ san: null, invalid: true });
         }
     }
