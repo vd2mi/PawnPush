@@ -692,6 +692,7 @@ export default async function handler(req, res) {
         const afterPv0 = afterEval.pvs[0] || { cp: 0, mate: null };
 
         const prevFen = fensArray[m] || null;
+        const currentFen = fensArray[m + 1] || null;
         const sanDerivedUci = sanToUci(prevFen, move.san);
         const promo = move.promotion ? move.promotion.toLowerCase() : '';
         const fallbackUci = (move.from && move.to) ? (move.from + move.to + promo) : null;
@@ -701,9 +702,9 @@ export default async function handler(req, res) {
 
         let openingInfo = null;
         const moveNumber = Math.floor(m / 2) + 1;
-        if (moveNumber <= 15) {
+        if (moveNumber <= 15 && currentFen) {
             try {
-                openingInfo = getOpening ? getOpening(prevFen) : null;
+                openingInfo = getOpening ? getOpening(currentFen) : null;
             } catch (e) {
                 console.warn("[opening lookup failed]", e.message);
             }

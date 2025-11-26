@@ -22,8 +22,11 @@ const rawOpenings = {
 const openings = {};
 for (const [fen, data] of Object.entries(rawOpenings)) {
     const parts = fen.split(" ");
+    if (parts.length < 4) continue;
     const normalized = [parts[0], parts[1], parts[2], "-"].join(" ");
-    openings[normalized] = data;
+    if (!openings[normalized]) {
+        openings[normalized] = data;
+    }
 }
 
 export function getOpening(fen) {
