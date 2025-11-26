@@ -462,9 +462,13 @@ export default async function handler(req, res) {
         const pv3 = pvs[2] || { cp: pv2.cp - 60, uci: [], san: [] };
         const playedLine = afterEval.pvs[0] || { cp: 0, mate: null };
 
-        const evalBefore = normalizeEvalValue(pv1);
-        const evalSecondBest = normalizeEvalValue(pv2);
-        const evalAfter = normalizeEvalValue(playedLine);
+        let evalBefore = normalizeEvalValue(pv1);
+        let evalSecondBest = normalizeEvalValue(pv2);
+        let evalAfter = normalizeEvalValue(playedLine);
+
+        if (!Number.isFinite(evalBefore)) evalBefore = 0;
+        if (!Number.isFinite(evalSecondBest)) evalSecondBest = 0;
+        if (!Number.isFinite(evalAfter)) evalAfter = 0;
 
         const mateForPlayer =
         pv1.mate !== null &&
@@ -714,11 +718,20 @@ export default async function handler(req, res) {
         const bestSan = pv1.san?.[0] || null;
         const secondBestSan = pv2.san?.[0] || null;
 
-        const openingInfo = getOpening ? getOpening(prevFen) : null;
+        let openingInfo = null;
+        try {
+            openingInfo = getOpening ? getOpening(prevFen) : null;
+        } catch (e) {
+            console.warn("[opening lookup failed]", e.message);
+        }
 
-        const evalBefore = normalizeEvalValue(pv1);
-        const evalSecondBest = normalizeEvalValue(pv2);
-        const evalAfter = normalizeEvalValue(afterPv0);
+        let evalBefore = normalizeEvalValue(pv1);
+        let evalSecondBest = normalizeEvalValue(pv2);
+        let evalAfter = normalizeEvalValue(afterPv0);
+
+        if (!Number.isFinite(evalBefore)) evalBefore = 0;
+        if (!Number.isFinite(evalSecondBest)) evalSecondBest = 0;
+        if (!Number.isFinite(evalAfter)) evalAfter = 0;
 
         let [label, category] = classifyMove(playedMoveUci, beforeEval, afterEval, side, fensArray[m]);
 
