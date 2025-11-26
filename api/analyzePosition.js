@@ -524,7 +524,16 @@ export default async function handler(req, res) {
     }
 
     function ratingFromAcpl(acpl) {
-        return Math.max(400, Math.round(2850 - 220 * Math.log10(acpl + 10)));
+        if (acpl < 10) return 2800;
+        if (acpl < 20) return 2600;
+        if (acpl < 30) return 2400;
+        if (acpl < 50) return 2200;
+        if (acpl < 75) return 2000;
+        if (acpl < 100) return 1800;
+        if (acpl < 150) return 1600;
+        if (acpl < 200) return 1400;
+        if (acpl < 300) return 1200;
+        return 1000;
     }
 
     function isSacrifice(move, beforePv, afterPv) {

@@ -270,51 +270,18 @@
         accuracyChart: null,
         acplChart: null,
 
-        drawHeatmap() {
-            if (!State.moveAnalyses || State.moveAnalyses.length === 0) return;
-
-            const colors = State.moveAnalyses.map(m => {
-                switch (m.category) {
-                    case 'move-best': return 0.1;
-                    case 'move-excellent': return 0.25;
-                    case 'move-good': return 0.4;
-                    case 'move-inaccuracy': return 0.6;
-                    case 'move-mistake': return 0.8;
-                    case 'move-blunder': return 1.0;
-                    default: return 0.5;
-                }
-            });
-
-            const data = [{
-                z: [colors],
-                type: 'heatmap',
-                colorscale: [
-                    [0, '#00d47e'],
-                    [0.25, '#3b82f6'],
-                    [0.4, '#a855f7'],
-                    [0.6, '#facc15'],
-                    [0.8, '#fb923c'],
-                    [1.0, '#ef4444']
-                ],
-                showscale: false,
-                hoverinfo: 'skip'
-            }];
-
-            const layout = {
-                margin: { l: 0, r: 0, t: 0, b: 0 },
-                xaxis: { visible: false },
-                yaxis: { visible: false },
-                plot_bgcolor: 'rgba(0,0,0,0)',
-                paper_bgcolor: 'rgba(0,0,0,0)',
-                height: 60
-            };
-
-            const config = {
-                displayModeBar: false,
-                responsive: true
-            };
-
-            Plotly.newPlot('heatmap', data, layout, config);
+        displayOpeningName() {
+            const display = document.getElementById('openingNameDisplay');
+            const ecoEl = document.getElementById('openingEco');
+            const nameEl = document.getElementById('openingName');
+            
+            if (State.summary?.openingInfo) {
+                display.style.display = 'block';
+                ecoEl.textContent = State.summary.openingInfo.eco || '';
+                nameEl.textContent = State.summary.openingInfo.name || '';
+            } else {
+                display.style.display = 'none';
+            }
         },
 
         initAccuracyChart() {
@@ -463,7 +430,11 @@
             this.lastMate = mate;
 
             fill.style.width = `${percent}%`;
-            fill.style.background = percent > 50 ? '#4caf50' : '#e74c3c';
+            if (percent > 50) {
+                fill.style.background = `linear-gradient(90deg, #808080 0%, #ffffff ${Math.min(100, (percent - 50) * 2)}%)`;
+            } else {
+                fill.style.background = `linear-gradient(90deg, #1a1a1a ${Math.max(0, 100 - percent * 2)}%, #808080 100%)`;
+            }
             text.textContent = displayText;
         }
     };
@@ -491,7 +462,8 @@
                     else if (analysis.isOnlyMove) badges += '<span class="badge only">Only Move</span>';
                 }
 
-                const isBookMove = analysis?.opening && (analysis.cpLoss === undefined || analysis.cpLoss === 0);
+                const hasOpeningInfo = State.summary?.openingInfo && moveIdx < 20;
+                const isBookMove = (analysis?.opening || (hasOpeningInfo && (analysis?.cpLoss === undefined || analysis?.cpLoss === 0)));
                 const displayLabel = isBookMove ? 'Book' : (analysis?.label || '');
                 const displayCategory = isBookMove ? 'move-book' : (analysis?.category || '');
                 
@@ -511,12 +483,15 @@
                     const bestSan = analysis.bestSan || '';
                     const motifs = analysis.motifs?.join(', ') || '';
                     const opening = analysis.opening ? `${analysis.opening.eco}: ${analysis.opening.name}` : '';
-                    const isBookMove = analysis.opening && (analysis.cpLoss === undefined || analysis.cpLoss === 0);
+                    const hasOpeningInfo = State.summary?.openingInfo && moveIdx < 20;
+                    const isBookMove = (analysis.opening || (hasOpeningInfo && (analysis.cpLoss === undefined || analysis.cpLoss === 0)));
+                    
+                    const openingDisplay = opening || (hasOpeningInfo && State.summary.openingInfo ? `${State.summary.openingInfo.eco}: ${State.summary.openingInfo.name}` : '');
                     
                     meta.innerHTML = `
                         ${isBookMove ? '<span style="color:#10b981;">📖 Book Move</span>' : `<span>CPL: ${analysis.cpLoss ?? 0}</span>`}
                         ${bestSan && analysis.cpLoss > 15 && !isBookMove ? `<span>Best: ${bestSan}</span>` : ''}
-                        ${opening ? `<span style="color:#10b981;">${opening}</span>` : ''}
+                        ${openingDisplay ? `<span style="color:#10b981;">${openingDisplay}</span>` : ''}
                         ${motifs ? `<span class="motifs">${motifs}</span>` : ''}
                     `;
                     item.appendChild(core);
@@ -669,19 +644,12 @@
             else if (analysis.isGreat) badges += '<span class="badge great">⭐ Great!</span>';
             else if (analysis.isOnlyMove) badges += '<span class="badge only">Only Move</span>';
 
-            const isBookMove = analysis.opening && (analysis.cpLoss === undefined || analysis.cpLoss === 0);
+            const hasOpeningInfo = State.summary?.openingInfo && State.currentMove < 20;
+            const isBookMove = (analysis.opening || (hasOpeningInfo && (analysis.cpLoss === undefined || analysis.cpLoss === 0)));
             const displayLabel = isBookMove ? 'Book Move' : analysis.label;
             const displayCategory = isBookMove ? 'move-book' : analysis.category;
             
-            let html = `
-                <div class="analysis-header">
-                    <span style="font-weight:bold;">${moveNum}${isWhite ? '.' : '...'} ${playedMove}</span>
-                    <span class="analysis-badge ${displayCategory}">${displayLabel}</span>
-                    ${badges}
-                </div>
-                ${isBookMove ? '<div class="analysis-row">📖 <span style="color:#10b981;">Book Move</span></div>' : `<div class="analysis-row">CPL: <span class="analysis-score">${analysis.cpLoss ?? 0}</span></div>`}
-                <div class="analysis-row">Trend: <span>${analysis.engineTrend}</span></div>
-            `;
+            let html = `<div class="analysis-header"><span style="font-weight:bold;">${moveNum}${isWhite ? '.' : '...'} ${playedMove}</span><span class="analysis-badge ${displayCategory}">${displayLabel}</span>${badges}</div>${isBookMove ? '<div class="analysis-row">📖 <span style="color:#10b981;">Book Move</span></div>' : `<div class="analysis-row">CPL: <span class="analysis-score">${analysis.cpLoss ?? 0}</span></div>`}<div class="analysis-row">Trend: <span>${analysis.engineTrend}</span></div>`;
 
             if (bestSan && analysis.cpLoss > 15) {
                 html += `<div class="analysis-row">Best: <span class="analysis-score">${bestSan}</span></div>`;
@@ -696,6 +664,8 @@
 
             if (analysis.opening) {
                 html += `<div class="analysis-row">Opening: <span style="color:#10b981;">${analysis.opening.eco} - ${analysis.opening.name}</span></div>`;
+            } else if (State.summary?.openingInfo && State.currentMove < 20) {
+                html += `<div class="analysis-row">Opening: <span style="color:#10b981;">${State.summary.openingInfo.eco} - ${State.summary.openingInfo.name}</span></div>`;
             }
 
             if (analysis.brilliantReason) {
@@ -746,14 +716,26 @@
             }
         },
         showBestMoveArrow(evaluation) {
-            if (!evaluation.bestMove || evaluation.bestMove.length < 4) {
+            if (!evaluation.pvs || evaluation.pvs.length === 0) {
                 ArrowLayer.clear();
                 return;
             }
-            const from = evaluation.bestMove.slice(0, 2);
-            const to = evaluation.bestMove.slice(2, 4);
-            ArrowLayer.clear();
-            ArrowLayer.drawArrow(from, to, LINE_COLORS[0], 6);
+            
+            const arrows = evaluation.pvs
+                .filter(pv => pv.uci && pv.uci.length > 0 && pv.uci[0].length >= 4)
+                .slice(0, 3)
+                .map((pv, index) => ({
+                    from: pv.uci[0].slice(0, 2),
+                    to: pv.uci[0].slice(2, 4),
+                    color: LINE_COLORS[index],
+                    width: 6 - index
+                }));
+            
+            if (arrows.length > 0) {
+                ArrowLayer.drawMultipleArrows(arrows);
+            } else {
+                ArrowLayer.clear();
+            }
         }
     };
 
@@ -902,7 +884,7 @@
                 TopLinesPanel.update();
                 Charts.initAccuracyChart();
                 Charts.initAcplChart();
-                Charts.drawHeatmap();
+                Charts.displayOpeningName();
                 UI.toast('Analysis complete!', 'success');
             } catch (err) {
                 if (err.name !== 'AbortError') {
@@ -1100,10 +1082,8 @@
                     if (State.moveIndex > 0) {
                         const prevFen = State.history[State.moveIndex - 1];
                         const prevEval = EvalCache.best(prevFen, ENGINE_CONFIG.DEPTH);
-                        if (prevEval && prevEval.bestMove && prevEval.bestMove.length >= 4) {
-                            const from = prevEval.bestMove.slice(0, 2);
-                            const to = prevEval.bestMove.slice(2, 4);
-                            ArrowLayer.drawArrow(from, to, LINE_COLORS[0], 6);
+                        if (prevEval) {
+                            UIBoard.showBestMoveArrow(prevEval);
                         }
                     }
                 }
