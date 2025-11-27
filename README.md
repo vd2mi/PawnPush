@@ -73,8 +73,8 @@ PawnPush is a full-stack chess puzzle platform featuring custom-built serverless
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Frontend (Vanilla JS)                    │
-│  index.html · puzzle.html · game-review.html · pvp.html    │
-│  PuzzleScript.js · game-review.js · pvp.js · audio-manager │
+│  index.html · puzzle.html · game-review.html · pvp.html     │
+│  PuzzleScript.js · game-review.js · pvp.js · audio-manager  │
 └──────────────────────┬──────────────────────────────────────┘
                        │
         ┌──────────────┼──────────────┬──────────────┐
@@ -95,9 +95,9 @@ PawnPush is a full-stack chess puzzle platform featuring custom-built serverless
                  
 ┌─────────────────────────────────────────────────────────┐
 │          Opening Book Database (132,730 positions)      │
-│  ecoA.json (22,362) · ecoB.json (22,576)               │
-│  ecoC.json (26,513) · ecoD.json (18,936)               │
-│  ecoE.json (14,338) · eco_interpolated.json (28,005)   │
+│  ecoA.json (22,362) · ecoB.json (22,576)                │
+│  ecoC.json (26,513) · ecoD.json (18,936)                │
+│  ecoE.json (14,338) · eco_interpolated.json (28,005)    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -482,4 +482,4 @@ Play instantly without registration. Try the 1v1 Battle mode with a friend!
 
 ---
 
-*Built to help chess players worldwide improve through AI-powered analysis and engaging puzzles.*
+*PawnPush — By chess players, for chess players.*
