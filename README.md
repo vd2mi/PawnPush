@@ -90,7 +90,7 @@ PawnPush is a full-stack chess puzzle platform featuring custom-built serverless
 │ GPT-4.1-mini │ │ HuggingFace Stockfish Batch API │
 │ Tool Calling │ │  • 4 engines parallel           │
 │ Multi-step   │ │  • Depth 18, MultiPV 3          │
-│ Reasoning    │ │  • Batch size: 12 positions     │
+│ Reasoning    │ │  • Batch size: 10 positions     │
 └──────────────┘ └─────────────────────────────────┘
                  
 ┌─────────────────────────────────────────────────────────┐
@@ -113,7 +113,7 @@ PawnPush is a full-stack chess puzzle platform featuring custom-built serverless
 
 ```javascript
 // Backend performs 100% of engine work
-const BATCH_SIZE = 12;
+const BATCH_SIZE = 10;
 const PERSISTENT_CACHE = global.EVAL_CACHE || (global.EVAL_CACHE = new Map());
 
 async function fetchBatch(fens, depth, multipv) {

@@ -44,7 +44,7 @@ export default async function handler(req, res) {
 
     const HF_TOKEN = process.env.HF_TOKEN;
     const HF_BATCH_URL = 'https://vd2mi-stockfishapi.hf.space/analyze/batch';
-    const BATCH_SIZE = 12;
+    const BATCH_SIZE = 10;
 
     const PERSISTENT_CACHE = global.EVAL_CACHE || (global.EVAL_CACHE = new Map());
 
