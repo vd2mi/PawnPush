@@ -3,20 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PawnPush - Select Puzzle</title>
+  <title>PawnPush — a journal of tactical chess</title>
   <link rel="icon" type="image/png" sizes="32x32" href="icons/pawnpushicon.png">
   <link rel="icon" type="image/png" sizes="16x16" href="icons/pawnpushicon.png">
   <link rel="shortcut icon" href="icons/pawnpushicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
   <script src="audio-manager.js"></script>
 </head>
 <body>
+  <!-- A queen on either flank, seated low behind the editorial column -->
+  <div class="queen-stage left"  id="queenStageLeft"  aria-hidden="true"></div>
+  <div class="queen-stage right" id="queenStageRight" aria-hidden="true"></div>
+
   <header>
-    <div style="display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;">
-      <img src="icons/pawnpushicon.png" alt="PawnPush Logo" style="width: 100px; height: 8-px; object-fit: contain;">
+    <div class="wordmark-row">
+      <img src="icons/pawnpushicon.png" alt="PawnPush Logo" class="logo-mark">
       <h1>PawnPush</h1>
     </div>
+
     <p class="tagline">One push closer to victory</p>
+
     <div class="stats-bar">
       <div class="stat-item">
         <span class="stat-number">50,000+</span>
@@ -24,88 +40,97 @@
       </div>
       <div class="stat-item">
         <span class="stat-number">16</span>
-        <span class="stat-label">Difficulties & Positions</span>
+        <span class="stat-label">Positions</span>
       </div>
       <div class="stat-item">
-        <span class="stat-number">∞</span
+        <span class="stat-number">∞</span>
         <span class="stat-label">Learning</span>
       </div>
       <div class="stat-item daily-puzzle-stat" id="daily-puzzle-stat">
         <div class="daily-puzzle-main">
-          <span class="stat-number">📅</span>
-          <span class="stat-label">Daily Puzzle</span>
-          <span class="daily-rating-small" id="daily-puzzle-rating">--</span>
+          <span class="stat-number daily-rating-small" id="daily-puzzle-rating">—</span>
+          <span class="stat-label">Today's Puzzle</span>
         </div>
         <div class="daily-puzzle-mini">
           <div class="mini-rating">
-            <span id="mini-daily-rating">--</span>
+            <span id="mini-daily-rating">—</span>
           </div>
           <div class="mini-themes">
-            <span id="mini-daily-themes">Loading...</span>
+            <span id="mini-daily-themes">Loading…</span>
           </div>
-          <button id="mini-dailyPuzzleBtn" class="mini-daily-btn">Solve</button>
+          <button id="mini-dailyPuzzleBtn" class="mini-daily-btn">Begin</button>
         </div>
       </div>
     </div>
+  </header>
 
   <main>
     <section id="difficulty-section">
-      <h2>Select Difficulty</h2>
+      <h2>Difficulty</h2>
       <div class="button-row">
         <button id="diff-beginner">Beginner</button>
         <button id="diff-intermediate">Intermediate</button>
         <button id="diff-advanced">Advanced</button>
-        <button id="diff-grandmaster">GrandMaster</button>
+        <button id="diff-grandmaster">Grandmaster</button>
       </div>
     </section>
 
     <section id="position-section">
-      <h2>Select Position</h2>
+      <h2>Phase of Play</h2>
       <div class="button-row">
         <button id="pos-opening">Opening</button>
-        <button id="pos-middlegame">MiddleGame</button>
-        <button id="pos-endgame">EndGame</button>
-        <button id="pos-checkmate">CheckMate</button>
+        <button id="pos-middlegame">Middlegame</button>
+        <button id="pos-endgame">Endgame</button>
+        <button id="pos-checkmate">Checkmate</button>
       </div>
     </section>
 
-    <button id="startSolvingBtn">Start Solving!</button>
-    
+    <button id="startSolvingBtn">Begin the Study</button>
+
+    <div class="modes-eyebrow">— or choose a mode —</div>
+
     <div class="game-modes-grid">
       <button id="dailyPuzzleBtn" class="mode-card daily-mode">
-        <div class="mode-icon">📅</div>
+        <div class="mode-icon">♙</div>
         <div class="mode-content">
           <div class="mode-title">Daily Puzzle</div>
-          <div class="mode-desc">Fresh challenge every day!</div>
+          <div class="mode-desc">A fresh composition, every morning.</div>
         </div>
       </button>
-      
+
       <button id="survivalBtn" class="mode-card survival-mode">
-        <div class="mode-icon">♾️</div>
+        <div class="mode-icon">♞</div>
         <div class="mode-content">
           <div class="mode-title">Survival Rush</div>
-          <div class="mode-desc">3 lives, climb the ladder to victory!</div>
+          <div class="mode-desc">Three lives. Climb the ladder.</div>
         </div>
       </button>
-      
+
       <button id="pvpBtn" class="mode-card pvp-mode">
-        <div class="mode-icon">⚔️</div>
+        <div class="mode-icon">♜</div>
         <div class="mode-content">
           <div class="mode-title">1v1 Battles</div>
-          <div class="mode-desc">Challenge your friends!</div>
+          <div class="mode-desc">Challenge a friend, privately.</div>
         </div>
       </button>
-      
+
       <button id="gamereviewBtn" class="mode-card review-mode">
-        <div class="mode-icon">🔍</div>
+        <div class="mode-icon">♝</div>
         <div class="mode-content">
           <div class="mode-title">Game Review</div>
-          <div class="mode-desc">Analyze games using Stockfish!</div>
+          <div class="mode-desc">Analyse a game with Stockfish.</div>
         </div>
       </button>
     </div>
+
+    <footer class="colophon">
+      <span>Typeset in Fraunces &amp; JetBrains Mono</span>
+      <span>·</span>
+      <span>A study in warm ink, oxblood, and gilt</span>
+    </footer>
   </main>
 
+  <script type="module" src="queens3d.js"></script>
   <script src="IndexScript.js"></script>
 </body>
 </html>

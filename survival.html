@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PawnPush - Survival</title>
+  <title>PawnPush &mdash; Survival</title>
   <link rel="icon" type="image/png" sizes="32x32" href="icons/pawnpushicon.png">
   <link rel="icon" type="image/png" sizes="16x16" href="icons/pawnpushicon.png">
   <link rel="shortcut icon" href="icons/pawnpushicon.png">
@@ -12,6 +12,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
   <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="style.css">
   <script src="audio-manager.js"></script>
 </head>
@@ -19,14 +21,15 @@
 
 <main>
   <div class="survival-top-bar">
-    <a href="index.html" class="survival-back-btn">← Menu</a>
+    <a href="index.html" class="survival-back-btn">&larr;&nbsp;&nbsp;Index</a>
     <div class="survival-stats-compact">
       <div class="stat-compact">
-        <span class="stat-compact-icon">🔥</span>
+        <span class="stat-compact-label">Streak</span>
         <span class="stat-compact-value" id="streak-value">0</span>
       </div>
-      <div class="stat-compact">
-        <span class="stat-compact-icon" id="lives-value">❤️❤️❤️</span>
+      <div class="stat-compact lives-compact">
+        <span class="stat-compact-label">Lives</span>
+        <span class="stat-compact-value" id="lives-value">&#9830;&#9830;&#9830;</span>
       </div>
       <div class="stat-compact">
         <span class="stat-compact-label">ELO</span>
@@ -34,14 +37,14 @@
       </div>
     </div>
     <div class="survival-score-display">
-      <span class="score-label">Score:</span>
+      <span class="score-label">Score</span>
       <span class="score-number" id="score-value">0</span>
     </div>
   </div>
 
   <div id="puzzle-theme" class="puzzle-theme-card">
-    <div class="theme-icon">♾️</div>
-    <div class="theme-text">Survival Mode</div>
+    <div class="theme-icon">&#9822;</div>
+    <div class="theme-text">Survival &mdash; <em>three lives, no retreat</em></div>
   </div>
 
   <div class="puzzle-container">
@@ -54,36 +57,35 @@
     <div id="puzzle-info-sidebar" class="info-sidebar">
       <div class="info-section puzzle-details">
         <div class="section-header">
-          <div class="section-icon">📊</div>
-          <h3>Puzzle Info</h3>
+          <div class="section-icon">&sect;</div>
+          <h3>Position</h3>
         </div>
         <div class="info-cards">
           <div id="turn-indicator" class="info-card turn-card">
             <span class="info-label">Turn</span>
-            <span class="info-value">-- to move</span>
+            <span class="info-value">&mdash; to move</span>
           </div>
         </div>
       </div>
 
       <div class="info-section move-section">
         <div class="section-header">
-          <div class="section-icon">📝</div>
-          <h3>Move History</h3>
+          <div class="section-icon">&para;</div>
+          <h3>Notation</h3>
         </div>
         <div id="move-history" class="move-history-container">
-          <em class="no-moves">No moves yet</em>
+          <em class="no-moves">Make your first move.</em>
         </div>
       </div>
 
       <div class="info-section actions-section">
         <div class="section-header">
-          <div class="section-icon">💡</div>
-          <h3>Actions</h3>
+          <div class="section-icon">&#10022;</div>
+          <h3>Study</h3>
         </div>
         <div class="action-buttons">
           <button id="restartBtn" class="action-btn back-btn">
-            <span class="btn-icon">🔁</span>
-            <span class="btn-text">Restart</span>
+            <span class="btn-text">&#8634; Begin again</span>
           </button>
         </div>
       </div>
@@ -91,38 +93,35 @@
   </div>
 
   <button id="coachBtn" class="coach-floating-btn">
-    <span class="coach-icon">🤖</span>
-    <span class="coach-text">Ask Coach</span>
+    <span class="coach-text">Consult the Master</span>
   </button>
 
   <button id="leaderboardBtn" class="leaderboard-floating-btn">
-    <span class="leaderboard-icon">🏆</span>
-    <span class="leaderboard-text">Global Leaderboard</span>
+    <span class="leaderboard-text">Global Ranks</span>
   </button>
 
 
   <div id="chatPopup" class="chat-popup hidden">
     <div class="chat-header">
       <div class="chat-title">
-        <span class="chat-icon">🤖</span>
-        <span>Chess Coach</span>
+        <span>The Master</span>
       </div>
     </div>
     <div id="chatMessages" class="chat-messages"></div>
     <div class="chat-input-area">
-      <input id="chatInput" type="text" placeholder="Ask me for a hint..." class="chat-input"/>
-      <button id="chatSend" class="chat-send-btn">→</button>
+      <input id="chatInput" type="text" placeholder="Ask for a hint&hellip;" class="chat-input"/>
+      <button id="chatSend" class="chat-send-btn">&rarr;</button>
     </div>
   </div>
 
   <div id="leaderboardModal" class="leaderboard-modal hidden">
     <div class="leaderboard-content">
       <div class="leaderboard-header">
-        <h2>🏆 Global Leaderboard</h2>
-        <button id="closeLeaderboardBtn" class="close-btn">×</button>
+        <h2>Global Ranks</h2>
+        <button id="closeLeaderboardBtn" class="close-btn">&times;</button>
       </div>
       <div id="leaderboardList" class="leaderboard-list">
-        <div class="loading-spinner">Loading global leaderboard...</div>
+        <div class="loading-spinner">Gathering the board&hellip;</div>
       </div>
     </div>
   </div>
@@ -131,70 +130,36 @@
 </main>
 
 <template id="game-over-template">
-  <div style="text-align: left; margin: 20px 0;">
-    <div style="text-align: center; margin-bottom: 20px;">
-      <h2 id="go-title" style="font-size: 2em; margin: 10px 0; color: #f39c12;">Game Over!</h2>
-    </div>
-    
-    <div style="background: rgba(0,0,0,0.1); padding: 15px; border-radius: 10px; margin-bottom: 15px;">
-      <h3 style="margin: 0 0 10px 0; color: #3498db;">📊 Your Performance</h3>
-      <table style="width: 100%; border-collapse: collapse;">
-        <tr style="border-bottom: 1px solid rgba(0,0,0,0.1);">
-          <td style="padding: 8px 0;"><strong>Puzzles Solved:</strong></td>
-          <td id="go-score" style="text-align: right; font-size: 1.2em; color: #27ae60;"><strong>0</strong></td>
-        </tr>
-        <tr style="border-bottom: 1px solid rgba(0,0,0,0.1);">
-          <td style="padding: 8px 0;"><strong>Final ELO:</strong></td>
-          <td id="go-elo" style="text-align: right; font-size: 1.2em; color: #e74c3c;"><strong>800</strong></td>
-        </tr>
-        <tr style="border-bottom: 1px solid rgba(0,0,0,0.1);">
-          <td style="padding: 8px 0;"><strong>ELO Gained:</strong></td>
-          <td id="go-elo-gained" style="text-align: right; color: #9b59b6;"><strong>+0</strong></td>
-        </tr>
-        <tr style="border-bottom: 1px solid rgba(0,0,0,0.1);">
-          <td style="padding: 8px 0;"><strong>Time Played:</strong></td>
-          <td id="go-time" style="text-align: right;">0s</td>
-        </tr>
-        <tr style="border-bottom: 1px solid rgba(0,0,0,0.1);">
-          <td style="padding: 8px 0;"><strong>Accuracy:</strong></td>
-          <td id="go-accuracy" style="text-align: right;"><strong>0%</strong></td>
-        </tr>
-        <tr style="border-bottom: 1px solid rgba(0,0,0,0.1);">
-          <td style="padding: 8px 0;"><strong>Total Moves:</strong></td>
-          <td id="go-moves" style="text-align: right;">0 (0 ✓ / 0 ✗)</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0;"><strong>Best Puzzle Streak:</strong></td>
-          <td id="go-streak" style="text-align: right; color: #f39c12;"><strong>0 🔥</strong></td>
-        </tr>
-      </table>
-    </div>
+  <div class="game-over-sheet">
+    <header class="go-header">
+      <h2 id="go-title">The game is up.</h2>
+    </header>
 
-    <div style="background: rgba(52, 152, 219, 0.1); padding: 15px; border-radius: 10px; border: 2px solid #3498db;">
-      <h3 style="margin: 0 0 10px 0; color: #3498db;">🏆 Personal Best</h3>
-      <table style="width: 100%; border-collapse: collapse;">
-        <tr style="border-bottom: 1px solid rgba(52, 152, 219, 0.2);">
-          <td style="padding: 8px 0;"><strong>Highest ELO:</strong></td>
-          <td id="go-best-elo" style="text-align: right; font-size: 1.1em; color: #e74c3c;"><strong>800</strong></td>
-        </tr>
-        <tr style="border-bottom: 1px solid rgba(52, 152, 219, 0.2);">
-          <td style="padding: 8px 0;"><strong>Best Score:</strong></td>
-          <td id="go-best-score" style="text-align: right;">0 puzzles</td>
-        </tr>
-        <tr style="border-bottom: 1px solid rgba(52, 152, 219, 0.2);">
-          <td style="padding: 8px 0;"><strong>Best Puzzle Streak:</strong></td>
-          <td id="go-best-streak" style="text-align: right;">0 🔥</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0;"><strong>Set On:</strong></td>
-          <td id="go-best-date" style="text-align: right;">Today</td>
-        </tr>
+    <section class="go-block">
+      <h3 class="go-eyebrow">This session</h3>
+      <table class="go-table">
+        <tr><td>Puzzles solved</td>       <td class="num" id="go-score">0</td></tr>
+        <tr><td>Final ELO</td>            <td class="num" id="go-elo">800</td></tr>
+        <tr><td>ELO gained</td>           <td class="num" id="go-elo-gained">+0</td></tr>
+        <tr><td>Time played</td>          <td class="num" id="go-time">0s</td></tr>
+        <tr><td>Accuracy</td>             <td class="num" id="go-accuracy">0%</td></tr>
+        <tr><td>Total moves</td>          <td class="num" id="go-moves">0 (0 / 0)</td></tr>
+        <tr><td>Best streak</td>          <td class="num" id="go-streak">0</td></tr>
       </table>
-    </div>
+    </section>
+
+    <section class="go-block go-best">
+      <h3 class="go-eyebrow">Personal best</h3>
+      <table class="go-table">
+        <tr><td>Highest ELO</td>          <td class="num" id="go-best-elo">800</td></tr>
+        <tr><td>Best score</td>           <td class="num" id="go-best-score">0 puzzles</td></tr>
+        <tr><td>Best streak</td>          <td class="num" id="go-best-streak">0</td></tr>
+        <tr><td>Set on</td>               <td class="num" id="go-best-date">Today</td></tr>
+      </table>
+    </section>
   </div>
 </template>
 
 <script type="module" src="survival.js"></script>
 </body>
 </html>
-

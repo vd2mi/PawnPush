@@ -109,13 +109,13 @@ async function loadDailyPuzzle() {
 
 function addCompletionGlow(element) {
   element.style.transition = 'text-shadow 0.5s ease-out, color 0.3s ease-out';
-  element.style.textShadow = '0 0 15px rgba(255, 140, 0, 0.9), 0 0 25px rgba(255, 140, 0, 0.5)';
-  element.style.color = '#ff8c00';
-  
+  element.style.textShadow = '0 0 14px rgba(200, 166, 98, 0.6), 0 0 28px rgba(200, 166, 98, 0.25)';
+  element.style.color = 'var(--gilt-soft)';
+
   setTimeout(() => {
     element.style.textShadow = '';
     element.style.color = '';
-  }, 1000);
+  }, 900);
 }
 
 function animateNumber(element, targetValue, suffix = '') {
@@ -166,35 +166,10 @@ function animateNumber(element, targetValue, suffix = '') {
 function animateStatsOnLoad() {
   const statNumbers = document.querySelectorAll('.stat-number');
   const statItems = document.querySelectorAll('.stat-item');
-  const header = document.querySelector('header');
-  
-  if (header) {
-    header.style.background = 'linear-gradient(135deg, #050505, #0a0a0a)';
-    header.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.5)';
-    
-    const h1 = header.querySelector('h1');
-    if (h1) {
-      h1.style.color = '#ff8c00';
-    }
-  }
-  
+
   statItems.forEach((item, index) => {
-    item.style.padding = '0.25rem 0.5rem';
     item.style.boxSizing = 'border-box';
-    item.style.display = 'flex';
-    item.style.flexDirection = 'column';
-    item.style.alignItems = 'center';
-    item.style.gap = '0.25rem';
     item.style.overflow = 'visible';
-    
-    item.style.opacity = '0';
-    item.style.transform = 'translateY(20px)';
-    item.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
-    
-    setTimeout(() => {
-      item.style.opacity = '1';
-      item.style.transform = 'translateY(0)';
-    }, index * 100);
   });
   
   statNumbers.forEach((statEl, index) => {
@@ -230,32 +205,7 @@ function animateStatsOnLoad() {
   addStatsSeparator();
 }
 
-function addStatsSeparator() {
-  const statsBar = document.querySelector('.stats-bar');
-  const header = document.querySelector('header');
-  const mainSection = document.querySelector('main');
-  
-  if (statsBar && mainSection && !document.getElementById('stats-separator')) {
-    const separator = document.createElement('div');
-    separator.id = 'stats-separator';
-    separator.style.width = '60%';
-    separator.style.maxWidth = '600px';
-    separator.style.height = '1px';
-    separator.style.background = 'linear-gradient(to right, transparent, #3a4a5c, transparent)';
-    separator.style.margin = '1rem auto';
-    separator.style.marginBottom = '0.5rem';
-    separator.style.opacity = '0.6';
-    
-    if (mainSection && mainSection.parentNode) {
-      mainSection.parentNode.insertBefore(separator, mainSection);
-    }
-    
-    separator.style.transition = 'opacity 0.5s ease-out';
-    setTimeout(() => {
-      separator.style.opacity = '1';
-    }, 800);
-  }
-}
+function addStatsSeparator() { /* handled by CSS rules; no runtime injection */ }
 
 function animateToInfinity(element, index) {
   const startNum = 1000;
@@ -267,11 +217,6 @@ function animateToInfinity(element, index) {
   const parent = element.closest('.stat-item');
   if (parent) {
     parent.style.position = 'relative';
-    parent.style.minHeight = '3rem';
-    parent.style.minWidth = '4rem';
-    
-    element.style.fontSize = '2.5em';
-    element.style.fontWeight = 'bold';
     element.style.position = 'relative';
     element.style.transformOrigin = 'center center';
   }

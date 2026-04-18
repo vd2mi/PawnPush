@@ -17,11 +17,11 @@
   <script src="audio-manager.js"></script>
   <style>
       :root {
-          --primary-color: #9900ff;
-          --secondary-color: #ff8c00;
-          --bg-card: rgba(26, 26, 26, 0.85);
-          --border-color: rgba(153, 0, 255, 0.3);
-          --text-muted: #b4b4b4;
+          --primary-color: var(--gilt);
+          --secondary-color: var(--oxblood);
+          --bg-card: rgba(20, 17, 16, 0.85);
+          --border-color: rgba(200, 166, 98, 0.22);
+          --text-muted: var(--bone);
       }
       .swal2-popup {
           background: var(--bg-card) !important;
@@ -80,16 +80,16 @@
           border: 1px solid rgba(239, 68, 68, 0.3) !important;
       }
       body.review-page {
-          background-color: #0c0c0f;
-          color: #fff;
+          background-color: var(--ink);
+          color: var(--parchment);
           min-height: 100vh;
           display: flex;
           flex-direction: column;
       }
       header {
-          background: linear-gradient(135deg, #121212, #1a1a1a);
-          padding: 1rem;
-          border-bottom: 1px solid rgba(255,255,255,0.08);
+          background: transparent;
+          padding: 1.25rem 1.5rem;
+          border-bottom: 1px solid var(--rule);
       }
       .header-content {
           max-width: 1600px;
@@ -100,9 +100,15 @@
       }
       h1 {
           margin: 0;
-          font-size: 1.6rem;
-          color: var(--secondary-color);
+          font-family: var(--serif);
+          font-style: italic;
+          font-weight: 900;
+          font-variation-settings: "SOFT" 100, "WONK" 1;
+          font-size: 2rem;
+          letter-spacing: -0.01em;
+          color: var(--parchment);
       }
+      h1::first-letter { color: var(--gilt); }
       .tagline {
           margin: 0;
           font-size: 0.9rem;
@@ -130,14 +136,13 @@
           height: calc(100vh - 150px);
       }
       .panel {
-          background: var(--bg-card);
-          border: 1px solid var(--border-color);
-          border-radius: 12px;
+          background: var(--ink-raise);
+          border: 1px solid var(--rule-strong);
+          border-radius: 2px;
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          backdrop-filter: blur(10px);
-          box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+          box-shadow: var(--shadow-1);
       }
       .panel-header {
           padding: 1rem;
@@ -149,9 +154,11 @@
       }
       .panel-header h3 {
           margin: 0;
-          font-size: 1rem;
-          color: var(--primary-color);
-          letter-spacing: 0.05em;
+          font-family: var(--mono);
+          font-weight: 500;
+          font-size: 0.72rem;
+          color: var(--muted);
+          letter-spacing: 0.28em;
           text-transform: uppercase;
       }
       .panel-content {
@@ -196,13 +203,13 @@
           transform: scale(0.98);
       }
       .btn-primary {
-          background: linear-gradient(135deg, #9900ff, #7c00cc);
+          background: linear-gradient(135deg, var(--oxblood), var(--oxblood-deep));
       }
       .btn-secondary {
           background: rgba(255,255,255,0.15);
       }
       .chesscom-btn {
-          background: linear-gradient(135deg, #7fa650, #5d7c3a);
+          background: linear-gradient(135deg, var(--sage-deep), var(--sage));
           grid-column: span 2;
       }
       .analysis-display {
@@ -211,7 +218,7 @@
           border-radius: 10px;
           padding: 1rem;
           min-height: 80px;
-          font-family: 'Space Mono', monospace;
+          font-family: var(--mono);
           line-height: 1.5;
       }
       .analysis-header {
@@ -257,36 +264,39 @@
       .eval-bar-container {
           width: 100%;
           max-width: 600px;
-          height: 18px;
-          background: #1d1d1d;
-          border-radius: 999px;
+          height: 14px;
+          background: var(--ink-card);
+          border-radius: 1px;
           position: relative;
           overflow: hidden;
-          border: 1px solid rgba(255,255,255,0.08);
+          border: 1px solid var(--rule-strong);
           margin: 0 auto 0.75rem;
       }
       .eval-fill {
           height: 100%;
           width: 50%;
-          background: linear-gradient(90deg, #1a1a1a, #ffffff);
+          background: linear-gradient(90deg, #3a2817, var(--parchment));
           transition: width 0.4s ease, background 0.4s ease;
       }
       .eval-text {
           position: absolute;
           width: 100%;
           text-align: center;
-          line-height: 18px;
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: #111;
-          text-shadow: 0 0 2px rgba(255,255,255,0.9);
+          line-height: 14px;
+          font-size: 0.7rem;
+          font-weight: 500;
+          font-family: var(--mono);
+          letter-spacing: 0.08em;
+          color: var(--ink);
+          mix-blend-mode: difference;
+          filter: invert(1);
       }
       .board-wrapper {
           width: min(80vw, 500px);
           aspect-ratio: 1 / 1;
-          border-radius: 14px;
-          border: 2px solid #ff3c00;
-          box-shadow: 0 10px 25px rgba(0,0,0,0.45);
+          border-radius: 2px;
+          border: 1px solid #3a2817;
+          box-shadow: 0 30px 60px -20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(200,166,98,0.1);
           overflow: hidden;
           position: relative;
       }
@@ -303,18 +313,21 @@
           pointer-events: none;
       }
       .chess-board .square.white-1e1e1e {
-          background: #f0ebd8 !important;
+          background: #e8dcc2 !important;
       }
       .chess-board .square.black-3c3c3c {
-          background: #2b2b2b !important;
+          background: #3a2817 !important;
       }
       .preview-badge {
           margin-top: 0.25rem;
           padding: 0.35rem 0.75rem;
-          border-radius: 8px;
-          background: rgba(153,0,255,0.2);
-          border: 1px solid rgba(153,0,255,0.4);
-          font-size: 0.8rem;
+          border-radius: 2px;
+          background: rgba(200,166,98,0.16);
+          border: 1px solid rgba(200,166,98,0.4);
+          font-size: 0.75rem;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          font-family: var(--mono);
           display: none;
       }
       .arrow-legend {
@@ -397,15 +410,15 @@
           background: rgba(255,255,255,0.08);
       }
       .move-item.active {
-          border: 1px solid var(--primary-color);
-          background: rgba(153,0,255,0.25);
+          border: 1px solid var(--gilt);
+          background: rgba(200,166,98,0.16);
       }
       .move-core {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 0.5rem;
-          font-family: 'Space Mono', monospace;
+          font-family: var(--mono);
       }
       .move-num {
           color: var(--text-muted);
@@ -419,50 +432,54 @@
       .move-eval {
           font-weight: bold;
       }
-      .move-best { color: #2ecc71; }
-      .move-excellent { color: #90be6d; }
-      .move-good { color: #95a5a6; }
-      .move-inaccuracy { color: #f1c40f; }
-      .move-mistake { color: #e67e22; }
-      .move-blunder { color: #e74c3c; }
-      .move-book { color: #8f5a0a; }
+      /* Move-quality palette: collapse onto sage (good) → gilt (neutral) → oxblood (bad). */
+      .move-best        { color: var(--sage); }
+      .move-excellent   { color: var(--sage-deep); }
+      .move-good        { color: var(--bone); }
+      .move-inaccuracy  { color: var(--gilt-soft); }
+      .move-mistake     { color: var(--oxblood-glow); }
+      .move-blunder     { color: var(--oxblood); }
+      .move-book        { color: var(--gilt-deep); }
       .analysis-badge.move-best,
       .analysis-badge.move-excellent,
       .analysis-badge.move-good,
       .analysis-badge.move-inaccuracy,
       .analysis-badge.move-mistake,
       .analysis-badge.move-blunder {
-          color: #111;
+          color: var(--ink);
       }
-      .analysis-badge.move-best { background: rgba(46,204,113,0.2); color: #2ecc71; }
-      .analysis-badge.move-excellent { background: rgba(144,190,109,0.2); color: #90be6d; }
-      .analysis-badge.move-good { background: rgba(149,165,166,0.2); color: #ecf0f1; }
-      .analysis-badge.move-inaccuracy { background: rgba(241,196,15,0.2); color: #f1c40f; }
-      .analysis-badge.move-mistake { background: rgba(230,126,34,0.2); color: #e67e22; }
-      .analysis-badge.move-blunder { background: rgba(231,76,60,0.25); color: #e74c3c; }
-      .analysis-badge.move-book { background: rgba(16,185,129,0.2); color: #10b981; }
+      .analysis-badge.move-best       { background: rgba(138,163,115,0.25); color: var(--sage); }
+      .analysis-badge.move-excellent  { background: rgba(95,119,80,0.25);   color: var(--sage-deep); }
+      .analysis-badge.move-good       { background: rgba(201,191,169,0.18); color: var(--bone); }
+      .analysis-badge.move-inaccuracy { background: rgba(224,195,128,0.18); color: var(--gilt-soft); }
+      .analysis-badge.move-mistake    { background: rgba(168,65,65,0.22);   color: var(--oxblood-glow); }
+      .analysis-badge.move-blunder    { background: rgba(138,42,42,0.3);    color: var(--oxblood); }
+      .analysis-badge.move-book       { background: rgba(143,115,56,0.22);  color: var(--gilt); }
       .badge {
           display: inline-block;
-          padding: 0.25rem 0.5rem;
-          border-radius: 4px;
-          font-size: 0.75rem;
-          font-weight: 600;
-          margin-left: 0.25rem;
+          padding: 0.2rem 0.55rem;
+          border-radius: 2px;
+          font-size: 0.65rem;
+          font-family: var(--mono);
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          font-weight: 500;
+          margin-left: 0.35rem;
       }
       .badge.brilliant {
-          background: rgba(255,215,0,0.2);
-          color: #ffd700;
-          border: 1px solid rgba(255,215,0,0.3);
+          background: rgba(224,195,128,0.18);
+          color: var(--gilt-soft);
+          border: 1px solid rgba(224,195,128,0.4);
       }
       .badge.great {
-          background: rgba(59,130,246,0.2);
-          color: #3b82f6;
-          border: 1px solid rgba(59,130,246,0.3);
+          background: rgba(138,163,115,0.2);
+          color: var(--sage);
+          border: 1px solid rgba(138,163,115,0.4);
       }
       .badge.only {
-          background: rgba(168,85,247,0.2);
-          color: #a855f7;
-          border: 1px solid rgba(168,85,247,0.3);
+          background: rgba(138,42,42,0.2);
+          color: var(--oxblood-glow);
+          border: 1px solid rgba(138,42,42,0.4);
       }
       .phase-summary {
           display: flex;
@@ -592,7 +609,7 @@
           height: 46px;
           border-radius: 50%;
           border: 4px solid rgba(255,255,255,0.2);
-          border-top-color: #fff;
+          border-top-color: var(--gilt);
           animation: spin 0.9s linear infinite;
       }
       @keyframes spin {
@@ -611,7 +628,7 @@
           width: min(520px, 90vw);
           max-height: 80vh;
           overflow: hidden;
-          background: #1e1e1e;
+          background: var(--ink-raise);
           border-radius: 12px;
           border: 1px solid rgba(255,255,255,0.1);
           padding: 1rem;
@@ -636,16 +653,16 @@
           background: rgba(255,255,255,0.15);
       }
       .moment-blunder {
-          border-left: 3px solid #e74c3c;
+          border-left: 3px solid var(--oxblood);
       }
       .moment-mistake {
-          border-left: 3px solid #e67e22;
+          border-left: 3px solid var(--oxblood-glow);
       }
       .moment-swing {
-          border-left: 3px solid #3b82f6;
+          border-left: 3px solid var(--gilt);
       }
       .moment-info {
-          border-left: 3px solid #6b7280;
+          border-left: 3px solid var(--whisper);
       }
       @media (max-width: 1200px) {
           .game-review-container {
@@ -677,17 +694,17 @@
       <img src="icons/pawnpushicon.png" alt="PawnPush Logo" style="width:48px;height:48px;">
       <div>
         <h1>PawnPush</h1>
-        <p class="tagline">Game Review</p>
+        <p class="tagline">A post&ndash;mortem, in the old style</p>
       </div>
     </div>
-    <a href="index.html" class="back-btn">← Main Menu</a>
+    <a href="index.html" class="back-btn">&larr;&nbsp;&nbsp;Index</a>
   </div>
 </header>
 <main>
   <div class="game-review-container">
     <div class="panel controls-panel">
       <div class="panel-header">
-        <div class="section-icon">⚙️</div>
+        <div class="section-icon">&sect;</div>
         <h3>Analysis</h3>
       </div>
       <div class="panel-content">
@@ -712,7 +729,7 @@
             <button class="btn chesscom-btn" id="chesscomBtn">Import from Chess.com</button>
           </div>
           <button class="btn btn-primary" id="analyzeBtn" style="width:100%;">
-            <span class="btn-icon">🧠</span><span class="btn-text">Analyze</span>
+            <span class="btn-text">Analyse the game</span>
           </button>
         </div>
       </div>
@@ -734,15 +751,15 @@
       </div>
       <div class="arrow-legend">
         <div class="legend-item">
-          <div class="legend-color" style="background:#00d47e;"></div>
+          <div class="legend-color" style="background:var(--sage);"></div>
           <span>Best</span>
         </div>
         <div class="legend-item">
-          <div class="legend-color" style="background:#3b82f6;"></div>
+          <div class="legend-color" style="background:var(--gilt);"></div>
           <span>2nd</span>
         </div>
         <div class="legend-item">
-          <div class="legend-color" style="background:#a855f7;"></div>
+          <div class="legend-color" style="background:var(--oxblood-glow);"></div>
           <span>3rd</span>
         </div>
       </div>
@@ -750,8 +767,8 @@
     </div>
     <div class="panel move-list-panel">
       <div class="panel-header">
-        <div class="section-icon">📝</div>
-        <h3>Game Moves</h3>
+        <div class="section-icon">&para;</div>
+        <h3>Notation</h3>
       </div>
       <div id="topLinesPanel" class="top-lines-panel"></div>
       <div class="panel-content" style="padding:0;">
@@ -769,11 +786,11 @@
             <div class="stat-row"><span>Est. Rating</span><span id="blackRating">--</span></div>
           </div>
         </div>
-        <div id="openingNameDisplay" style="padding: 1rem; border-top: 1px solid rgba(255,255,255,0.08); display: none;">
-          <div style="text-align: center; padding: 1rem; background: linear-gradient(135deg, rgba(153,0,255,0.1), rgba(255,140,0,0.1)); border-radius: 8px; border: 1px solid rgba(153,0,255,0.3);">
-            <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem;">Opening</div>
-            <div id="openingEco" style="font-size: 1.1rem; font-weight: bold; color: var(--primary-color); margin-bottom: 0.25rem;"></div>
-            <div id="openingName" style="font-size: 0.95rem; color: #fff;"></div>
+        <div id="openingNameDisplay" style="padding: 1rem; border-top: 1px solid rgba(236,228,211,0.08); display: none;">
+          <div style="text-align: center; padding: 1.25rem 1rem; background: rgba(11,10,9,0.5); border: 1px solid rgba(200,166,98,0.22); border-top: 2px solid var(--gilt); border-radius: 2px;">
+            <div style="font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.28em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem;">Opening</div>
+            <div id="openingEco" style="font-family: var(--mono); font-size: 0.95rem; font-weight: 500; color: var(--gilt); margin-bottom: 0.35rem; letter-spacing: 0.08em;"></div>
+            <div id="openingName" style="font-size: 1.1rem; color: var(--parchment); font-family: var(--serif); font-style: italic; font-weight: 700;"></div>
           </div>
         </div>
         <div id="moveList" class="move-list"></div>

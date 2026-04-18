@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PawnPush - 1v1 Battle</title>
+  <title>PawnPush &mdash; 1v1 Duel</title>
   <link rel="icon" type="image/png" sizes="32x32" href="icons/pawnpushicon.png">
   <link rel="icon" type="image/png" sizes="16x16" href="icons/pawnpushicon.png">
   <link rel="shortcut icon" href="icons/pawnpushicon.png">
@@ -12,6 +12,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
   <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="style.css">
   <script src="audio-manager.js"></script>
 </head>
@@ -20,11 +22,11 @@
 <header>
   <div class="header-content">
     <div style="display: flex; align-items: center; gap: 12px;">
-      <img src="icons/pawnpushicon.png" alt="PawnPush Logo" style="width: 100px; height: 80px; object-fit: contain;">
+      <img src="icons/pawnpushicon.png" alt="PawnPush Logo" style="width: 64px; height: 64px; object-fit: contain;">
       <h1>PawnPush</h1>
     </div>
     <div class="puzzle-navigation">
-      <a href="index.html" class="back-btn">← Back to Menu</a>
+      <a href="index.html" class="back-btn">&larr;&nbsp;&nbsp;Index</a>
     </div>
   </div>
 </header>
@@ -32,33 +34,31 @@
 <main>
   <div id="room-setup-screen" class="room-setup-screen">
     <div id="puzzle-theme" class="puzzle-theme-card">
-      <div class="theme-icon">⚔️</div>
-      <div class="theme-text">1v1 Private Battle</div>
+      <div class="theme-icon">&#9820;</div>
+      <div class="theme-text">1v1 Duel &mdash; <em>a private correspondence</em></div>
     </div>
 
     <div class="room-setup-container">
       <div class="setup-card">
-        <h2>🎮 Create Room</h2>
-        <p>Host a private match and share the code with your opponent</p>
-        <input type="text" id="host-name-input" placeholder="Enter your name" maxlength="15" class="room-input">
+        <h2>Open a room</h2>
+        <p>Host a private match. Share the six-letter cipher with your opponent.</p>
+        <input type="text" id="host-name-input" placeholder="Your name" maxlength="15" class="room-input">
         <button id="create-room-btn" class="action-btn primary-btn">
-          <span class="btn-icon">🏠</span>
-          <span class="btn-text">Create Room</span>
+          <span class="btn-text">Open a room</span>
         </button>
       </div>
 
       <div class="setup-divider">
-        <span>OR</span>
+        <span>&mdash; or &mdash;</span>
       </div>
 
       <div class="setup-card">
-        <h2>🔗 Join Room</h2>
-        <p>Enter the 6-digit code shared by your opponent</p>
-        <input type="text" id="guest-name-input" placeholder="Enter your name" maxlength="15" class="room-input">
-        <input type="text" id="room-code-input" placeholder="Enter room code (6 digits)" maxlength="6" class="room-input">
+        <h2>Join a room</h2>
+        <p>Enter the six-digit cipher shared by your opponent.</p>
+        <input type="text" id="guest-name-input" placeholder="Your name" maxlength="15" class="room-input">
+        <input type="text" id="room-code-input" placeholder="Cipher &middot; 6 digits" maxlength="6" class="room-input">
         <button id="join-room-btn" class="action-btn success-btn">
-          <span class="btn-icon">🚪</span>
-          <span class="btn-text">Join Room</span>
+          <span class="btn-text">Join</span>
         </button>
       </div>
     </div>
@@ -66,47 +66,46 @@
 
   <div id="waiting-room-screen" class="waiting-room-screen hidden">
     <div id="puzzle-theme-waiting" class="puzzle-theme-card">
-      <div class="theme-icon">⏳</div>
-      <div class="theme-text">Waiting for opponent...</div>
+      <div class="theme-icon">&#9818;</div>
+      <div class="theme-text">Awaiting opponent&hellip;</div>
     </div>
 
     <div class="waiting-room-container">
       <div class="room-code-display">
-        <h2>Room Code</h2>
-        <div class="room-code" id="display-room-code">------</div>
-        <button id="copy-code-btn" class="copy-btn">📋 Copy Code</button>
+        <h2>Cipher</h2>
+        <div class="room-code" id="display-room-code">&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;</div>
+        <button id="copy-code-btn" class="copy-btn">Copy</button>
       </div>
 
       <div class="players-status">
         <div class="player-card host-card">
-          <div class="player-icon">👤</div>
+          <div class="player-icon">&#9812;</div>
           <div class="player-name" id="host-player-name">Host</div>
-          <div class="player-status ready">✓ Ready</div>
+          <div class="player-status ready">&mdash; seated</div>
         </div>
 
-        <div class="vs-divider">VS</div>
+        <div class="vs-divider">vs.</div>
 
         <div class="player-card guest-card">
-          <div class="player-icon">👤</div>
-          <div class="player-name" id="guest-player-name">Waiting...</div>
-          <div class="player-status waiting" id="guest-status">⏳ Waiting</div>
+          <div class="player-icon">&#9818;</div>
+          <div class="player-name" id="guest-player-name">Awaiting&hellip;</div>
+          <div class="player-status waiting" id="guest-status">&mdash; pending</div>
         </div>
       </div>
 
       <div class="match-settings">
-        <h3>⚙️ Match Settings</h3>
+        <h3>Match terms</h3>
         <div class="setting-item">
-          <span>⏱ Duration:</span>
+          <span class="eyebrow">Duration</span>
           <span class="setting-value">5 minutes</span>
         </div>
         <div class="setting-item">
-          <span>🧩 Puzzle Rating:</span>
-          <span class="setting-value">1000-1500</span>
+          <span class="eyebrow">Rating range</span>
+          <span class="setting-value">1000&ndash;1500</span>
         </div>
       </div>
 
       <button id="cancel-room-btn" class="action-btn back-btn">
-        <span class="btn-icon">❌</span>
         <span class="btn-text">Cancel</span>
       </button>
     </div>
@@ -114,8 +113,8 @@
 
   <div id="game-screen" class="game-screen hidden">
     <div id="puzzle-theme-game" class="puzzle-theme-card">
-      <div class="theme-icon">⚔️</div>
-      <div class="theme-text">1v1 Battle in Progress</div>
+      <div class="theme-icon">&#9820;</div>
+      <div class="theme-text">Duel in progress</div>
     </div>
 
     <div class="puzzle-container">
@@ -128,16 +127,16 @@
       <div id="puzzle-info-sidebar" class="info-sidebar">
         <div class="info-section puzzle-details">
           <div class="section-header">
-            <div class="section-icon">⏱</div>
-            <h3>Time Remaining</h3>
+            <div class="section-icon">&#8997;</div>
+            <h3>Time</h3>
           </div>
           <div class="timer-display" id="timer-display">5:00</div>
         </div>
 
         <div class="info-section puzzle-details">
           <div class="section-header">
-            <div class="section-icon">📊</div>
-            <h3>Battle Score</h3>
+            <div class="section-icon">&sect;</div>
+            <h3>Tally</h3>
           </div>
           <div class="info-cards">
             <div class="score-comparison">
@@ -145,7 +144,7 @@
                 <span class="player-label" id="your-name-label">You</span>
                 <span class="score-value your-score" id="your-score">0</span>
               </div>
-              <div class="score-vs">VS</div>
+              <div class="score-vs">vs.</div>
               <div class="player-score">
                 <span class="player-label" id="opponent-name-label">Opponent</span>
                 <span class="score-value opponent-score" id="opponent-score">0</span>
@@ -156,8 +155,8 @@
 
         <div class="info-section puzzle-details">
           <div class="section-header">
-            <div class="section-icon">🎯</div>
-            <h3>Current Puzzle</h3>
+            <div class="section-icon">&#9822;</div>
+            <h3>Current study</h3>
           </div>
           <div class="info-cards">
             <div id="puzzle-rating" class="info-card">
@@ -166,18 +165,18 @@
             </div>
             <div id="turn-indicator" class="info-card turn-card">
               <span class="info-label">Turn</span>
-              <span class="info-value" id="turn-value">-- to move</span>
+              <span class="info-value" id="turn-value">&mdash; to move</span>
             </div>
           </div>
         </div>
 
         <div class="info-section move-section">
           <div class="section-header">
-            <div class="section-icon">📝</div>
-            <h3>Move History</h3>
+            <div class="section-icon">&para;</div>
+            <h3>Notation</h3>
           </div>
           <div id="move-history" class="move-history-container">
-            <em class="no-moves">No moves yet</em>
+            <em class="no-moves">Make your first move.</em>
           </div>
         </div>
       </div>
@@ -189,4 +188,3 @@
 <script type="module" src="pvp.js"></script>
 </body>
 </html>
-

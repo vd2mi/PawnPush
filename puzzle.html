@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PawnPush - Puzzle</title>
+  <title>PawnPush &mdash; A Study in Tactics</title>
   <link rel="icon" type="image/png" sizes="32x32" href="icons/pawnpushicon.png">
   <link rel="icon" type="image/png" sizes="16x16" href="icons/pawnpushicon.png">
   <link rel="shortcut icon" href="icons/pawnpushicon.png">
@@ -12,6 +12,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
   <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="style.css">
   <script src="audio-manager.js"></script>
 </head>
@@ -20,19 +22,19 @@
 <header>
   <div class="header-content">
     <div style="display: flex; align-items: center; gap: 12px;">
-      <img src="icons/pawnpushicon.png" alt="PawnPush Logo" style="width: 100px; height: 80px; object-fit: contain;">
+      <img src="icons/pawnpushicon.png" alt="PawnPush Logo" style="width: 64px; height: 64px; object-fit: contain;">
       <h1>PawnPush</h1>
     </div>
     <div class="puzzle-navigation">
-      <a href="index.html" class="back-btn">← Back to Menu</a>
+      <a href="index.html" class="back-btn">&larr;&nbsp;&nbsp;Index</a>
     </div>
   </div>
 </header>
 
 <main>
   <div id="puzzle-theme" class="puzzle-theme-card">
-    <div class="theme-icon">🎯</div>
-    <div class="theme-text">Loading puzzle...</div>
+    <div class="theme-icon">&#9822;</div>
+    <div class="theme-text">Loading puzzle&hellip;</div>
   </div>
   
   <div class="puzzle-container">
@@ -45,8 +47,8 @@
     <div id="puzzle-info-sidebar" class="info-sidebar">
       <div class="info-section puzzle-details">
         <div class="section-header">
-          <div class="section-icon">📊</div>
-          <h3>Puzzle Info</h3>
+          <div class="section-icon">&sect;</div>
+          <h3>Position</h3>
         </div>
         <div class="info-cards">
           <div id="puzzle-rating" class="info-card">
@@ -62,27 +64,25 @@
       
       <div class="info-section move-section">
         <div class="section-header">
-          <div class="section-icon">📝</div>
-          <h3>Move History</h3>
+          <div class="section-icon">&para;</div>
+          <h3>Notation</h3>
         </div>
         <div id="move-history" class="move-history-container">
-          <em class="no-moves">No moves yet</em>
+          <em class="no-moves">Make your first move.</em>
         </div>
       </div>
-      
+
       <div class="info-section actions-section">
         <div class="section-header">
-          <div class="section-icon">💡</div>
-          <h3>Actions</h3>
+          <div class="section-icon">&#10022;</div>
+          <h3>Study</h3>
         </div>
         <div class="action-buttons">
           <button id="hintBtn" class="action-btn hint-btn">
-            <span class="btn-icon">💡</span>
-            <span class="btn-text">Get Hint</span>
+            <span class="btn-text">Reveal a hint</span>
           </button>
           <button id="nextPuzzleBtn" class="action-btn next-btn">
-            <span class="btn-icon">⏭</span>
-            <span class="btn-text">Next Puzzle</span>
+            <span class="btn-text">Next study &rarr;</span>
           </button>
         </div>
       </div>
@@ -91,21 +91,19 @@
 
 
   <button id="coachBtn" class="coach-floating-btn">
-    <span class="coach-icon">🤖</span>
-    <span class="coach-text">Ask Coach</span>
+    <span class="coach-text">Consult the Master</span>
   </button>
 
 
   <div id="chatPopup" class="chat-popup hidden">
     <div class="chat-header">
       <div class="chat-title">
-        <span class="chat-icon">🤖</span>
-        <span>Chess Coach</span>
+        <span>The Master</span>
       </div>
     </div>
     <div id="chatMessages" class="chat-messages"></div>
     <div class="chat-input-area">
-      <input id="chatInput" type="text" placeholder="Ask me for a hint..." class="chat-input"/>
+      <input id="chatInput" type="text" placeholder="Ask for a hint&hellip;" class="chat-input"/>
       <button id="chatSend" class="chat-send-btn">→</button>
     </div>
   </div>
