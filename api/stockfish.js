@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { fen } = req.body;
+  const { fen, depth = 18, multipv = 3 } = req.body;
   if (!fen) {
     console.error('No FEN provided in request body');
     return res.status(400).json({ error: 'FEN position is required' });
@@ -24,67 +24,43 @@ export default async function handler(req, res) {
     console.error('HF_TOKEN environment variable is not set');
     return res.status(500).json({ error: 'API token not configured' });
   }
-  
-  console.log('Received FEN analysis request:', fen.substring(0, 30) + '...');
+
+  console.log(`Received FEN analysis request: ${fen.substring(0, 30)}... (depth ${depth}, multipv ${multipv})`);
 
   try {
-    console.log('Calling HuggingFace API with depth 20...');
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       console.log('Timeout triggered for FEN:', fen.substring(0, 30) + '...');
       controller.abort();
-    }, 30000); // 30 second timeout for depth 20
-    
+    }, 30000);
+
     const response = await fetch('https://vd2mi-stockfishapi.hf.space/analyze/fen', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${HF_TOKEN}`
       },
-      body: JSON.stringify({ fen, depth: 20 }),
+      body: JSON.stringify({ fen, depth, multipv }),
       signal: controller.signal
     });
-    
+
     clearTimeout(timeoutId);
     console.log('Got response from HuggingFace API, status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('HuggingFace API returned error status:', response.status, 'Error:', errorText);
-      return res.status(response.status).json({ 
+      return res.status(response.status).json({
         error: `Stockfish API error: ${response.status}`,
         details: errorText
       });
     }
 
+    // The engine's /analyze/fen already returns the normalized shape the client expects
+    // ({ cpWhite, mate, pvs, bestMove }), so pass it through unchanged.
     const data = await response.json();
-    
     console.log('Successfully received data from HuggingFace API for FEN:', fen.substring(0, 30) + '...');
-    console.log('Best move:', data.best_move, 'Eval:', data.evaluation);
-    
-    if (!data.best_move) {
-      console.error('No best_move in response:', data);
-      throw new Error('Invalid API response: no best_move');
-    }
-    
-    let evalScore = 0;
-    if (data.evaluation) {
-      if (data.evaluation.type === 'cp') {
-        evalScore = data.evaluation.value;
-      } else if (data.evaluation.type === 'mate') {
-        evalScore = data.evaluation.value > 0 ? 10000 : -10000;
-      }
-    }
-    
-    console.log('Returning:', { evalScore, best_move: data.best_move, fen: data.fen });
-
-    return res.status(200).json({
-      fen: data.fen,
-      move: data.best_move,
-      eval: evalScore / 100,
-      depth: 20,
-      time: 1000
-    });
+    return res.status(200).json(data);
 
   } catch (error) {
     console.error('Stockfish API error:', error.name, error.message);

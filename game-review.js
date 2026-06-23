@@ -919,21 +919,20 @@
 
             UI.showLoading('Analysing position...');
             try {
-                const res = await fetch('/api/analyzePosition', {
+                const res = await fetch('/api/stockfish', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        fens: [fen],
+                        fen,
                         depth: ENGINE_CONFIG.DEPTH,
                         multipv: ENGINE_CONFIG.MULTIPV
                     })
                 });
 
                 if (!res.ok) throw new Error('Analysis failed');
-                const data = await res.json();
-                const evaluation = data.evaluations && data.evaluations[0];
+                const evaluation = await res.json();
 
-                if (!evaluation) {
+                if (!evaluation || evaluation.cpWhite === undefined) {
                     UI.toast('No evaluation returned', 'error');
                     return;
                 }
