@@ -740,6 +740,7 @@
             document.getElementById('loadGameBtn').onclick = () => UI.loadGame();
             document.getElementById('clearBtn').onclick = () => UI.clearGame();
             document.getElementById('analyzeBtn').onclick = () => UI.analyzeGame();
+            document.getElementById('analyzePositionBtn').onclick = () => UI.analyzePosition();
             document.getElementById('chesscomBtn').onclick = () => UI.importChessCom();
             
             document.getElementById('firstBtn').onclick = () => UI.goToMove(0);
@@ -885,6 +886,66 @@
                 State.isAnalyzing = false;
                 State.analysisAbort = null;
                 document.querySelector('#analyzeBtn .btn-text').textContent = 'Analyze';
+                UI.hideLoading();
+            }
+        },
+
+        async analyzePosition() {
+            const fenText = document.getElementById('fenInput').value.trim();
+
+            // Prefer a freshly typed FEN; otherwise analyse the position on the board.
+            if (fenText) {
+                if (!State.scratch.load(fenText)) {
+                    UI.toast('Invalid FEN', 'error');
+                    return;
+                }
+                State.chess.load(fenText);
+                State.history = [fenText];
+                State.headers = {};
+                State.moveIndex = 0;
+                State.moveAnalyses = [];
+                State.summary = null;
+                UIBoard.update();
+                MoveList.render();
+                SummaryPanel.render();
+                AnalysisDisplay.update();
+            }
+
+            const fen = State.history[State.moveIndex];
+            if (!fen) {
+                UI.toast('Enter a FEN or load a game first', 'error');
+                return;
+            }
+
+            UI.showLoading('Analysing position...');
+            try {
+                const res = await fetch('/api/analyzePosition', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fens: [fen],
+                        depth: ENGINE_CONFIG.DEPTH,
+                        multipv: ENGINE_CONFIG.MULTIPV
+                    })
+                });
+
+                if (!res.ok) throw new Error('Analysis failed');
+                const data = await res.json();
+                const evaluation = data.evaluations && data.evaluations[0];
+
+                if (!evaluation) {
+                    UI.toast('No evaluation returned', 'error');
+                    return;
+                }
+
+                EvalCache.save(fen, evaluation, ENGINE_CONFIG.DEPTH);
+                EvalBar.update(evaluation.cpWhite, evaluation.mate);
+                UIBoard.showBestMoveArrow(evaluation);
+                TopLinesPanel.update();
+                UI.toast('Position analysed', 'success');
+            } catch (err) {
+                UI.toast('Analysis failed: ' + err.message, 'error');
+            } finally {
                 UI.hideLoading();
             }
         },

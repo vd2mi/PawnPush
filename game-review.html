@@ -190,26 +190,42 @@
           gap: 0.5rem;
       }
       .btn {
-          border: none;
-          border-radius: 8px;
+          border: 1px solid var(--rule-strong);
+          border-radius: 2px;
           padding: 0.75rem;
-          color: #fff;
-          font-weight: 600;
-          letter-spacing: 0.05em;
+          background: rgba(255,255,255,0.04);
+          color: var(--parchment);
+          font-family: var(--mono);
+          font-size: 0.7rem;
+          font-weight: 500;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
           cursor: pointer;
-          transition: transform 0.1s ease;
+          transition: background 0.15s ease, border-color 0.15s ease;
+      }
+      .btn:hover {
+          background: rgba(255,255,255,0.08);
+          border-color: var(--gilt);
       }
       .btn:active {
           transform: scale(0.98);
       }
+      .btn .btn-text {
+          font-size: inherit;
+          font-family: inherit;
+          letter-spacing: inherit;
+      }
       .btn-primary {
-          background: linear-gradient(135deg, var(--oxblood), var(--oxblood-deep));
+          background: rgba(200,166,98,0.1);
+          border-color: rgba(200,166,98,0.4);
+      }
+      .btn-primary:hover {
+          background: rgba(200,166,98,0.18);
       }
       .btn-secondary {
-          background: rgba(255,255,255,0.15);
+          background: rgba(255,255,255,0.04);
       }
       .chesscom-btn {
-          background: linear-gradient(135deg, var(--sage-deep), var(--sage));
           grid-column: span 2;
       }
       .analysis-display {
@@ -730,6 +746,9 @@
           </div>
           <button class="btn btn-primary" id="analyzeBtn" style="width:100%;">
             <span class="btn-text">Analyse the game</span>
+          </button>
+          <button class="btn btn-secondary" id="analyzePositionBtn" style="width:100%; margin-top:0.5rem;">
+            Analyse position
           </button>
         </div>
       </div>
